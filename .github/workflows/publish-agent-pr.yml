@@ -1,0 +1,93 @@
+name: Trusted Agent PR Publisher
+on:
+  workflow_call:
+    inputs:
+      issue:
+        required: true
+        type: string
+      actor:
+        required: true
+        type: string
+      issue_digest:
+        required: true
+        type: string
+      label_id:
+        required: true
+        type: string
+      base:
+        required: true
+        type: string
+      patch_digest:
+        required: true
+        type: string
+      artifact_id:
+        required: true
+        type: string
+permissions: {}
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: agent-publisher
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+      pull-requests: read
+    env:
+      BASE: ${{ inputs.base }}
+      ISSUE: ${{ inputs.issue }}
+      ACTOR: ${{ inputs.actor }}
+      ISSUE_DIGEST: ${{ inputs.issue_digest }}
+      LABEL_ID: ${{ inputs.label_id }}
+      PATCH_DIGEST: ${{ inputs.patch_digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download exact verified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+        run: |
+          python3 -I .github/automation/automation.py fetch-artifact --artifact-id "$ARTIFACT_ID" \
+            --artifact-name "verified-$GITHUB_RUN_ID" --entry verified.patch \
+            --destination "$RUNNER_TEMP/verified.patch"
+      - name: Independently validate before requesting publication credentials
+        id: validate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I .github/automation/automation.py publish-check --base "$BASE" --issue "$ISSUE" \
+            --actor "$ACTOR" --issue-digest "$ISSUE_DIGEST" --label-id "$LABEL_ID" \
+            --patch "$RUNNER_TEMP/verified.patch" --patch-digest "$PATCH_DIGEST" \
+            --manifest "$RUNNER_TEMP/publication.json"
+      - name: Check publisher configuration
+        if: steps.validate.outputs.ready == 'true'
+        env:
+          APP_ID: ${{ vars.AGENT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo 'Missing AGENT_APP_ID or AGENT_APP_PRIVATE_KEY in agent-publisher environment' >&2
+            exit 1
+          fi
+      - name: Mint repository-scoped short-lived App token
+        id: app
+        if: steps.validate.outputs.ready == 'true'
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Publish through GitHub APIs; never execute candidate code
+        if: steps.validate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          python3 -I .github/automation/automation.py publish --base "$BASE" --issue "$ISSUE" \
+            --actor "$ACTOR" --issue-digest "$ISSUE_DIGEST" --label-id "$LABEL_ID" \
+            --manifest "$RUNNER_TEMP/publication.json"

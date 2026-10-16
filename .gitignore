@@ -3,3 +3,5 @@ backend/target/
 *.log
 .idea/
 *.iml
+__pycache__/
+.local-verifier/
