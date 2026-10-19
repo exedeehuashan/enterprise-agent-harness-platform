@@ -182,6 +182,49 @@ consumed atomically just before dispatch. A consumed decision cannot authorize
 another attempt. Policy changes, modified inputs and disabled tools cannot
 reuse approval. See [P3 design and limits](docs/p3-approval-and-audit.md).
 
+### Model planning (Mock foundation)
+
+```sh
+curl -H "@$AUTH_HEADERS" -i -X POST "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/plans" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: plan-001' -d '{}'
+# Replace CALL_ID with the returned id.
+CALL_ID=00000000-0000-0000-0000-000000000000
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/model-calls/$CALL_ID"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/plans?page=0&size=20"
+curl -H "@$AUTH_HEADERS" http://localhost:8080/api/v1/model-provider
+# Admin only:
+curl -H "@$AUTH_HEADERS" http://localhost:8080/api/v1/model-budget
+```
+
+Plan creation returns 202/Location and an immutable task snapshot. The default
+Mock Provider produces a fixed DEMO_REVIEW proposal; it does not understand the
+task, call a real model, create runs, approve tools or execute tests. Poll for
+QUEUED → RUNNING → VALIDATED/FAILED. VALIDATED means the plan conforms to the
+schema and current tool policy; it does not mean the plan is correct or approved.
+
+The body accepts only maxOutputTokens (64–2048, default 512) and timeoutMillis
+(100–5000, default 2000). Missing/invalid keys or parameters return 400. Same
+Idempotency-Key/options replay the original call, including after task edits or
+failure; changed options or a different key while planning is active return 409.
+GET history accepts page/size only, with the same bounds as task lists.
+
+Planning has a 60-second queue deadline, per-call timeout, stale-result fencing,
+and no automatic retries. Only validated JSON is retained; invalid/raw provider
+output and exception details are discarded. Plans allow 1–5 supported local
+steps and reject unknown fields, tools, targets, duplicate keys and trailing data.
+Token usage is estimated and Mock costUsd is zero. The UTC daily token reservation
+budget defaults to 20000 (`EAHP_MODEL_DAILY_TOKEN_BUDGET`); every new call reserves
+estimated input plus the full output cap, including failed/expired calls. Replays
+do not reserve again; exhaustion returns 429 before provider invocation. This is
+a local token safety limit, not an implemented paid-provider spending guarantee.
+
+`EAHP_MODEL_PROVIDER` currently accepts only `mock`; naming another provider
+fails startup rather than silently falling back. No external API key is needed.
+The planner is enabled by default and can be disabled independently with
+`EAHP_PLANNER_ENABLED=false`. Two bounded provider threads and no submission queue
+limit stuck calls; timeouts request interruption but cannot guarantee a future
+remote provider has stopped or avoided billing. See [P4 design and learning notes](docs/p4-model-planning.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,
