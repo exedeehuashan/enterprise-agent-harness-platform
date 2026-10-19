@@ -169,11 +169,17 @@ class AgentTaskEditApiTest {
 
     @Test
     void migrationPreservesExistingVersionOneData() throws Exception {
-        String path = create();
-        jdbc.execute("ALTER TABLE agent_tasks DROP COLUMN version");
-        jdbc.update("DELETE FROM flyway_schema_history WHERE version = '2'");
-        org.flywaydb.core.Flyway.configure().dataSource(jdbc.getDataSource()).load().migrate();
-        mvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Original"))
-                .andExpect(jsonPath("$.version").value(0));
+        // Use an independent schema so this regression remains valid after V3+ exists.
+        String schema = "v1_upgrade_test";
+        try {
+            org.flywaydb.core.Flyway.configure().dataSource(jdbc.getDataSource())
+                    .schemas(schema).defaultSchema(schema).target("1").load().migrate();
+            UUID id = UUID.randomUUID();
+            jdbc.update("INSERT INTO " + schema + ".agent_tasks(id,title,status,created_at,updated_at) VALUES (?,?,'PENDING',now(),now())", id, "Original");
+            org.flywaydb.core.Flyway.configure().dataSource(jdbc.getDataSource())
+                    .schemas(schema).defaultSchema(schema).target("2").load().migrate();
+            assertThat(jdbc.queryForObject("SELECT title FROM " + schema + ".agent_tasks WHERE id=?", String.class, id)).isEqualTo("Original");
+            assertThat(jdbc.queryForObject("SELECT version FROM " + schema + ".agent_tasks WHERE id=?", Long.class, id)).isZero();
+        } finally { jdbc.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE"); }
     }
 }
