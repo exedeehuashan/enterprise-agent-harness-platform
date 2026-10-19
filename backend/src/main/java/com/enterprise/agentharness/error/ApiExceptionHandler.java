@@ -35,6 +35,24 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), List.of());
     }
 
+    @ExceptionHandler(com.enterprise.agentharness.task.TaskEditException.class)
+    public ResponseEntity<Object> editError(com.enterprise.agentharness.task.TaskEditException ex, HttpServletRequest request) {
+        return error(ex.status(), ex.getMessage(), request.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(org.springframework.orm.ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Object> staleEdit(Exception ex, HttpServletRequest request) {
+        return error(HttpStatus.PRECONDITION_FAILED, "Task changed; reload before editing", request.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    public ResponseEntity<Object> invalidEdit(jakarta.validation.ConstraintViolationException ex, HttpServletRequest request) {
+        var fields = ex.getConstraintViolations().stream()
+                .map(v -> new FieldViolation(v.getPropertyPath().toString(), v.getMessage()))
+                .sorted(java.util.Comparator.comparing(FieldViolation::field)).toList();
+        return error(HttpStatus.BAD_REQUEST, "Request validation failed", request.getRequestURI(), fields);
+    }
+
     @ExceptionHandler(TaskNotFoundException.class)
     public ResponseEntity<Object> notFound(TaskNotFoundException ex, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());

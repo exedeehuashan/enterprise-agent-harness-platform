@@ -58,10 +58,36 @@ invalid parameters return structured 400 errors. Empty/out-of-range pages
 return 200. Offset pagination does not provide a snapshot across concurrent
 insertions.
 
+### Edit tasks safely
+
+Create and detail responses include a numeric `version` and a quoted `ETag`
+header. Collection items also include `version`. Retrieve the latest task, then
+send its ETag in `If-Match` when editing:
+
+```sh
+curl -i "http://localhost:8080/api/v1/agent-tasks/$TASK_ID"
+curl -i -X PATCH "http://localhost:8080/api/v1/agent-tasks/$TASK_ID" \
+  -H 'Content-Type: application/json' -H 'If-Match: "0"' \
+  -d '{"title":"Updated task"}'
+```
+
+PATCH returns 200 with the task and current ETag. Only `title` and `description`
+are editable. Omitted fields stay unchanged; `description: null` clears it.
+Title must be a nonblank string (max 255); description is a string or null
+(max 10,000). Empty objects, unknown fields, invalid types and malformed JSON
+return 400. Missing `If-Match` returns 428; stale versions, including concurrent
+write conflicts, return 412. A valid request for a missing task returns 404.
+Only one quoted nonnegative numeric version is accepted; wildcard, weak,
+unquoted, multi-value and overflowing versions return 400. An effective update
+increments version and advances updatedAt; unchanged values leave both intact.
+Creation time, ID and status cannot be edited. On 412, reload and reconcile the
+changes before resubmitting. V2 adds version=0 for existing records; V1 remains
+unchanged.
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,
-`title`, `description`, `status`, `createdAt`, and `updatedAt`. IDs are UUIDs;
+`title`, `description`, `status`, `createdAt`, `updatedAt`, and `version`. IDs are UUIDs;
 timestamps are UTC ISO-8601 strings. New tasks have status `PENDING` and equal
 creation/update timestamps. The other reserved statuses are `RUNNING`,
 `COMPLETED`, and `FAILED`; this issue provides no status transition endpoint.

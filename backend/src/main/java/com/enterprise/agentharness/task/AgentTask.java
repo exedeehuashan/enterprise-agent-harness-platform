@@ -22,7 +22,21 @@ public class AgentTask {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Version
+    @Column(nullable = false)
+    private long version;
+
     protected AgentTask() {}
+
+    public long getVersion() { return version; }
+
+    public void edit(String title, String description) {
+        if (java.util.Objects.equals(this.title, title) && java.util.Objects.equals(this.description, description)) return;
+        this.title = title;
+        this.description = description;
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        this.updatedAt = now.isAfter(updatedAt) ? now : updatedAt.plusNanos(1000);
+    }
 
     public AgentTask(String title, String description) {
         this.id = UUID.randomUUID();
