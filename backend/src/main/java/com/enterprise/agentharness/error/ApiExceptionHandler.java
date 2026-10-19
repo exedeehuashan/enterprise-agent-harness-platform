@@ -89,6 +89,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return new ResponseEntity<>(response.getBody(), headers, status);
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<Object> forbidden(Exception ex, HttpServletRequest request) {
+        return error(HttpStatus.FORBIDDEN, "Forbidden", request.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<Object> unauthenticated(Exception ex, HttpServletRequest request) {
+        return error(HttpStatus.UNAUTHORIZED, "Unauthorized", request.getRequestURI(), List.of());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Object> unexpected(Exception ex, HttpServletRequest request) {
         log.error("Unhandled request failure", ex);

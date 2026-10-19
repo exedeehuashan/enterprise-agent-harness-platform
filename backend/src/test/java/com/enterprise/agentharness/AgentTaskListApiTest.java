@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 class AgentTaskListApiTest {
     private static final String API = "/api/v1/agent-tasks";
     private static final EmbeddedPostgres POSTGRES = startPostgres();

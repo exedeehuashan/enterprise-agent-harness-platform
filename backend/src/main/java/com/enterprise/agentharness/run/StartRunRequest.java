@@ -11,7 +11,8 @@ public record StartRunRequest(String tool, int timeoutSeconds) {
         while (fields.hasNext()) if (!Set.of("tool", "timeoutSeconds").contains(fields.next())) throw bad("Unknown run field");
         String tool = "DEMO_ANALYZE";
         if (body.has("tool")) {
-            if (!body.get("tool").isTextual() || !body.get("tool").textValue().equals(tool)) throw bad("Only DEMO_ANALYZE is allowed");
+            if (!body.get("tool").isTextual() || !Set.of("DEMO_ANALYZE","DEMO_REVIEW").contains(body.get("tool").textValue())) throw bad("Tool is not allowed");
+            tool = body.get("tool").textValue();
         }
         int timeout = 30;
         if (body.has("timeoutSeconds")) {

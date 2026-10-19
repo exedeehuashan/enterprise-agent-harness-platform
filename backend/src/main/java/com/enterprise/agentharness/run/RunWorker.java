@@ -20,7 +20,7 @@ public class RunWorker {
     public void runOnce() {
         service.recover();
         RunService.Claim claim = service.claim();
-        if (claim == null) return;
+        if (claim == null || !service.authorize(claim)) return;
         String output = null;
         boolean failed = false;
         try { output = tool.execute(claim.run()); }
