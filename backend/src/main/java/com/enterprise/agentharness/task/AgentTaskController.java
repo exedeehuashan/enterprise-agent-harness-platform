@@ -19,7 +19,7 @@ public class AgentTaskController {
     @PostMapping
     public ResponseEntity<TaskResponse> create(@Valid @RequestBody CreateTaskRequest request) {
         TaskResponse task = service.create(request);
-        return ResponseEntity.created(URI.create("/api/v1/agent-tasks/" + task.id())).body(task);
+        return ResponseEntity.created(URI.create("/api/v1/agent-tasks/" + task.id())).eTag(Long.toString(task.version())).body(task);
     }
 
     @GetMapping
@@ -28,7 +28,17 @@ public class AgentTaskController {
     }
 
     @GetMapping("/{id}")
-    public TaskResponse get(@PathVariable UUID id) {
-        return service.get(id);
+    public ResponseEntity<TaskResponse> get(@PathVariable UUID id) {
+        TaskResponse task = service.get(id);
+        return ResponseEntity.ok().eTag(Long.toString(task.version())).body(task);
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<TaskResponse> edit(@PathVariable UUID id,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch,
+            @RequestBody com.fasterxml.jackson.databind.JsonNode body) {
+        long expectedVersion = TaskPatch.expectedVersion(ifMatch);
+        TaskResponse task = service.edit(id, expectedVersion, TaskPatch.parse(body));
+        return ResponseEntity.ok().eTag(Long.toString(task.version())).body(task);
     }
 }
