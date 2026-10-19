@@ -37,6 +37,29 @@ TASK_ID=00000000-0000-0000-0000-000000000000
 curl "http://localhost:8080/api/v1/agent-tasks/$TASK_ID"
 ```
 
+### List tasks
+
+```sh
+curl 'http://localhost:8080/api/v1/agent-tasks?page=0&size=20&status=PENDING&sort=createdAt,desc'
+```
+
+Collection GET returns a stable JSON envelope:
+
+```json
+{"items": [], "page": 0, "size": 20, "totalElements": 0, "totalPages": 0}
+```
+
+Items contain the same fields as task detail. Defaults: page 0, size 20,
+`createdAt,desc`. Size is 1–100; page is nonnegative and page × size must fit a
+signed integer. Optional status accepts PENDING, RUNNING, COMPLETED, FAILED
+(case sensitive). Sort accepts only `createdAt,asc` or `createdAt,desc`, with
+UUID as the tie breaker in the same direction. Unknown, repeated, empty, or
+invalid parameters return structured 400 errors. Empty/out-of-range pages
+return 200. Offset pagination does not provide a snapshot across concurrent
+insertions.
+
+### Create and retrieve behavior
+
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,
 `title`, `description`, `status`, `createdAt`, and `updatedAt`. IDs are UUIDs;
 timestamps are UTC ISO-8601 strings. New tasks have status `PENDING` and equal

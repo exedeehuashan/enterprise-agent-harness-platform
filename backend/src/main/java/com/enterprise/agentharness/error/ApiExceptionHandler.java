@@ -1,6 +1,7 @@
 package com.enterprise.agentharness.error;
 
 import com.enterprise.agentharness.task.TaskNotFoundException;
+import com.enterprise.agentharness.task.InvalidTaskQueryException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.List;
@@ -27,6 +28,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                                          List<FieldViolation> fields) {
         return ResponseEntity.status(status).body(new ApiError(Instant.now(), status.value(),
                 HttpStatus.valueOf(status.value()).getReasonPhrase(), message, path, fields));
+    }
+
+    @ExceptionHandler(InvalidTaskQueryException.class)
+    public ResponseEntity<Object> invalidQuery(InvalidTaskQueryException ex, HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), List.of());
     }
 
     @ExceptionHandler(TaskNotFoundException.class)
