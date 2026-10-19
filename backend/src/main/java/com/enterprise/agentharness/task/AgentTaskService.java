@@ -18,6 +18,12 @@ public class AgentTaskService {
         return TaskResponse.from(repository.save(new AgentTask(request.title(), request.description())));
     }
 
+    public TaskPageResponse list(TaskListQuery query) {
+        return TaskPageResponse.from(query.status() == null
+                ? repository.findAll(query.pageable())
+                : repository.findByStatus(query.status(), query.pageable()));
+    }
+
     public TaskResponse get(UUID id) {
         return TaskResponse.from(repository.findById(id).orElseThrow(() -> new TaskNotFoundException(id)));
     }
