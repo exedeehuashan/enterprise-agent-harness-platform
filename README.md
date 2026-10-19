@@ -84,13 +84,57 @@ Creation time, ID and status cannot be edited. On 412, reload and reconcile the
 changes before resubmitting. V2 adds version=0 for existing records; V1 remains
 unchanged.
 
+### Run a task asynchronously
+
+```sh
+# Each new execution needs a new key. Reusing the same key/request replays it.
+curl -i -X POST "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/runs" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-001' \
+  -d '{"tool":"DEMO_ANALYZE","timeoutSeconds":30}'
+# Replace RUN_ID with the returned id.
+RUN_ID=00000000-0000-0000-0000-000000000000
+curl "http://localhost:8080/api/v1/agent-runs/$RUN_ID"
+curl "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/runs?page=0&size=20"
+curl -i -X POST "http://localhost:8080/api/v1/agent-runs/$RUN_ID/cancel"
+```
+
+Start returns 202 and a Location for the durable run. The JSON object may be
+empty; defaults are DEMO_ANALYZE and 30 seconds. Only those two fields are
+accepted. Timeout is an integer 1–300 and includes queue time. The key is
+required (1–128 ASCII letters/digits or `._:-`) and scoped to the task.
+Same key and normalized request return the original run, even after completion
+or later task edits; changing the request returns 409. A new key while a run
+is QUEUED/RUNNING returns 409. Missing tasks/runs return 404; invalid requests
+return the existing structured 400 response.
+
+The Worker polls PostgreSQL every 500 ms, claims one run atomically and performs
+only a pure local length calculation. There are no model, Shell, network or
+order-writing tools. Run detail includes immutable task input snapshots, status,
+deadline, timestamps, attempt count and one persisted step with its output.
+History uses page/size only and is sorted by createdAt/id descending.
+
+Run states: QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED, TIMED_OUT. A queued
+cancel returns 200/CANCELLED; running cancel returns 202 with cancelRequested
+until the Worker acknowledges it. Terminal cancel is an idempotent 200.
+Task summary is RUNNING while queued/executing, COMPLETED after success and
+FAILED after other terminal outcomes. Run transitions update the task version,
+so clients must refresh ETag before editing.
+
+Claims expire after 10 seconds. Recovery retries this pure tool at most once
+(two claims total), rejects old claim results and marks a second lost Worker
+FAILED/WORKER_LOST. Deadlines end runs as TIMED_OUT. This is bounded recovery,
+not an exactly-once guarantee or a hard process-kill mechanism. All future
+side-effecting or long-running tools need their own execution policy.
+Disable automatic polling with `EAHP_WORKER_ENABLED=false` for controlled
+experiments; default is enabled. See [P2 design and verification](docs/p2-execution-core.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,
 `title`, `description`, `status`, `createdAt`, `updatedAt`, and `version`. IDs are UUIDs;
 timestamps are UTC ISO-8601 strings. New tasks have status `PENDING` and equal
-creation/update timestamps. The other reserved statuses are `RUNNING`,
-`COMPLETED`, and `FAILED`; this issue provides no status transition endpoint.
+creation/update timestamps. The other task statuses are `RUNNING`,
+`COMPLETED`, and `FAILED`; run lifecycle transitions update these summaries.
 GET returns `200 OK` with the same fields, or `404 Not Found` for an unknown UUID.
 
 `title` must be nonblank and at most 255 characters. `description` is optional,

@@ -53,6 +53,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, "Request validation failed", request.getRequestURI(), fields);
     }
 
+    @ExceptionHandler(com.enterprise.agentharness.run.RunException.class)
+    public ResponseEntity<Object> runError(com.enterprise.agentharness.run.RunException ex, HttpServletRequest request) {
+        return error(ex.status(), ex.getMessage(), request.getRequestURI(), List.of());
+    }
+
     @ExceptionHandler(TaskNotFoundException.class)
     public ResponseEntity<Object> notFound(TaskNotFoundException ex, HttpServletRequest request) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
