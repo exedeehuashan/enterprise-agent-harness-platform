@@ -135,4 +135,7 @@ export interface QualityDashboard {
   gate: { requiredSuites: string[] } | null;
 }
 
+export interface ProjectAdmin { project: QaProject; triggers: { suite: string; enabled: boolean }[]; gateSuites: string[] }
+export interface AdminEvent { id: number; actor: string; action: string; projectKey: string; subject: string | null; before: unknown; after: unknown; occurredAt: string }
+
 export interface Tool { name: string; version: number; target: string; enabled: boolean; requiresApproval: boolean; retryable: boolean }

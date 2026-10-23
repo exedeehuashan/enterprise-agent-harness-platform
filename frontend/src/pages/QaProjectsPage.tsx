@@ -1,12 +1,16 @@
 import { api } from '../api/client';
 import { Empty, ErrorBanner, Section } from '../components/ui';
 import { usePolling } from '../hooks';
+import { useSession } from '../session';
+import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
 
 /** Read-only catalog of projects under test and their predefined suites. */
 export function QaProjectsPage() {
   const projects = usePolling(() => api.qaProjects(), [], 0);
+  const { can } = useSession();
   return (
     <>
+      {can('APPROVER') && <NewProjectForm onCreated={projects.reload} />}
       <ErrorBanner error={projects.error} />
       {projects.data?.length === 0 && <Empty>No test projects are registered.</Empty>}
       {projects.data?.map(p => (
@@ -30,6 +34,7 @@ export function QaProjectsPage() {
               </tr>
             ))}</tbody>
           </table></div>
+          {can('APPROVER') && <ProjectAdminPanel project={p} onChanged={projects.reload} />}
         </Section>
       ))}
       <p className="muted small">Projects and policies are registered by administrators. Projects can declare further suites in their repository, always within this policy. Use a task's "Run test suite" form to run one.</p>
