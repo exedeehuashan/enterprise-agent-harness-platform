@@ -89,8 +89,8 @@ export interface SuiteCatalog {
 
 /** summary.json written by the QA suite runner. */
 export interface QaSummary {
-  project: string; suite: string; ref: string; commit: string; runnerImage: string; command: string[]; dockerAccess: boolean;
-  suiteSource?: 'registry' | 'repository'; exitCode: number | null; stopped: boolean; timedOut: boolean; outcome: string; startedAt: string; finishedAt: string;
+  project: string; suite: string; ref: string; commit: string; runnerImage?: string; command?: string[]; dockerAccess?: boolean; environment?: string;
+  suiteSource?: 'registry' | 'repository' | 'api-tests'; exitCode: number | null; stopped: boolean; timedOut: boolean; outcome: string; startedAt: string; finishedAt: string;
   durationSeconds: number; tests: number; failures: number; errors: number; skipped: number; reportFiles: number;
   unreadableReportFiles: number; reportsTruncated: boolean;
   failedTests: { suite: string; name: string; kind: string; message: string }[];
@@ -200,3 +200,9 @@ export interface GitHubWriteBackView {
   settings: { project: string; enabled: boolean; tokenConfigured: boolean; changedBy: string | null };
   recent: { id: number; kind: string; commitSha: string; prNumber: number | null; status: string; attempts: number; lastError: string | null; createdAt: string; sentAt: string | null }[];
 }
+
+export interface AiAnalysis {
+  id: string; runId: string; provider: string; model: string; inputTokens: number; outputTokens: number; createdBy: string; createdAt: string;
+  analysis: { summary: string; likelyCause: string; category: string; confidence: 'low' | 'medium' | 'high'; suggestedActions: string[]; affectedTests: string[] };
+}
+export interface AiStatus { provider: string; model: string; dailyTokenBudget: number; usedToday: number }

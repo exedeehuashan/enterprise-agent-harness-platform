@@ -3,6 +3,7 @@ import { api, newKey } from '../api/client';
 import type { Artifact, QaProject, QaSummary, Run } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Status, Time } from './ui';
+import { AiAnalysisPanel } from './aiAnalysis';
 
 /** Suites that need Docker access must use the approval-gated tool; the backend enforces the same split. */
 export const QA_TOOLS = { normal: 'QA_RUN_SUITE', privileged: 'QA_RUN_PRIVILEGED_SUITE', api: 'QA_RUN_API_TESTS' } as const;
@@ -142,6 +143,7 @@ export function QaEvidence({ run }: { run: Run }) {
   const a = run.arguments ?? {};
 
   return (
+    <>
     <Section title="Test result" actions={summary.data && <Status value={summary.data.outcome === 'PASSED' ? 'COMPLETED' : summary.data.outcome === 'STOPPED' ? 'CANCELLED' : 'FAILED'} />}>
       <dl className="meta">
         <dt>Project / suite</dt><dd>{String(a.project)} / {String(a.suite)}</dd>
@@ -161,16 +163,19 @@ export function QaEvidence({ run }: { run: Run }) {
             <Stat label="Duration" value={`${summary.data.durationSeconds} s`} />
           </div>
           <dl className="meta">
-            <dt>Suite source</dt><dd>{summary.data.suiteSource === 'repository' ? 'declared in the repository at this commit' : 'EAHP registry'}</dd>
+            <dt>Suite source</dt><dd>{summary.data.suiteSource === 'repository' ? 'declared in the repository at this commit' : summary.data.suiteSource === 'api-tests' ? 'API tests declared in the repository at this commit' : 'EAHP registry'}</dd>
             <dt>Started</dt><dd><Time value={summary.data.startedAt} /></dd>
-            <dt>Runner</dt><dd><code>{summary.data.runnerImage}</code>{summary.data.dockerAccess ? ' with Docker access' : ''}</dd>
-            <dt>Command</dt><dd><code className="wrap">{summary.data.command.join(' ')}</code></dd>
+            {summary.data.runnerImage && <><dt>Runner</dt><dd><code>{summary.data.runnerImage}</code>{summary.data.dockerAccess ? ' with Docker access' : ''}</dd></>}
+            {summary.data.command && <><dt>Command</dt><dd><code className="wrap">{summary.data.command.join(' ')}</code></dd></>}
+            {summary.data.environment && <><dt>Environment</dt><dd>{summary.data.environment}</dd></>}
             <dt>Reports</dt><dd>{summary.data.reportFiles} files{summary.data.unreadableReportFiles ? `, ${summary.data.unreadableReportFiles} unreadable` : ''}{summary.data.reportsTruncated ? ', archive omitted (too large)' : ''}</dd>
           </dl>
           <TriageView run={run} fallback={summary.data.failedTests} />
         </>
       )}
     </Section>
+    {summary.data && summary.data.outcome !== 'PASSED' && summary.data.outcome !== 'STOPPED' && <AiAnalysisPanel runId={run.id} />}
+    </>
   );
 }
 

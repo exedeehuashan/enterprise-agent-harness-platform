@@ -13,9 +13,11 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @Configuration
 public class ModelConfiguration {
     public record Policy(long dailyTokenBudget) {}
-    @Bean ModelProvider modelProvider(@Value("${eahp.model.provider:mock}") String provider) {
-        if(!provider.equals("mock")) throw new IllegalStateException("Only the mock model provider is implemented; real providers require explicit integration");
-        return new MockModelProvider();
+    /** Planning uses the configured AI provider (EAHP_AI_PROVIDER); the mock keeps its deterministic fixture plan. */
+    @Bean ModelProvider modelProvider(com.enterprise.agentharness.ai.LlmProvider llm,
+            org.springframework.beans.factory.ObjectProvider<com.enterprise.agentharness.governance.ToolCatalog> catalog,
+            org.springframework.beans.factory.ObjectProvider<com.enterprise.agentharness.tool.ToolRegistry> registry) {
+        return llm.id().equals("mock") ? new MockModelProvider() : new LlmPlanProvider(llm, catalog, registry);
     }
     @Bean Policy modelPolicy(@Value("${eahp.model.daily-token-budget:20000}") long budget) {
         if(budget<1 || budget>1_000_000_000L) throw new IllegalStateException("Model daily token budget must be 1..1000000000");

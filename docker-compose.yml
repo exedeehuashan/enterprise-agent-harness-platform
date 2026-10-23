@@ -43,6 +43,14 @@ services:
       EAHP_GITHUB_WRITE_TOKEN: ${EAHP_GITHUB_WRITE_TOKEN:-}
       # Optional: the console's public URL, linked from GitHub commit statuses.
       EAHP_PUBLIC_URL: ${EAHP_PUBLIC_URL:-}
+      # AI model (P33): mock (default), anthropic (Claude) or deepseek, with that provider's API key.
+      EAHP_AI_PROVIDER: ${EAHP_AI_PROVIDER:-mock}
+      EAHP_AI_DAILY_TOKEN_BUDGET: ${EAHP_AI_DAILY_TOKEN_BUDGET:-500000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      ANTHROPIC_EFFORT: ${ANTHROPIC_EFFORT:-medium}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
     ports:
       - "127.0.0.1:${EAHP_BACKEND_PORT:-8080}:8080"
     # API tests (P24) reach systems under test published on the host, for example a local UAT stack.

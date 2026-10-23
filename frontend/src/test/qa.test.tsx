@@ -137,6 +137,11 @@ describe('QA console', () => {
         { id: 'log', runId: run.id, invocationId: 'i', attempt: 1, name: 'console.log', mediaType: 'text/plain', sizeBytes: 30000, sha256: 'b'.repeat(64), createdAt: '', expiredAt: '2026-10-24T03:30:00Z' }] }),
       'GET /artifacts/sum/content': () => ({ body: summary }),
       'GET /qa/runs/run-12345678/triage': () => ({ body: triageBody }),
+      'GET /qa/runs/run-12345678/ai-analysis': () => ({ status: 404, body: { message: 'No AI analysis' } }),
+      'POST /qa/runs/run-12345678/ai-analysis': () => ({ body: { id: 'an1', runId: 'run-12345678', provider: 'anthropic', model: 'claude-opus-5-5', inputTokens: 900,
+        outputTokens: 120, createdBy: 'operator', createdAt: '2026-10-24T00:00:00Z', analysis: { summary: 'The persistence tests need Docker, which the runner lacks.',
+          likelyCause: 'Testcontainers could not reach a Docker daemon.', category: 'ENVIRONMENT', confidence: 'high',
+          suggestedActions: ['Run this suite with Docker access, or tag the test docker.'], affectedTests: ['IdentityPersistenceTest'] } } }),
     });
     renderApp('/runs/run-12345678');
     expect(await screen.findByText('TESTS FAILED')).toBeInTheDocument();
@@ -152,6 +157,11 @@ describe('QA console', () => {
     expect(within(artifacts).getAllByRole('button', { name: 'Download' })).toHaveLength(1);
     expect(within(artifacts).getByText('expired')).toBeInTheDocument();
     expect(within(artifacts).getByText('29.3 KiB')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Analyse with AI' }));
+    expect(await screen.findByText('The persistence tests need Docker, which the runner lacks.')).toBeInTheDocument();
+    expect(screen.getByText('Environment')).toBeInTheDocument();
+    expect(screen.getByText('Run this suite with Docker access, or tag the test docker.')).toBeInTheDocument();
+    expect(screen.getByText(/anthropic \/ claude-opus-5-5 · 1020 tokens/)).toBeInTheDocument();
   });
 
   it('runs an API test collection against a registered environment', async () => {

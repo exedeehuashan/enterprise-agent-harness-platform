@@ -432,6 +432,13 @@ environment, whose URLs are bound into the run and passed to the container, for
 example online-shop's k6 performance baseline. See
 [P32 design notes](docs/p32-suites-against-environments.md).
 
+**AI providers and failure analysis.** `EAHP_AI_PROVIDER` selects `mock` (default),
+`anthropic` (Claude through the official SDK, `ANTHROPIC_API_KEY`, default model
+`claude-opus-5-5`) or `deepseek` (`DEEPSEEK_API_KEY`). Planning uses the model, and
+`POST /api/v1/qa/runs/{id}/ai-analysis` explains a failed QA run from its redacted
+evidence (advisory only). All calls share a daily token budget. See
+[P33 design notes](docs/p33-ai-providers-and-failure-analysis.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;
