@@ -426,6 +426,12 @@ updated in place. Delivery goes through an outbox with retries. See
 collection against it, on branch change or on a cron timetable, for example
 nightly against UAT. See [P31 design notes](docs/p31-api-test-schedules.md).
 
+**Suites against environments.** A suite can map variables to services
+(`"environment": {"ORDER_API": "order-api"}`). It then runs against a registered
+environment, whose URLs are bound into the run and passed to the container, for
+example online-shop's k6 performance baseline. See
+[P32 design notes](docs/p32-suites-against-environments.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

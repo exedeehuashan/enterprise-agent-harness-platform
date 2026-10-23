@@ -78,8 +78,14 @@ public class QaSchedules {
                 resolved = resolver.resolve(s.projectKey(), s.suiteKey(), s.ref());
                 commit = resolved.commit();
             } else {
-                // API tests: the collection and environment are validated when the run starts (QA_RUN_API_TESTS normalization).
-                commit = git.resolve(resolver.enabledProject(s.projectKey()), s.ref());
+                // A suite that runs against an environment, or else an API test collection; both are validated when the run starts.
+                try {
+                    resolved = resolver.resolve(s.projectKey(), s.suiteKey(), s.ref());
+                    if (!resolved.suite().needsEnvironment()) resolved = null;
+                } catch (IllegalArgumentException notASuite) {
+                    resolved = null;
+                }
+                commit = resolved != null ? resolved.commit() : git.resolve(resolver.enabledProject(s.projectKey()), s.ref());
             }
         } catch (IllegalArgumentException ex) {
             recordCheck(s, null, null, clip(ex.getMessage()));
@@ -115,6 +121,7 @@ public class QaSchedules {
             timeout = 600;
         } else {
             args.put("suite", s.suiteKey());
+            if (s.environment() != null) args.put("environment", s.environment());
             tool = resolved.suite().dockerAccess() ? "QA_RUN_PRIVILEGED_SUITE" : "QA_RUN_SUITE";
             timeout = Math.min(1800, resolved.suite().maxTimeoutSeconds());
         }

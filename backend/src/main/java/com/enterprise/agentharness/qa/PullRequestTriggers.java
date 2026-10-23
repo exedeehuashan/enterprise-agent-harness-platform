@@ -123,6 +123,11 @@ public class PullRequestTriggers {
             return;
         }
         SuiteDefinition suite = resolved.suite();
+        if (suite.needsEnvironment()) {
+            // It would test what is deployed, not this pull request's code.
+            skip(id, "NEEDS_ENVIRONMENT");
+            return;
+        }
         String suitesFile = resolved.project().suitesFile();
         ImpactSelection.Decision selection = SuiteDefinition.MAVEN_MODULES.equals(suite.selection())
                 ? ImpactSelection.decide(impacts.forPullRequestRun(id).impact(), suitesFile)

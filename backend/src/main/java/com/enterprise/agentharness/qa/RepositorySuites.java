@@ -21,15 +21,19 @@ import java.util.Set;
  * {@code selection} is optional: {@code maven-modules} lets pull request runs build and test only the affected modules;
  * {@code paths} (with a {@code paths} list of directory prefixes such as {@code "frontend/order-web/"}) runs the suite
  * on a pull request only when it changes a file under one of them. {@code results} is {@code junit} (default) or
- * {@code exit-code} for checks that write no JUnit reports (then {@code reportDirs} is empty). {@code coverage} lists
+ * {@code exit-code} for checks that write no JUnit reports (then {@code reportDirs} is empty). {@code environment} maps
+ * variable names to service names; such a suite runs against a registered environment whose URLs are passed in those
+ * variables (for example performance tests). {@code coverage} lists
  * JaCoCo or Cobertura XML report paths (matched as path suffixes, for example {@code target/site/jacoco/jacoco.xml}).
  */
 public final class RepositorySuites {
     public static final int MAX_BYTES = 64 * 1024;
     private static final ObjectMapper STRICT = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    /** Variables the runner sets itself; a suite cannot redirect them to an environment URL. */
+    static final Set<String> RESERVED_VARIABLES = Set.of("HOME", "PATH", "CI", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH", "JAVA_TOOL_OPTIONS", "NODE_OPTIONS");
     private static final Set<String> FILE_FIELDS = Set.of("schemaVersion", "suites");
-    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection", "paths", "results", "coverage");
+    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection", "paths", "results", "coverage", "environment");
     private RepositorySuites() {}
 
     public static List<SuiteDefinition> parse(String json) {
@@ -77,9 +81,24 @@ public final class RepositorySuites {
             for (String c : coverage) {
                 if (c.startsWith("/") || c.contains("..") || c.contains("\\") || !c.matches("[A-Za-z0-9._/-]+\\.xml")) throw invalid(key + ": coverage report '" + c + "' must be a relative .xml path");
             }
+            var environment = new java.util.TreeMap<String, String>();
+            if (s.has("environment")) {
+                var env = s.get("environment");
+                if (!env.isObject() || env.isEmpty() || env.size() > 20) throw invalid(key + ": environment must map 1..20 variable names to service names");
+                for (var it = env.fields(); it.hasNext(); ) {
+                    var e = it.next();
+                    if (!e.getKey().matches("[A-Z][A-Z0-9_]{0,59}") || RESERVED_VARIABLES.contains(e.getKey()) || e.getKey().startsWith("MAVEN_") || e.getKey().startsWith("TESTCONTAINERS_")) {
+                        throw invalid(key + ": environment variable '" + e.getKey() + "' is not allowed");
+                    }
+                    if (!e.getValue().isTextual() || !e.getValue().textValue().matches("[a-z0-9][a-z0-9-]{0,59}")) throw invalid(key + ": environment values are service names such as order-api");
+                    environment.put(e.getKey(), e.getValue().textValue());
+                }
+                if (!network.equals("egress")) throw invalid(key + ": a suite that uses an environment needs network egress");
+                if (selection != null) throw invalid(key + ": a suite that uses an environment cannot declare selection");
+            }
             result.add(new SuiteDefinition(SuiteDefinition.REPOSITORY, key, text(s, "name", 120, true), s.has("description") ? text(s, "description", 1000, false) : null,
                     image, command, reportDirs, network, s.get("dockerAccess").booleanValue(), s.get("timeoutSeconds").intValue(), selection, paths,
-                    SuiteDefinition.EXIT_CODE.equals(results) ? results : null, coverage));
+                    SuiteDefinition.EXIT_CODE.equals(results) ? results : null, coverage, environment));
         }
         return result;
     }

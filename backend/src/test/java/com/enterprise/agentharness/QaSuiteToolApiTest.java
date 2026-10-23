@@ -434,6 +434,47 @@ class QaSuiteToolApiTest {
         mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryError").value("invalid suites file: smoke: reportDirs must list at least one directory"));
     }
 
+    private static final String PERF_FILE="""
+            {"schemaVersion":1,"suites":[{"key":"performance","name":"k6 baseline","image":"maven:3.9.11-eclipse-temurin-17",
+              "command":["k6","run","tests/performance/scenarios.js"],"reportDirs":[],"results":"exit-code","network":"egress","dockerAccess":false,
+              "timeoutSeconds":600,"environment":{"ORDER_API":"order-api","CATALOG_API":"catalog-api"}}]}
+            """;
+
+    @Test
+    void suitesCanRunAgainstARegisteredEnvironment() throws Exception {
+        repoFile=PERF_FILE;
+        jdbc.update("DELETE FROM qa_environments");
+        jdbc.update("INSERT INTO qa_environments(project_key,key,name,services) VALUES ('online-shop','uat','UAT','{\"order-api\":\"http://host.docker.internal:18081\",\"catalog-api\":\"http://host.docker.internal:18082\"}'::jsonb)");
+        try {
+            String body="{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"performance\"";
+            start(task(),"perf0",body+"}}").andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("choose one")));
+            start(task(),"perf1",body+",\"environment\":\"nope\"}}").andExpect(status().isBadRequest());
+            UUID run=UUID.fromString(mapper.readTree(start(task(),"perf2",body+",\"environment\":\"uat\"}}").andExpect(status().isAccepted())
+                    .andExpect(jsonPath("$.arguments.services.ORDER_API").value("http://host.docker.internal:18081"))
+                    .andReturn().getResponse().getContentAsString()).get("id").asText());
+            worker();
+            assertThat(runs.get(run).status()).isEqualTo("COMPLETED");
+            assertThat(dockerRun()).containsSequence("-e","CATALOG_API=http://host.docker.internal:18082").containsSequence("-e","ORDER_API=http://host.docker.internal:18081")
+                    .containsSequence("--add-host","host.docker.internal:host-gateway");
+
+            // The environment moves after the run was created: the run refuses to start the suite.
+            UUID moved=UUID.fromString(mapper.readTree(start(task(),"perf3",body+",\"environment\":\"uat\"}}").andReturn().getResponse().getContentAsString()).get("id").asText());
+            jdbc.update("UPDATE qa_environments SET services='{\"order-api\":\"http://elsewhere:1\",\"catalog-api\":\"http://host.docker.internal:18082\"}'::jsonb");
+            calls.clear();
+            worker();
+            assertThat(runs.get(moved).errorCode()).isEqualTo("ENVIRONMENT_CHANGED");
+            assertThat(calls).noneMatch(c->c.get(0).equals("docker")&&c.get(1).equals("run"));
+
+            for (String bad : List.of(PERF_FILE.replace("\"ORDER_API\"","\"HOME\""), PERF_FILE.replace("\"network\":\"egress\"","\"network\":\"none\""),
+                    PERF_FILE.replace("\"order-api\",\"CATALOG_API\"","\"Order API\",\"CATALOG_API\""))) {
+                repoFile=bad;
+                mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("invalid"));
+            }
+        } finally {
+            jdbc.update("DELETE FROM qa_environments");
+        }
+    }
+
     @Test
     void repositoryOnlySuitesRunAndTheCatalogShowsBothSources() throws Exception {
         repoFile=REPO_FILE;

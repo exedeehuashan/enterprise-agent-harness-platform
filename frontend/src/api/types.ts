@@ -78,6 +78,8 @@ export interface QaProject {
 export interface SuiteDefinition {
   source: 'registry' | 'repository'; key: string; name: string; description: string | null; image: string; command: string[];
   reportDirs: string[]; network: string; dockerAccess: boolean; maxTimeoutSeconds: number;
+  /** Variable name → service name: the suite runs against an environment. */
+  environment?: Record<string, string>;
 }
 
 export interface SuiteCatalog {
