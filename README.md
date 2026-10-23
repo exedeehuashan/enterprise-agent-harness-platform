@@ -354,6 +354,12 @@ changes). Manual runs may pass `modules`. The selection is bound into the run an
 the gate notes when a suite ran only some modules. See
 [P19 design notes](docs/p19-impact-based-test-selection.md).
 
+**Path-based selection and frontend suites.** `"selection": "paths"` with a `paths`
+list runs a suite on a pull request only when the change touches those paths (or
+the suites file), for any build system. online-shop's `frontend-unit` (Vitest with
+JUnit output in a Node image) uses it, alongside `backend-unit`'s module selection.
+See [P20 design notes](docs/p20-path-selection-and-frontend-suite.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

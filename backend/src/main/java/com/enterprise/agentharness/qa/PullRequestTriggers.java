@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
  * each enabled trigger suite, every new PR head commit gets one run pinned to that commit. A newer commit
  * supersedes the previous one: its pending row is marked SUPERSEDED and its active run is cancelled. A suite that
  * declares {@code maven-modules} selection runs only the modules the change affects, or is skipped when it affects
- * none; anything uncertain runs in full (see {@link ImpactSelection}). Pull
+ * none; a {@code paths} suite is skipped unless the change touches its paths; anything uncertain runs in full (see {@link ImpactSelection}). Pull
  * requests from forks are recorded but never run, because their code is untrusted. Nothing is written to GitHub.
  */
 @Service
@@ -123,8 +123,11 @@ public class PullRequestTriggers {
             return;
         }
         SuiteDefinition suite = resolved.suite();
+        String suitesFile = resolved.project().suitesFile();
         ImpactSelection.Decision selection = SuiteDefinition.MAVEN_MODULES.equals(suite.selection())
-                ? ImpactSelection.decide(impacts.forPullRequestRun(id).impact(), resolved.project().suitesFile())
+                ? ImpactSelection.decide(impacts.forPullRequestRun(id).impact(), suitesFile)
+                : SuiteDefinition.PATHS.equals(suite.selection())
+                ? ImpactSelection.decidePaths(impacts.forPullRequestRun(id).impact(), suitesFile, suite.paths())
                 : ImpactSelection.Decision.full("SUITE_NOT_SELECTIVE");
         var selected = JsonNodeFactory.instance.arrayNode();
         selection.modules().forEach(selected::add);

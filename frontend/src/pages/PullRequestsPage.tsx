@@ -8,13 +8,13 @@ import type { PullRequestRun } from '../api/types';
 const REASONS: Record<string, string> = {
   FORK_NOT_TRUSTED: 'From a fork: not run automatically',
   SUITE_UNAVAILABLE: 'Suite disabled',
-  NOT_AFFECTED: 'No backend module affected: not needed',
+  NOT_AFFECTED: 'Change does not affect this suite: not needed',
 };
 
 /** Why a selective suite still ran in full. */
 const FULL_REASONS: Record<string, string> = {
   BUILD_CHANGED: 'build files changed', IMPACT_UNAVAILABLE: 'impact unavailable', TOO_MANY_CHANGES: 'too many changes',
-  TOO_MANY_MODULES: 'too many modules', ROOT_MODULE: 'root module changed', NOT_MAVEN: 'not a Maven build',
+  TOO_MANY_MODULES: 'too many modules', ROOT_MODULE: 'root module changed', NOT_MAVEN: 'not a Maven build', PATHS_CHANGED: 'its paths changed',
 };
 
 function Scope({ row }: { row: PullRequestRun }) {
@@ -49,7 +49,7 @@ export function PullRequestsPage() {
         ))}
       </Section>
       <Section title="Pull request runs">
-        <p className="muted small">Each new head commit of a same-repository pull request runs the project's enabled trigger suites. A newer push supersedes the previous commit's run. Suites that declare <code>maven-modules</code> selection run only the affected modules. Results are not posted back to GitHub.</p>
+        <p className="muted small">Each new head commit of a same-repository pull request runs the project's enabled trigger suites. A newer push supersedes the previous commit's run. Suites that declare <code>maven-modules</code> selection run only the affected modules; <code>paths</code> suites run only when their files change. Results are not posted back to GitHub.</p>
         <ErrorBanner error={rows.error} />
         {rows.data?.length === 0 && <Empty>No pull requests have been seen yet.</Empty>}
         {rows.data && rows.data.length > 0 && (

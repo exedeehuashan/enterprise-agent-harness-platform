@@ -18,14 +18,16 @@ import java.util.Set;
  *   "image":"maven:3.9.11-eclipse-temurin-17","command":["mvn","-B","verify"],
  *   "reportDirs":["target/surefire-reports"],"network":"egress","dockerAccess":false,"timeoutSeconds":1800,
  *   "selection":"maven-modules"}]}</pre>
- * {@code selection} is optional; {@code maven-modules} lets pull request runs build and test only the affected modules.
+ * {@code selection} is optional: {@code maven-modules} lets pull request runs build and test only the affected modules;
+ * {@code paths} (with a {@code paths} list of directory prefixes such as {@code "frontend/order-web/"}) runs the suite
+ * on a pull request only when it changes a file under one of them.
  */
 public final class RepositorySuites {
     public static final int MAX_BYTES = 64 * 1024;
     private static final ObjectMapper STRICT = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final Set<String> FILE_FIELDS = Set.of("schemaVersion", "suites");
-    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection");
+    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection", "paths");
     private RepositorySuites() {}
 
     public static List<SuiteDefinition> parse(String json) {
@@ -56,10 +58,17 @@ public final class RepositorySuites {
                 if (dir.startsWith("/") || dir.contains("..") || dir.contains("\\") || !dir.matches("[A-Za-z0-9._/-]+")) throw invalid(key + ": report directory '" + dir + "' must be a relative path");
             }
             String selection = s.has("selection") ? text(s, "selection", 20, true) : null;
-            if (selection != null && !selection.equals(SuiteDefinition.MAVEN_MODULES)) throw invalid(key + ": selection must be maven-modules");
-            if (selection != null && !command.get(0).equals("mvn")) throw invalid(key + ": maven-modules selection needs an mvn command");
+            if (selection != null && !selection.equals(SuiteDefinition.MAVEN_MODULES) && !selection.equals(SuiteDefinition.PATHS)) {
+                throw invalid(key + ": selection must be maven-modules or paths");
+            }
+            if (SuiteDefinition.MAVEN_MODULES.equals(selection) && !command.get(0).equals("mvn")) throw invalid(key + ": maven-modules selection needs an mvn command");
+            List<String> paths = s.has("paths") ? strings(s.get("paths"), 20, 200, key + ": paths") : List.of();
+            if (SuiteDefinition.PATHS.equals(selection) != !paths.isEmpty()) throw invalid(key + ": paths is required with, and only allowed with, selection paths");
+            for (String path : paths) {
+                if (!path.matches("[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/?") || path.contains("..")) throw invalid(key + ": path '" + path + "' must be a relative directory or file");
+            }
             result.add(new SuiteDefinition(SuiteDefinition.REPOSITORY, key, text(s, "name", 120, true), s.has("description") ? text(s, "description", 1000, false) : null,
-                    image, command, reportDirs, network, s.get("dockerAccess").booleanValue(), s.get("timeoutSeconds").intValue(), selection));
+                    image, command, reportDirs, network, s.get("dockerAccess").booleanValue(), s.get("timeoutSeconds").intValue(), selection, paths));
         }
         return result;
     }
