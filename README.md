@@ -1,7 +1,7 @@
 # Enterprise Agent Harness Platform
 
-Java 17 / Spring Boot 3 backend for Agent Task Management. `frontend/` is reserved
-for a future React + TypeScript application.
+Java 17 / Spring Boot 3 backend for Agent Task Management, with a React +
+TypeScript web console in `frontend/`.
 
 ## Run locally
 
@@ -282,6 +282,33 @@ bodies, and malformed UUIDs return `400 Bad Request` with a stable error shape:
 `fieldErrors` is empty for errors unrelated to field validation. Unexpected
 errors return a generic 500 response; internal exception details stay in logs.
 
+## Web console
+
+`frontend/` is a React + TypeScript console for tasks, runs, plans, plan
+executions, approvals and audit trails. Sign in with an API token; it is kept
+only in that browser tab's sessionStorage and sent only in the Authorization
+header. The console calls `GET /api/v1/me` to learn the caller's roles and hides
+actions the role cannot perform; the backend still enforces every permission.
+
+```sh
+cd frontend
+npm ci
+npm run dev        # http://localhost:5173, proxies /api to EAHP_API_ORIGIN (default http://127.0.0.1:8080)
+npm test
+npm run build
+```
+
+For a local deployment, the Docker image serves the built console with nginx
+and proxies `/api` to the `eahp-backend` container on the Compose network:
+
+```sh
+docker build -t eahp-console frontend
+docker run -d --name eahp-console --network enterprise-agent-harness-platform_default \
+  -p 127.0.0.1:8088:8080 eahp-console
+```
+
+See [P6 design notes](docs/p6-web-console.md).
+
 ## Test and build
 
 ```sh
@@ -298,6 +325,7 @@ an external database are not needed for tests. The test runner must be a non-roo
 user because PostgreSQL refuses to run as root, and the platform must support
 the embedded PostgreSQL native binaries (Linux CI uses Ubuntu).
 
-GitHub Actions runs `mvn verify` with Java 17 on pushes and pull requests.
+GitHub Actions runs `mvn verify` with Java 17, and the console's typecheck, tests
+and build with Node 22, on pushes and pull requests.
 Authentication, task execution, LLM integrations, list/update/delete APIs,
 deployment, and production hardening are outside Issue #1.
