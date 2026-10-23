@@ -23,6 +23,7 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
   /** The ref whose suites are shown; updated when the ref field loses focus, so typing does not resolve every keystroke. */
   const [checkedRef, setCheckedRef] = useState('');
   const [timeout, setTimeoutSeconds] = useState(1800);
+  const [environmentKey, setEnvironmentKey] = useState('');
   const action = useAction();
 
   const enabled = (projects.data ?? []).filter(p => p.enabled);
@@ -31,6 +32,9 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
   // Isolated suites first, so the default choice never needs host-level Docker access.
   const suites = (catalog.data?.suites ?? []).slice().sort((x, y) => Number(x.dockerAccess) - Number(y.dockerAccess));
   const suite = suites.find(s => s.key === suiteKey) ?? suites[0];
+  const needsEnvironment = !!suite?.environment && Object.keys(suite.environment).length > 0;
+  const environments = usePolling(() => (project && needsEnvironment ? api.environments(project.key) : Promise.resolve([])), [project?.key, needsEnvironment], 0);
+  const environment = (environments.data ?? []).filter(e => e.enabled).find(e => e.key === environmentKey) ?? (environments.data ?? []).find(e => e.enabled);
 
   useEffect(() => { if (suite) setTimeoutSeconds(t => Math.min(Math.max(t, 1), suite.maxTimeoutSeconds)); }, [suite]);
 
@@ -40,6 +44,7 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
     const tool = suite.dockerAccess ? QA_TOOLS.privileged : QA_TOOLS.normal;
     const args: Record<string, unknown> = { project: project.key, suite: suite.key };
     if (ref.trim()) args.ref = ref.trim();
+    if (needsEnvironment) { if (!environment) return; args.environment = environment.key; }
     if (await action.run(() => api.startRun(taskId, newKey('qa'), tool, timeout, args))) onStarted();
   };
 
@@ -62,10 +67,17 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
             {suites.map(s => <option key={s.key} value={s.key}>{s.name}{s.source === 'repository' ? ' [repo]' : ''}{s.dockerAccess ? ' (needs approval)' : ''}</option>)}
           </select>
         </label>
+        {needsEnvironment && (
+          <label className="inline">Environment
+            <select value={environment?.key ?? ''} onChange={e => setEnvironmentKey(e.target.value)} disabled={!environment}>
+              {(environments.data ?? []).filter(e => e.enabled).map(e => <option key={e.key} value={e.key}>{e.name}</option>)}
+            </select>
+          </label>
+        )}
         <label className="inline">Timeout (s)
           <input type="number" min={1} max={suite?.maxTimeoutSeconds ?? 300} value={timeout} onChange={e => setTimeoutSeconds(Number(e.target.value))} />
         </label>
-        <button type="submit" disabled={action.busy || !suite || checkedRef !== ref.trim()}>{action.busy ? 'Resolving…' : 'Run suite'}</button>
+        <button type="submit" disabled={action.busy || !suite || checkedRef !== ref.trim() || (needsEnvironment && !environment)}>{action.busy ? 'Resolving…' : 'Run suite'}</button>
       </div>
       {catalog.data && (
         <p className="muted small">

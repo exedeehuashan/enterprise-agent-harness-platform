@@ -40,12 +40,14 @@ public class QaSuiteTools {
     /** Maven otherwise waits up to 30 minutes on a stalled download, silently consuming the whole suite deadline. */
     static final String MAVEN_NETWORK_TIMEOUTS = " -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000";
 
-    @Bean SuiteTool qaRunSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
-        return new SuiteTool("QA_RUN_SUITE", false, registry, resolver, git, runner, settings, mapper);
+    @Bean SuiteTool qaRunSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper,
+            QaEnvironments environments) {
+        return new SuiteTool("QA_RUN_SUITE", false, registry, resolver, git, runner, settings, mapper, environments);
     }
 
-    @Bean SuiteTool qaRunPrivilegedSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
-        return new SuiteTool("QA_RUN_PRIVILEGED_SUITE", true, registry, resolver, git, runner, settings, mapper);
+    @Bean SuiteTool qaRunPrivilegedSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper,
+            QaEnvironments environments) {
+        return new SuiteTool("QA_RUN_PRIVILEGED_SUITE", true, registry, resolver, git, runner, settings, mapper, environments);
     }
 
     public static final class SuiteTool implements ToolExecutor {
@@ -57,11 +59,12 @@ public class QaSuiteTools {
         private final ProcessRunner runner;
         private final QaSettings settings;
         private final ObjectMapper mapper;
+        private final QaEnvironments environments;
 
         SuiteTool(String name, boolean privileged, QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner,
-                QaSettings settings, ObjectMapper mapper) {
+                QaSettings settings, ObjectMapper mapper, QaEnvironments environments) {
             this.name = name; this.privileged = privileged; this.registry = registry; this.resolver = resolver; this.git = git;
-            this.runner = runner; this.settings = settings; this.mapper = mapper;
+            this.runner = runner; this.settings = settings; this.mapper = mapper; this.environments = environments;
         }
 
         public String name() { return name; }
@@ -81,7 +84,7 @@ public class QaSuiteTools {
         public JsonNode normalize(JsonNode arguments) {
             if (arguments == null || !arguments.isObject()) throw new IllegalArgumentException("project and suite are required");
             var fields = arguments.fieldNames();
-            while (fields.hasNext()) if (!Set.of("project", "suite", "ref", "modules").contains(fields.next())) throw new IllegalArgumentException("unknown argument");
+            while (fields.hasNext()) if (!Set.of("project", "suite", "ref", "modules", "environment").contains(fields.next())) throw new IllegalArgumentException("unknown argument");
             for (String field : List.of("project", "suite")) {
                 if (!arguments.path(field).isTextual()) throw new IllegalArgumentException(field + " is required");
             }
@@ -95,6 +98,22 @@ public class QaSuiteTools {
             normalized.put("project", resolved.project().key()).put("suite", resolved.suite().key()).put("ref", resolved.ref()).put("commit", resolved.commit());
             normalized.set("definition", resolved.suite().toJson());
             if (arguments.has("modules")) normalized.set("modules", modules(arguments.get("modules"), resolved));
+            var suite = resolved.suite();
+            if (suite.needsEnvironment() != arguments.has("environment")) {
+                throw new IllegalArgumentException(suite.needsEnvironment() ? "this suite runs against an environment; choose one" : "this suite does not use an environment");
+            }
+            if (suite.needsEnvironment()) {
+                if (!arguments.get("environment").isTextual()) throw new IllegalArgumentException("environment must be text");
+                var env = environments.find(resolved.project().key(), arguments.get("environment").textValue()).filter(QaEnvironments.Environment::enabled)
+                        .orElseThrow(() -> new IllegalArgumentException("unknown or disabled environment"));
+                var bound = normalized.putObject("services");
+                for (var e : new java.util.TreeMap<>(suite.environment()).entrySet()) {
+                    String url = env.services().get(e.getValue());
+                    if (url == null) throw new IllegalArgumentException("environment " + env.key() + " has no service " + e.getValue());
+                    bound.put(e.getKey(), url);
+                }
+                normalized.put("environment", env.key());
+            }
             return normalized;
         }
 
@@ -139,6 +158,13 @@ public class QaSuiteTools {
             }
             try { QaSuiteResolver.checkPolicy(project, suite); }
             catch (IllegalArgumentException ex) { return ToolResult.failure("SUITE_POLICY_CHANGED", "The suite no longer satisfies project policy: " + ex.getMessage()); }
+            if (suite.needsEnvironment()) {
+                // The URLs the run was created with must still be the environment's; never send traffic somewhere it did not show.
+                var env = environments.find(project.key(), args.path("environment").asText()).orElse(null);
+                boolean same = env != null && env.enabled();
+                if (same) for (var e : suite.environment().entrySet()) same &= args.path("services").path(e.getKey()).asText().equals(env.services().get(e.getValue()));
+                if (!same) return ToolResult.failure("ENVIRONMENT_CHANGED", "The environment was changed, disabled or removed after this run was created.");
+            }
             String commit = args.get("commit").textValue();
             Path runDir = settings.workdir().resolve("runs").resolve(context.run().id() + "-" + context.run().attemptCount());
             Path source = runDir.resolve("src");
@@ -263,6 +289,12 @@ public class QaSuiteTools {
                     "-e", "HOME=" + home, "-e", "MAVEN_CONFIG=" + home.resolve(".m2"), "-e", "MAVEN_OPTS=-Duser.home=" + home + MAVEN_NETWORK_TIMEOUTS,
                     "-e", "CI=true",
                     "-v", settings.workdirMountSource() + ":" + settings.workdir(), "-w", source.toString()));
+            var services = context.arguments().get("services");
+            if (services != null) {
+                // Suites against an environment (for example performance tests) get its URLs and can reach services published on the host.
+                services.fields().forEachRemaining(e -> argv.addAll(List.of("-e", e.getKey() + "=" + e.getValue().asText())));
+                if (!suite.dockerAccess()) argv.addAll(List.of("--add-host", "host.docker.internal:host-gateway"));
+            }
             if (suite.dockerAccess()) {
                 argv.addAll(List.of("-v", settings.dockerSocket() + ":/var/run/docker.sock",
                         "--add-host", "host.docker.internal:host-gateway", "-e", "TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal"));
