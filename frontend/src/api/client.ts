@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -88,6 +88,8 @@ export const api = {
   artifactBlob: async (id: string): Promise<Blob> => (await artifactContent(id)).blob(),
   qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
   qaProjects: () => get<QaProject[]>('/qa/projects'),
+  storage: () => get<StorageReport>('/admin/storage'),
+  runRetention: () => post<StorageReport['lastRun']>('/admin/retention/run'),
   schedules: (project: string) => get<QaSchedule[]>(`/qa/schedules${query({ project })}`),
   admin: {
     project: (key: string) => get<ProjectAdmin>(`/qa/admin/projects/${key}`),

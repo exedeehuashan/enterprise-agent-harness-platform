@@ -55,7 +55,12 @@ export interface Invocation {
 
 export interface Artifact {
   id: string; runId: string; invocationId: string; attempt: number; name: string; mediaType: string;
-  sizeBytes: number; sha256: string; createdAt: string;
+  sizeBytes: number; sha256: string; createdAt: string; expiredAt: string | null;
+}
+
+export interface StorageReport {
+  tableBytes: Record<string, number>; liveArtifacts: number; liveArtifactBytes: number; expiredArtifacts: number; artifactDays: number; testResultDays: number;
+  lastRun: { id: number; actor: string; startedAt: string; artifactsExpired: number; bytesFreed: number; testResultsDeleted: number } | null;
 }
 
 export interface QaSuite {

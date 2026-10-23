@@ -664,6 +664,49 @@ class QaSuiteToolApiTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs",Long.class)).isZero();
     }
 
+    @Test
+    void retentionExpiresOldArtifactContentButKeepsEvidenceAndTheLatestRuns() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40);
+        UUID task=task();
+        UUID older=runAt(task,"r1",a,PASS,0), newer=runAt(task,"r2",a,PASS,0), other=runAt(task,"r3",b,PASS,0);
+        ingestor.runOnce();
+        jdbc.update("UPDATE run_artifacts SET created_at=clock_timestamp()-interval '40 days'");
+        jdbc.update("UPDATE qa_test_results SET run_created_at=clock_timestamp()-interval '200 days' WHERE run_id=?",older);
+        long olderBytes=jdbc.queryForObject("SELECT sum(size_bytes) FROM run_artifacts WHERE run_id=?",Long.class,older);
+        mvc.perform(get("/api/v1/admin/storage").header("Authorization",auth(OPERATOR))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/admin/retention/run").header("Authorization",auth(OPERATOR))).andExpect(status().isForbidden());
+        var result=mapper.readTree(mvc.perform(post("/api/v1/admin/retention/run").header("Authorization",auth(ADMIN)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(result.get("actor").asText()).isEqualTo("admin");
+        assertThat(result.get("artifactsExpired").asInt()).isEqualTo(3);
+        assertThat(result.get("bytesFreed").asLong()).isEqualTo(olderBytes);
+        assertThat(result.get("testResultsDeleted").asInt()).isEqualTo(2);
+
+        var expired=artifact(older,"summary.json");
+        assertThat(expired.get("expiredAt").isNull()).isFalse();
+        assertThat(expired.get("sha256").asText()).hasSize(64);
+        assertThat(expired.get("sizeBytes").asInt()).isPositive();
+        mvc.perform(get("/api/v1/artifacts/"+expired.get("id").asText()+"/content").header("Authorization",auth(VIEWER))).andExpect(status().isGone());
+        assertThat(content(artifact(newer,"summary.json"))).isNotEmpty();
+        assertThat(content(artifact(other,"summary.json"))).isNotEmpty();
+        assertThat(triage(older).get("tests").asInt()).isEqualTo(2); // ingestion record keeps its counts
+
+        var report=mapper.readTree(mvc.perform(get("/api/v1/admin/storage").header("Authorization",auth(ADMIN)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(report.get("expiredArtifacts").asInt()).isEqualTo(3);
+        assertThat(report.get("liveArtifacts").asInt()).isEqualTo(6);
+        assertThat(report.get("tableBytes").get("run_artifacts").asLong()).isPositive();
+        assertThat(report.get("lastRun").get("artifactsExpired").asInt()).isEqualTo(3);
+
+        // A run that finished but was not ingested before its artifacts expired is ingested without error.
+        UUID late=runAt(task,"r4",b,PASS,0);
+        jdbc.update("UPDATE run_artifacts SET created_at=clock_timestamp()-interval '40 days' WHERE run_id=?",other);
+        jdbc.update("UPDATE run_artifacts SET content=''::bytea, expired_at=clock_timestamp() WHERE run_id=?",late);
+        ingestor.runOnce();
+        assertThat(triage(late).get("ingested").asBoolean()).isTrue();
+        assertThat(triage(late).get("error").isNull()).isTrue();
+    }
+
     private static void deleteTree(Path dir) throws IOException {
         try (var paths=Files.walk(dir)) { for (Path p:new ArrayList<>(paths.sorted(java.util.Comparator.reverseOrder()).toList())) Files.deleteIfExists(p); }
     }

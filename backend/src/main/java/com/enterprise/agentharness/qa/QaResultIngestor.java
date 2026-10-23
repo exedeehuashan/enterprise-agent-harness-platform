@@ -67,6 +67,7 @@ public class QaResultIngestor {
         String outcome = null, consoleTail = null;
         List<JUnitReports.TestCase> cases = new ArrayList<>();
         for (var a : artifacts.list(runId)) {
+            if (a.expiredAt() != null) continue; // content removed by retention; nothing left to read
             byte[] bytes = artifacts.content(a.id()).bytes();
             switch (a.name()) {
                 case "summary.json" -> {

@@ -134,7 +134,7 @@ describe('QA console', () => {
       'GET /agent-runs/run-12345678/invocations': () => ({ body: [] }),
       'GET /agent-runs/run-12345678/artifacts': () => ({ body: [
         { id: 'sum', runId: run.id, invocationId: 'i', attempt: 1, name: 'summary.json', mediaType: 'application/json', sizeBytes: 900, sha256: 'a'.repeat(64), createdAt: '' },
-        { id: 'log', runId: run.id, invocationId: 'i', attempt: 1, name: 'console.log', mediaType: 'text/plain', sizeBytes: 30000, sha256: 'b'.repeat(64), createdAt: '' }] }),
+        { id: 'log', runId: run.id, invocationId: 'i', attempt: 1, name: 'console.log', mediaType: 'text/plain', sizeBytes: 30000, sha256: 'b'.repeat(64), createdAt: '', expiredAt: '2026-10-24T03:30:00Z' }] }),
       'GET /artifacts/sum/content': () => ({ body: summary }),
       'GET /qa/runs/run-12345678/triage': () => ({ body: triageBody }),
     });
@@ -149,7 +149,8 @@ describe('QA console', () => {
     expect(screen.getByText('new failure')).toBeInTheDocument();
     expect(screen.getByText(/1\/4 recent runs failed/)).toBeInTheDocument();
     const artifacts = screen.getByRole('heading', { name: 'Artifacts' }).closest('section')!;
-    expect(within(artifacts).getAllByRole('button', { name: 'Download' })).toHaveLength(2);
+    expect(within(artifacts).getAllByRole('button', { name: 'Download' })).toHaveLength(1);
+    expect(within(artifacts).getByText('expired')).toBeInTheDocument();
     expect(within(artifacts).getByText('29.3 KiB')).toBeInTheDocument();
   });
 
@@ -239,6 +240,9 @@ describe('quality page', () => {
   });
 });
 
+const storage = { tableBytes: { run_artifacts: 581632 }, liveArtifacts: 12, liveArtifactBytes: 43008, expiredArtifacts: 3, artifactDays: 30, testResultDays: 180,
+  lastRun: { id: 1, actor: 'retention', startedAt: '2026-10-24T03:30:00Z', artifactsExpired: 3, bytesFreed: 2048, testResultsDeleted: 0 } };
+
 describe('project administration', () => {
   it('lets approvers register projects and toggle triggers, and hides it from operators', async () => {
     tokenStore.set(TOKEN);
@@ -252,6 +256,8 @@ describe('project administration', () => {
       'POST /qa/admin/projects': () => ({ status: 201, body: projectAdmin }),
       'PUT /qa/admin/projects/online-shop/triggers/backend-integration': () => ({ body: projectAdmin }),
       'GET /qa/schedules': () => ({ body: [] }),
+      'GET /admin/storage': () => ({ body: storage }),
+      'POST /admin/retention/run': () => ({ body: storage.lastRun }),
     });
     const { unmount } = renderApp('/qa');
     const form = (await screen.findByRole('heading', { name: 'Register a project' })).closest('section')!;
@@ -268,6 +274,9 @@ describe('project administration', () => {
     await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
     expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ enabled: true });
     expect(screen.getByText('gate set')).toBeInTheDocument();
+    expect(screen.getByText('42 KiB')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Apply retention now' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'POST' && c.path === '/admin/retention/run')).toBe(true));
     unmount();
 
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });

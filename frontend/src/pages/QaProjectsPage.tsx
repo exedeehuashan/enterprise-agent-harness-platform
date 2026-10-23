@@ -4,6 +4,7 @@ import { usePolling } from '../hooks';
 import { useSession } from '../session';
 import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
 import { ProjectSchedules } from '../components/qaSchedules';
+import { StoragePanel } from '../components/storage';
 
 /** Read-only catalog of projects under test and their predefined suites. */
 export function QaProjectsPage() {
@@ -39,6 +40,7 @@ export function QaProjectsPage() {
           {can('APPROVER') && <ProjectAdminPanel project={p} onChanged={projects.reload} />}
         </Section>
       ))}
+      {can('APPROVER') && <StoragePanel />}
       <p className="muted small">Projects and policies are registered by administrators. Projects can declare further suites in their repository, always within this policy. Use a task's "Run test suite" form to run one.</p>
     </>
   );
