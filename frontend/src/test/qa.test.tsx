@@ -154,11 +154,33 @@ describe('QA console', () => {
     expect(within(artifacts).getByText('29.3 KiB')).toBeInTheDocument();
   });
 
+  it('runs an API test collection against a registered environment', async () => {
+    tokenStore.set(TOKEN);
+    const env = { projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://host.docker.internal:18081' }, enabled: true };
+    const calls = fakeApi(taskRoutes({
+      'GET /qa/projects/online-shop/api-tests': () => ({ body: { project: 'online-shop', ref: 'main', commit: 'b'.repeat(40), file: 'found', error: null,
+        collections: [{ key: 'order-api-smoke', name: 'Order API smoke', description: null, service: 'order-api', cases: 6 }], environments: [env] } }),
+      'POST /agent-tasks/task-1/runs': () => ({ status: 202, body: { id: 'run-2' } }),
+    }));
+    renderApp('/tasks/task-1');
+    const form = (await screen.findByRole('heading', { name: 'Run API tests' })).closest('section')!;
+    expect(await within(form).findByRole('option', { name: 'Order API smoke (6 cases)' })).toBeInTheDocument();
+    expect(within(form).getByText('Sends requests to order-api → http://host.docker.internal:18081.')).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole('button', { name: 'Run API tests' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true));
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual({ tool: 'QA_RUN_API_TESTS', timeoutSeconds: 600,
+      arguments: { project: 'online-shop', collection: 'order-api-smoke', environment: 'uat' } });
+  });
+
   it('lists registered projects and marks Docker-access suites', async () => {
     tokenStore.set(TOKEN);
-    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });
+    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }),
+      'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://host.docker.internal:18081' }, enabled: true }] }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
+    expect(await screen.findByText('Local UAT')).toBeInTheDocument();
+    expect(screen.getByText('http://host.docker.internal:18081')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save environment' })).not.toBeInTheDocument();
     expect(screen.getByText('Docker · approval')).toBeInTheDocument();
     expect(screen.getByText('isolated')).toBeInTheDocument();
     expect(screen.getByText('enabled')).toBeInTheDocument();

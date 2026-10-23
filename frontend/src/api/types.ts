@@ -171,3 +171,11 @@ export interface SuiteDiff {
   sameScope: boolean; newFailures: string[]; fixed: string[]; stillFailing: string[]; added: string[]; removed: string[];
   newFailureCount: number; fixedCount: number; stillFailingCount: number; addedCount: number; removedCount: number;
 }
+
+/** A deployed system under test: service names and the base URLs API tests may call. */
+export interface QaEnvironment { projectKey: string; key: string; name: string; services: Record<string, string>; enabled: boolean }
+export interface ApiTestCatalog {
+  project: string; ref: string; commit: string; file: 'found' | 'absent' | 'disabled' | 'invalid'; error: string | null;
+  collections: { key: string; name: string; description: string | null; service: string; cases: number }[];
+  environments: QaEnvironment[];
+}

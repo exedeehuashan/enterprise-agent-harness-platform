@@ -378,6 +378,13 @@ removed between two commits. Pull request reports include the comparison with th
 PR's base, and the Quality page has a Compare commits form. See
 [P23 design notes](docs/p23-commit-comparison.md).
 
+**API tests against environments.** Approvers register test environments (service
+name → base URL). Projects declare HTTP test cases in `.eahp/api-tests.json`
+(requests, status, header and JSON assertions, captures, variables).
+`QA_RUN_API_TESTS` runs a collection against an environment and produces the same
+evidence as suite runs, without following redirects or leaving the registered
+origins. See [P24 design notes](docs/p24-api-test-execution.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

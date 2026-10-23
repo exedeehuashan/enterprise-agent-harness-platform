@@ -68,7 +68,7 @@ public class QualityService {
                     WHERE i.project_key=? AND i.suite_key=? AND i.commit_sha=? ORDER BY r.created_at DESC LIMIT 1
                     """, project, suite, commit);
             boolean active = !jdbc.queryForList("""
-                    SELECT id FROM agent_runs WHERE tool IN ('QA_RUN_SUITE','QA_RUN_PRIVILEGED_SUITE') AND status IN ('QUEUED','RUNNING','WAITING_APPROVAL')
+                    SELECT id FROM agent_runs WHERE tool IN ('QA_RUN_SUITE','QA_RUN_PRIVILEGED_SUITE','QA_RUN_API_TESTS') AND status IN ('QUEUED','RUNNING','WAITING_APPROVAL')
                       AND arguments::jsonb->>'project' = ? AND arguments::jsonb->>'suite' = ? AND arguments::jsonb->>'commit' = ? LIMIT 1
                     """, UUID.class, project, suite, commit).isEmpty();
             if (latest.isEmpty()) {

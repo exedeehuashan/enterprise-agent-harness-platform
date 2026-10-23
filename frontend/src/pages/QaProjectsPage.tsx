@@ -4,6 +4,7 @@ import { usePolling } from '../hooks';
 import { useSession } from '../session';
 import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
 import { ProjectSchedules } from '../components/qaSchedules';
+import { ProjectEnvironments } from '../components/qaApiTests';
 import { StoragePanel } from '../components/storage';
 
 /** Read-only catalog of projects under test and their predefined suites. */
@@ -37,6 +38,7 @@ export function QaProjectsPage() {
             ))}</tbody>
           </table></div>
           <ProjectSchedules project={p} />
+          <ProjectEnvironments project={p} />
           {can('APPROVER') && <ProjectAdminPanel project={p} onChanged={projects.reload} />}
         </Section>
       ))}

@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -103,9 +103,14 @@ export const api = {
     createSchedule: (body: Record<string, unknown>) => post<QaSchedule>('/qa/admin/schedules', body),
     scheduleEnabled: (id: string, enabled: boolean) => request<QaSchedule>(`/qa/admin/schedules/${id}/enabled`, { method: 'PUT', body: { enabled } }).then(r => r.data),
     deleteSchedule: (id: string) => request<null>(`/qa/admin/schedules/${id}`, { method: 'DELETE' }).then(r => r.data),
+    putEnvironment: (project: string, key: string, body: Record<string, unknown>) =>
+      request<QaEnvironment>(`/qa/admin/projects/${project}/environments/${key}`, { method: 'PUT', body }).then(r => r.data),
+    deleteEnvironment: (project: string, key: string) => request<null>(`/qa/admin/projects/${project}/environments/${key}`, { method: 'DELETE' }).then(r => r.data),
     quarantine: (body: Record<string, unknown>) => post<Quarantine>('/qa/admin/quarantines', body),
     releaseQuarantine: (id: string) => post<Quarantine>(`/qa/admin/quarantines/${id}/release`, undefined),
   },
+  environments: (project: string) => get<QaEnvironment[]>(`/qa/environments${query({ project })}`),
+  apiTests: (project: string, ref?: string) => get<ApiTestCatalog>(`/qa/projects/${project}/api-tests${query({ ref })}`),
   quarantines: (project: string) => get<Quarantine[]>(`/qa/quarantines${query({ project })}`),
   qaTriage: (runId: string) => get<Triage>(`/qa/runs/${runId}/triage`),
   suiteCatalog: (project: string, ref?: string) => get<SuiteCatalog>(`/qa/projects/${project}/suites${query({ ref })}`),
