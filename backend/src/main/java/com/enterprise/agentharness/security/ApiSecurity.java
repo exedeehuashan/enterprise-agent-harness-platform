@@ -49,7 +49,7 @@ public class ApiSecurity {
                 .exceptionHandling(c -> c.authenticationEntryPoint((req,res,ex) -> error(mapper,req,res,401))
                         .accessDeniedHandler((req,res,ex) -> error(mapper,req,res,403)))
                 .authorizeHttpRequests(c -> c.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers("/api/v1/approvals/**","/api/v1/audit-events","/api/v1/model-budget").hasRole("APPROVER")
+                        .requestMatchers("/api/v1/approvals/**","/api/v1/audit-events","/api/v1/model-budget","/api/v1/qa/admin/**").hasRole("APPROVER")
                         .requestMatchers(HttpMethod.GET,"/api/v1/**").hasRole("VIEWER")
                         .requestMatchers("/api/v1/**").hasRole("OPERATOR")
                         .anyRequest().denyAll())

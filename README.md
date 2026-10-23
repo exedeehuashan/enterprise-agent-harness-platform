@@ -353,6 +353,12 @@ FAIL or PENDING for a commit with reasons, from recorded evidence only;
 slow tests and pull request gates. The console's Quality page shows both. See
 [P15 design notes](docs/p15-quality-gate-and-dashboard.md).
 
+**Registry administration.** Approvers register projects and manage their policy,
+registry suites, pull request triggers and release gates through
+`/api/v1/qa/admin/**` or the console's Test projects page, without database access.
+Every change is validated like a repository suites file and audited with its
+before and after state. See [P16 design notes](docs/p16-qa-registry-administration.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

@@ -238,3 +238,41 @@ describe('quality page', () => {
     expect(screen.getByRole('link', { name: 'Quality' })).toBeInTheDocument();
   });
 });
+
+describe('project administration', () => {
+  it('lets approvers register projects and toggle triggers, and hides it from operators', async () => {
+    tokenStore.set(TOKEN);
+    const admin = { name: 'admin', roles: ['APPROVER', 'OPERATOR', 'VIEWER'] };
+    const projectAdmin = { project: projects[0], triggers: [{ suite: 'backend-unit', enabled: true }, { suite: 'backend-integration', enabled: false }], gateSuites: ['backend-unit'] };
+    const calls = fakeApi({
+      'GET /me': () => ({ body: admin }),
+      'GET /qa/projects': () => ({ body: projects }),
+      'GET /qa/admin/projects/online-shop': () => ({ body: projectAdmin }),
+      'GET /qa/admin/events': () => ({ body: [{ id: 1, actor: 'admin', action: 'GATE_SET', projectKey: 'online-shop', subject: null, before: null, after: ['backend-unit'], occurredAt: '2026-10-24T00:00:00Z' }] }),
+      'POST /qa/admin/projects': () => ({ status: 201, body: projectAdmin }),
+      'PUT /qa/admin/projects/online-shop/triggers/backend-integration': () => ({ body: projectAdmin }),
+    });
+    const { unmount } = renderApp('/qa');
+    const form = (await screen.findByRole('heading', { name: 'Register a project' })).closest('section')!;
+    await userEvent.type(within(form).getByLabelText('Key'), 'billing');
+    await userEvent.type(within(form).getByLabelText('Name'), 'Billing');
+    await userEvent.type(within(form).getByLabelText('Repository URL (https)'), 'https://github.com/example/billing.git');
+    await userEvent.click(within(form).getByRole('button', { name: 'Register project' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true));
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual({ key: 'billing', name: 'Billing', repositoryUrl: 'https://github.com/example/billing.git',
+      defaultRef: 'main', allowedImages: ['maven:3.9.11-eclipse-temurin-17'] });
+
+    await userEvent.click(screen.getByText('Administer Online Shop'));
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'backend-integration' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
+    expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ enabled: true });
+    expect(screen.getByText('gate set')).toBeInTheDocument();
+    unmount();
+
+    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }) });
+    renderApp('/qa');
+    expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Register a project' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Administer Online Shop')).not.toBeInTheDocument();
+  });
+});
