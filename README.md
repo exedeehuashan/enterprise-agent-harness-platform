@@ -323,6 +323,15 @@ cancels the previous commit's run; fork pull requests are recorded but never run
 happened. EAHP only reads from GitHub. See
 [P11 design notes](docs/p11-github-pr-triggers.md).
 
+**Suites declared in the repository.** A project can declare its suites in
+`.eahp/qa-suites.json` (path configurable). EAHP reads the file at the exact commit
+being tested; a repository suite overrides a registry suite with the same key, and
+registry suites remain the fallback. Each project's policy (allowed images, Docker
+access, network egress, maximum time) limits every suite, and the resolved
+definition is stored in the run, so approvals cover the exact command.
+`GET /api/v1/qa/projects/{key}/suites?ref=` lists what is available at a ref. See
+[P12 design notes](docs/p12-repository-declared-suites.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

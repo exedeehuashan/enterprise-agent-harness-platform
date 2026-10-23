@@ -16,13 +16,24 @@ public class QaRegistry {
     private final ObjectMapper mapper;
     public QaRegistry(JdbcTemplate jdbc, ObjectMapper mapper) { this.jdbc = jdbc; this.mapper = mapper; }
 
-    public record Project(String key, String name, String repositoryUrl, String defaultRef, boolean enabled, List<Suite> suites) {}
+    /** A project and the policy every one of its suites must satisfy, whether registered here or declared in its repository. */
+    public record Project(String key, String name, String repositoryUrl, String defaultRef, boolean enabled, List<Suite> suites,
+            boolean repositorySuitesEnabled, String suitesFile, List<String> allowedImages, boolean allowDockerAccess,
+            boolean allowNetworkEgress, int maxTimeoutSeconds) {}
     public record Suite(String projectKey, String key, String name, String description, String runnerImage, List<String> command,
             List<String> reportDirs, String network, boolean dockerAccess, int maxTimeoutSeconds, boolean enabled) {}
 
     public List<Project> projects() {
-        return jdbc.query("SELECT * FROM qa_projects ORDER BY key", (r, i) -> new Project(r.getString("key"), r.getString("name"),
-                r.getString("repository_url"), r.getString("default_ref"), r.getBoolean("enabled"), suites(r.getString("key"))));
+        return jdbc.query("SELECT * FROM qa_projects ORDER BY key", (r, i) -> {
+            try {
+                return new Project(r.getString("key"), r.getString("name"), r.getString("repository_url"), r.getString("default_ref"),
+                        r.getBoolean("enabled"), suites(r.getString("key")), r.getBoolean("repository_suites_enabled"), r.getString("suites_file"),
+                        mapper.readValue(r.getString("allowed_images"), new TypeReference<List<String>>() {}), r.getBoolean("allow_docker_access"),
+                        r.getBoolean("allow_network_egress"), r.getInt("max_timeout_seconds"));
+            } catch (java.io.IOException ex) {
+                throw new SQLException("Invalid project policy", ex);
+            }
+        });
     }
 
     public Optional<Project> project(String key) {

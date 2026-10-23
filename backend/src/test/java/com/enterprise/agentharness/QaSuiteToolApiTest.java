@@ -63,6 +63,8 @@ class QaSuiteToolApiTest {
     static volatile int cloneExit;
     static volatile Runnable duringRun;
     static volatile boolean dockerAvailable;
+    /** Content of .eahp/qa-suites.json at any commit, or null when the file does not exist. */
+    static volatile String repoFile;
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
 
     /** Simulates git, tar and docker by argv, so every outcome is deterministic and no container runs. */
@@ -75,6 +77,11 @@ class QaSuiteToolApiTest {
                 return new Result(0,false,false);
             }
             if (argv.get(0).equals("git") && argv.contains("clone")) { Files.createDirectories(Path.of(argv.get(argv.size()-1))); return new Result(cloneExit,false,false); }
+            if (argv.get(0).equals("git") && argv.contains("cat-file") && argv.get(argv.size()-1).contains(":")) {
+                if (repoFile == null) return new Result(128,false,false);
+                if (argv.contains("-p")) Files.writeString(logFile, repoFile);
+                return new Result(0,false,false);
+            }
             if (argv.get(0).equals("git") && argv.contains("archive")) { Files.writeString(Path.of(argv.get(argv.indexOf("-o")+1)), "tar"); return new Result(0,false,false); }
             if (argv.get(0).equals("tar")) { Files.writeString(Path.of(argv.get(argv.size()-1)).resolve("pom.xml"), "<project/>"); return new Result(0,false,false); }
             if (argv.get(0).equals("docker") && argv.get(1).equals("version")) {
@@ -132,7 +139,8 @@ class QaSuiteToolApiTest {
         repository.deleteAll();
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE");
         jdbc.update("UPDATE qa_projects SET enabled=TRUE");
-        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;calls.clear();
+        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;calls.clear();
+        jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE, allow_docker_access=TRUE, allow_network_egress=TRUE, max_timeout_seconds=2400, allowed_images='[\"maven:3.9.11-eclipse-temurin-17\"]'");
     }
 
     private static String auth(String token){return "Bearer "+token;}
@@ -249,6 +257,8 @@ class QaSuiteToolApiTest {
     @Test
     void sourceExportFailureIsReportedWithSetupLog() throws Exception {
         cloneExit=128;
+        // Registry-only project: no repository file is read at start, so the clone first happens during execution.
+        jdbc.update("UPDATE qa_projects SET repository_suites_enabled=FALSE");
         try (var mirrors=Files.list(WORKDIR)) { for (Path p:mirrors.toList()) if (p.endsWith("mirrors")) deleteTree(p); }
         UUID run=unitRun();worker();
         assertThat(runs.get(run).errorCode()).isEqualTo("SOURCE_UNAVAILABLE");
@@ -316,6 +326,106 @@ class QaSuiteToolApiTest {
                 .andExpect(jsonPath("$[0].suites[0].dockerAccess").value(true))
                 .andExpect(jsonPath("$[0].suites[1].key").value("backend-unit"));
         mvc.perform(get("/api/v1/qa/projects")).andExpect(status().isUnauthorized());
+    }
+
+    private static final String REPO_FILE="""
+            {"schemaVersion":1,"suites":[
+              {"key":"backend-unit","name":"Unit (declared in repo)","image":"maven:3.9.11-eclipse-temurin-17",
+               "command":["mvn","-B","verify","-DexcludedGroups=docker"],"reportDirs":["target/surefire-reports"],
+               "network":"egress","dockerAccess":false,"timeoutSeconds":1200},
+              {"key":"smoke","name":"Smoke","description":"Fast checks","image":"maven:3.9.11-eclipse-temurin-17",
+               "command":["mvn","-B","-pl","backend/order-domain","test"],"reportDirs":["target/surefire-reports"],
+               "network":"none","dockerAccess":false,"timeoutSeconds":600}]}
+            """;
+
+    @Test
+    void repositoryDeclaredSuiteOverridesTheRegistryAndIsBoundIntoTheRun() throws Exception {
+        repoFile=REPO_FILE;
+        UUID run=UUID.fromString(mapper.readTree(start(task(),"repo","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":1200,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\"}}")
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.arguments.definition.source").value("repository"))
+                .andExpect(jsonPath("$.arguments.definition.command[3]").value("-DexcludedGroups=docker"))
+                .andReturn().getResponse().getContentAsString()).get("id").asText());
+        start(task(),"long","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":1500,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\"}}")
+                .andExpect(status().isBadRequest());
+        repoFile=null; // the run executes what was resolved at start, not the file as it is now
+        worker();
+        assertThat(runs.get(run).status()).isEqualTo("COMPLETED");
+        assertThat(dockerRun()).contains("-DexcludedGroups=docker").doesNotContain("-Dtest=!CatalogApiTest,!PostgresPersistenceTest,!OrderApiTest,!IdentityPersistenceTest")
+                .containsSequence("--network","bridge");
+        assertThat(summary(run).get("suiteSource").asText()).isEqualTo("repository");
+    }
+
+    @Test
+    void repositoryOnlySuitesRunAndTheCatalogShowsBothSources() throws Exception {
+        repoFile=REPO_FILE;
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.commit").value(MAIN_SHA)).andExpect(jsonPath("$.repositoryFile").value("found"))
+                .andExpect(jsonPath("$.suites[?(@.key=='smoke')].source").value("repository"))
+                .andExpect(jsonPath("$.suites[?(@.key=='backend-integration')].source").value("registry"))
+                .andExpect(jsonPath("$.suites[?(@.key=='backend-unit')].source").value("repository"));
+        UUID run=UUID.fromString(mapper.readTree(start(task(),"smoke","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"smoke\"}}")
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).get("id").asText());
+        worker();
+        assertThat(runs.get(run).status()).isEqualTo("COMPLETED");
+        assertThat(dockerRun()).containsSequence("--network","none").contains("backend/order-domain");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").param("ref","../x").header("Authorization",auth(VIEWER))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void projectPolicyLimitsWhatARepositoryFileCanDeclare() throws Exception {
+        UUID task=task();
+        String smoke="{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"smoke\"}}";
+        repoFile=REPO_FILE.replace("\"network\":\"none\",\"dockerAccess\":false,\"timeoutSeconds\":600","\"network\":\"none\",\"dockerAccess\":false,\"timeoutSeconds\":3000");
+        start(task,"p1",smoke).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid arguments: suite timeout exceeds the project's maximum of 2400"));
+        repoFile=REPO_FILE.replace("\"command\":[\"mvn\",\"-B\",\"-pl\"","\"image\":\"x\",\"command\":[\"mvn\",\"-B\",\"-pl\"");
+        start(task,"p2",smoke).andExpect(status().isBadRequest());
+        repoFile=REPO_FILE.replace("\"Fast checks\",\"image\":\"maven:3.9.11-eclipse-temurin-17\"","\"Fast checks\",\"image\":\"attacker/miner:latest\"");
+        start(task,"p3",smoke).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid arguments: image attacker/miner:latest is not allowed for this project"));
+        repoFile=REPO_FILE.replace("\"network\":\"none\",\"dockerAccess\":false","\"network\":\"none\",\"dockerAccess\":true");
+        jdbc.update("UPDATE qa_projects SET allow_docker_access=FALSE");
+        start(task,"p4","{\"tool\":\"QA_RUN_PRIVILEGED_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"smoke\"}}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid arguments: this project does not allow Docker access"));
+        repoFile=REPO_FILE;jdbc.update("UPDATE qa_projects SET allow_network_egress=FALSE");
+        start(task,"p5","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\"}}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid arguments: this project does not allow network egress"));
+        jdbc.update("UPDATE qa_test_suites SET enabled=FALSE WHERE key='backend-unit'");jdbc.update("UPDATE qa_projects SET allow_network_egress=TRUE");
+        start(task,"p6","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\"}}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid arguments: unknown or disabled suite"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs",Long.class)).isZero();
+    }
+
+    @Test
+    void invalidRepositoryFilesAreRejectedAndReportedWithoutHidingRegistrySuites() throws Exception {
+        String[] invalid={"not json","{\"schemaVersion\":2,\"suites\":[]}","{\"schemaVersion\":1,\"suites\":[],\"x\":1}",
+                REPO_FILE.replace("\"reportDirs\":[\"target/surefire-reports\"]","\"reportDirs\":[\"/etc\"]"),
+                REPO_FILE.replace("\"key\":\"smoke\"","\"key\":\"backend-unit\""),
+                REPO_FILE.replace("\"name\":\"Smoke\"","\"name\":\"Smoke\",\"name\":\"Again\""),
+                REPO_FILE.replace("\"name\":\"Smoke\"","\"name\":\"Smoke\",\"shell\":\"rm -rf /\""),
+                REPO_FILE.replace("\"Fast checks\"","\"Fast\\u0000checks\"")};
+        UUID task=task();int i=0;
+        for (String file:invalid) {
+            repoFile=file;
+            start(task,"bad-"+(i++),"{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\"}}")
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("Invalid arguments: invalid suites file:")));
+        }
+        repoFile="not json";
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.repositoryFile").value("invalid")).andExpect(jsonPath("$.repositoryError").value("invalid suites file: not valid JSON"))
+                .andExpect(jsonPath("$.suites.length()").value(2));
+        repoFile=null;
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("absent"));
+    }
+
+    @Test
+    void executionRechecksProjectPolicy() throws Exception {
+        repoFile=REPO_FILE;
+        UUID run=UUID.fromString(mapper.readTree(start(task(),"later","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"smoke\"}}")
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).get("id").asText());
+        jdbc.update("UPDATE qa_projects SET allowed_images='[\"maven:3.9.12-eclipse-temurin-21\"]'");
+        worker();
+        assertThat(runs.get(run).errorCode()).isEqualTo("SUITE_POLICY_CHANGED");
+        assertThat(calls).noneMatch(c->c.get(0).equals("docker")&&c.get(1).equals("run"));
     }
 
     private static void deleteTree(Path dir) throws IOException {

@@ -40,25 +40,27 @@ public class QaSuiteTools {
     /** Maven otherwise waits up to 30 minutes on a stalled download, silently consuming the whole suite deadline. */
     static final String MAVEN_NETWORK_TIMEOUTS = " -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000";
 
-    @Bean SuiteTool qaRunSuite(QaRegistry registry, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
-        return new SuiteTool("QA_RUN_SUITE", false, registry, git, runner, settings, mapper);
+    @Bean SuiteTool qaRunSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
+        return new SuiteTool("QA_RUN_SUITE", false, registry, resolver, git, runner, settings, mapper);
     }
 
-    @Bean SuiteTool qaRunPrivilegedSuite(QaRegistry registry, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
-        return new SuiteTool("QA_RUN_PRIVILEGED_SUITE", true, registry, git, runner, settings, mapper);
+    @Bean SuiteTool qaRunPrivilegedSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
+        return new SuiteTool("QA_RUN_PRIVILEGED_SUITE", true, registry, resolver, git, runner, settings, mapper);
     }
 
     public static final class SuiteTool implements ToolExecutor {
         private final String name;
         private final boolean privileged;
         private final QaRegistry registry;
+        private final QaSuiteResolver resolver;
         private final GitMirror git;
         private final ProcessRunner runner;
         private final QaSettings settings;
         private final ObjectMapper mapper;
 
-        SuiteTool(String name, boolean privileged, QaRegistry registry, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
-            this.name = name; this.privileged = privileged; this.registry = registry; this.git = git;
+        SuiteTool(String name, boolean privileged, QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner,
+                QaSettings settings, ObjectMapper mapper) {
+            this.name = name; this.privileged = privileged; this.registry = registry; this.resolver = resolver; this.git = git;
             this.runner = runner; this.settings = settings; this.mapper = mapper;
         }
 
@@ -69,7 +71,10 @@ public class QaSuiteTools {
         /** Re-running a suite after a lost worker could repeat side effects on shared resources, so it goes to review. */
         public boolean retryable() { return false; }
 
-        /** {project, suite, ref?} becomes {project, suite, ref, commit}; the commit is what an approval binds. */
+        /**
+         * {project, suite, ref?} becomes {project, suite, ref, commit, definition}: the exact commit and the resolved suite
+         * (registry or repository file at that commit) are what an approval binds and what the executor runs.
+         */
         @Override
         public JsonNode normalize(JsonNode arguments) {
             if (arguments == null || !arguments.isObject()) throw new IllegalArgumentException("project and suite are required");
@@ -79,33 +84,35 @@ public class QaSuiteTools {
                 if (!arguments.path(field).isTextual()) throw new IllegalArgumentException(field + " is required");
             }
             if (arguments.has("ref") && !arguments.get("ref").isTextual()) throw new IllegalArgumentException("ref must be text");
-            var project = registry.project(arguments.get("project").textValue()).filter(QaRegistry.Project::enabled)
-                    .orElseThrow(() -> new IllegalArgumentException("unknown or disabled project"));
-            var suite = registry.suite(project.key(), arguments.get("suite").textValue()).filter(QaRegistry.Suite::enabled)
-                    .orElseThrow(() -> new IllegalArgumentException("unknown or disabled suite"));
-            if (suite.dockerAccess() != privileged) {
+            var resolved = resolver.resolve(arguments.get("project").textValue(), arguments.get("suite").textValue(),
+                    arguments.has("ref") ? arguments.get("ref").textValue() : null);
+            if (resolved.suite().dockerAccess() != privileged) {
                 throw new IllegalArgumentException(privileged ? "suite does not need Docker access; use QA_RUN_SUITE" : "suite needs Docker access; use QA_RUN_PRIVILEGED_SUITE");
             }
-            String ref = arguments.has("ref") ? arguments.get("ref").textValue() : project.defaultRef();
             ObjectNode normalized = JsonNodeFactory.instance.objectNode();
-            normalized.put("project", project.key()).put("suite", suite.key()).put("ref", ref).put("commit", git.resolve(project, ref));
+            normalized.put("project", resolved.project().key()).put("suite", resolved.suite().key()).put("ref", resolved.ref()).put("commit", resolved.commit());
+            normalized.set("definition", resolved.suite().toJson());
             return normalized;
         }
 
         @Override
         public void checkTimeout(JsonNode arguments, int timeoutSeconds) {
-            var suite = registry.suite(arguments.get("project").textValue(), arguments.get("suite").textValue()).orElseThrow();
+            var suite = SuiteDefinition.fromJson(arguments.get("definition"));
             if (timeoutSeconds > suite.maxTimeoutSeconds()) throw new IllegalArgumentException("timeoutSeconds exceeds this suite's maximum of " + suite.maxTimeoutSeconds());
         }
 
         @Override
         public ToolResult execute(ToolContext context) throws Exception {
             var args = context.arguments();
-            var project = registry.project(args.get("project").textValue()).orElse(null);
-            var suite = project == null ? null : registry.suite(project.key(), args.get("suite").textValue()).orElse(null);
-            if (project == null || suite == null || !project.enabled() || !suite.enabled() || suite.dockerAccess() != privileged) {
+            var project = registry.project(args.get("project").textValue()).filter(QaRegistry.Project::enabled).orElse(null);
+            var suite = SuiteDefinition.fromJson(args.get("definition"));
+            boolean blocked = project == null || registry.suite(project.key(), suite.key()).map(s -> !s.enabled()).orElse(false)
+                    || (suite.source().equals(SuiteDefinition.REGISTRY) && registry.suite(project.key(), suite.key()).isEmpty());
+            if (blocked || suite.dockerAccess() != privileged) {
                 return ToolResult.failure("SUITE_UNAVAILABLE", "The project or suite is no longer available.");
             }
+            try { QaSuiteResolver.checkPolicy(project, suite); }
+            catch (IllegalArgumentException ex) { return ToolResult.failure("SUITE_POLICY_CHANGED", "The suite no longer satisfies project policy: " + ex.getMessage()); }
             String commit = args.get("commit").textValue();
             Path runDir = settings.workdir().resolve("runs").resolve(context.run().id() + "-" + context.run().attemptCount());
             Path source = runDir.resolve("src");
@@ -168,7 +175,7 @@ public class QaSuiteTools {
             return null;
         }
 
-        List<String> dockerArgs(String container, QaRegistry.Project project, QaRegistry.Suite suite, Path source, ToolContext context) {
+        List<String> dockerArgs(String container, QaRegistry.Project project, SuiteDefinition suite, Path source, ToolContext context) {
             Path home = settings.workdir().resolve("cache").resolve(project.key());
             var argv = new ArrayList<>(List.of(settings.docker(), "run", "--rm", "--name", container,
                     "--label", "eahp.run=" + context.run().id(), "--label", "eahp.project=" + project.key(),
@@ -185,7 +192,7 @@ public class QaSuiteTools {
                 String group = socketGroup();
                 if (group != null) argv.addAll(List.of("--group-add", group));
             }
-            argv.add(suite.runnerImage());
+            argv.add(suite.image());
             argv.addAll(suite.command());
             return argv;
         }
@@ -211,14 +218,15 @@ public class QaSuiteTools {
             catch (Exception ex) { log.warn("Could not stop container {}", container); }
         }
 
-        private Map<String, Object> summaryJson(QaRegistry.Project project, QaRegistry.Suite suite, JsonNode args, ProcessRunner.Result result,
+        private Map<String, Object> summaryJson(QaRegistry.Project project, SuiteDefinition suite, JsonNode args, ProcessRunner.Result result,
                 JUnitReports.Summary summary, String code, Instant started, Instant finished, boolean reportsTruncated) {
             var json = new LinkedHashMap<String, Object>();
             json.put("project", project.key());
             json.put("suite", suite.key());
             json.put("ref", args.get("ref").textValue());
             json.put("commit", args.get("commit").textValue());
-            json.put("runnerImage", suite.runnerImage());
+            json.put("suiteSource", suite.source());
+            json.put("runnerImage", suite.image());
             json.put("command", suite.command());
             json.put("dockerAccess", suite.dockerAccess());
             json.put("exitCode", result.stopped() || result.timedOut() ? null : result.exitCode());

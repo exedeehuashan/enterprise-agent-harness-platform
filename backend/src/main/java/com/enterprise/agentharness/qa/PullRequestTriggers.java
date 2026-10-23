@@ -31,9 +31,10 @@ public class PullRequestTriggers {
     private final GitHubClient github;
     private final AgentTaskService tasks;
     private final RunService runs;
+    private final QaSuiteResolver resolver;
 
-    public PullRequestTriggers(JdbcTemplate jdbc, QaRegistry registry, GitHubClient github, AgentTaskService tasks, RunService runs) {
-        this.jdbc = jdbc; this.registry = registry; this.github = github; this.tasks = tasks; this.runs = runs;
+    public PullRequestTriggers(JdbcTemplate jdbc, QaRegistry registry, GitHubClient github, AgentTaskService tasks, RunService runs, QaSuiteResolver resolver) {
+        this.jdbc = jdbc; this.registry = registry; this.github = github; this.tasks = tasks; this.runs = runs; this.resolver = resolver;
     }
 
     public record PullRequestRun(UUID id, String projectKey, int prNumber, String headSha, String suiteKey, String prTitle, String prUrl,
@@ -81,7 +82,9 @@ public class PullRequestTriggers {
 
     private List<String> triggerSuites(QaRegistry.Project project) {
         var enabled = jdbc.queryForList("SELECT suite_key FROM qa_pr_triggers WHERE project_key=? AND enabled ORDER BY suite_key", String.class, project.key());
-        return enabled.stream().filter(key -> project.suites().stream().anyMatch(s -> s.key().equals(key) && s.enabled())).toList();
+        // Suites may live in the repository file, so only a registry suite explicitly disabled excludes a trigger here;
+        // whether the suite exists at the PR's commit is decided when the run starts.
+        return enabled.stream().filter(key -> project.suites().stream().noneMatch(s -> s.key().equals(key) && !s.enabled())).toList();
     }
 
     private void record(String project, GitHubClient.PullRequest pr, String suite) {
@@ -102,8 +105,13 @@ public class PullRequestTriggers {
         var row = jdbc.queryForMap("SELECT * FROM qa_pr_runs WHERE id=?", id);
         String project = (String) row.get("project_key"), suiteKey = (String) row.get("suite_key"), sha = (String) row.get("head_sha");
         int number = ((Number) row.get("pr_number")).intValue();
-        var suite = registry.suite(project, suiteKey).filter(QaRegistry.Suite::enabled).orElse(null);
-        if (suite == null) { skip(id, "SUITE_UNAVAILABLE"); return; }
+        SuiteDefinition suite;
+        try {
+            suite = resolver.resolve(project, suiteKey, sha).suite();
+        } catch (IllegalArgumentException ex) {
+            skip(id, ex.getMessage() != null && ex.getMessage().startsWith("invalid suites file") ? "INVALID_SUITES_FILE" : "SUITE_UNAVAILABLE");
+            return;
+        }
 
         var previous = jdbc.queryForList("""
                 SELECT p.task_id, p.run_id, p.id FROM qa_pr_runs p WHERE p.project_key=? AND p.pr_number=? AND p.suite_key=? AND p.task_id IS NOT NULL AND p.id<>?
