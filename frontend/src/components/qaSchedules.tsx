@@ -11,12 +11,12 @@ export function ProjectSchedules({ project }: { project: QaProject }) {
   const { can } = useSession();
   const schedules = usePolling(() => api.schedules(project.key), [project.key], 15000);
   const action = useAction();
-  const [form, setForm] = useState({ suite: project.suites[0]?.key ?? '', ref: project.defaultRef, kind: 'ON_CHANGE', cron: '0 0 2 * * *' });
+  const [form, setForm] = useState({ suite: project.suites[0]?.key ?? '', ref: project.defaultRef, kind: 'ON_CHANGE', cron: '0 0 2 * * *', environment: '' });
   const change = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) void schedules.reload(); };
   const create = (e: FormEvent) => {
     e.preventDefault();
     void change(() => api.admin.createSchedule({ project: project.key, suite: form.suite.trim(), ref: form.ref.trim(), kind: form.kind,
-      ...(form.kind === 'CRON' ? { cron: form.cron.trim() } : {}) }));
+      ...(form.kind === 'CRON' ? { cron: form.cron.trim() } : {}), ...(form.environment.trim() ? { environment: form.environment.trim() } : {}) }));
   };
   return (
     <>
@@ -28,7 +28,7 @@ export function ProjectSchedules({ project }: { project: QaProject }) {
           <thead><tr><th>Suite</th><th>When</th><th>Last commit</th><th>Last run</th><th>Next</th>{can('APPROVER') && <th />}</tr></thead>
           <tbody>{schedules.data.map(s => (
             <tr key={s.id}>
-              <td>{s.suiteKey} <span className="muted small">@ {s.ref}</span>{!s.enabled && <span className="badge badge-muted"> paused</span>}</td>
+              <td>{s.suiteKey} <span className="muted small">@ {s.ref}{s.environment ? ` → ${s.environment}` : ''}</span>{!s.enabled && <span className="badge badge-muted"> paused</span>}</td>
               <td>{s.kind === 'ON_CHANGE' ? 'when the ref changes' : <code>{s.cron}</code>}</td>
               <td>{s.lastCommit ? <code>{s.lastCommit.slice(0, 7)}</code> : '—'}{s.lastError && <div className="muted small">{s.lastError}</div>}</td>
               <td>{s.lastRunId ? <Link to={`/runs/${s.lastRunId}`}><Status value={s.lastRunStatus} /></Link> : '—'}</td>
@@ -43,7 +43,8 @@ export function ProjectSchedules({ project }: { project: QaProject }) {
       )}
       {can('APPROVER') && (
         <form className="row" onSubmit={create}>
-          <label className="inline">Suite<input value={form.suite} onChange={e => setForm({ ...form, suite: e.target.value })} required /></label>
+          <label className="inline">Suite or API collection<input value={form.suite} onChange={e => setForm({ ...form, suite: e.target.value })} required /></label>
+          <label className="inline">Environment<input value={form.environment} onChange={e => setForm({ ...form, environment: e.target.value })} placeholder="for API tests only" /></label>
           <label className="inline">Ref<input value={form.ref} onChange={e => setForm({ ...form, ref: e.target.value })} required /></label>
           <label className="inline">When<select value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}>
             <option value="ON_CHANGE">when the ref changes</option><option value="CRON">on a schedule (UTC)</option></select></label>

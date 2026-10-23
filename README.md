@@ -422,6 +422,10 @@ on for a project, QA results are posted to its pull requests: `eahp/<suite>` and
 updated in place. Delivery goes through an outbox with retries. See
 [P30 design notes](docs/p30-github-write-back.md).
 
+**Scheduled API tests.** A schedule with an `environment` runs an API test
+collection against it, on branch change or on a cron timetable, for example
+nightly against UAT. See [P31 design notes](docs/p31-api-test-schedules.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;
