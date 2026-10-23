@@ -135,7 +135,7 @@ export interface QualityDashboard {
   project: string; days: number; runs: number; passed: number; passRate: number | null;
   suites: { suite: string; runs: number; passed: number; passRate: number | null; lastOutcome: string | null; lastCommit: string; lastAt: string;
     daily: { day: string; runs: number; passed: number }[] }[];
-  failingNow: { suite: string; testClass: string; testName: string; category: string | null; consecutiveFailures: number; failingSince: string | null; failingSinceAt: string | null }[];
+  failingNow: FailingTest[];
   flaky: { suite: string; testClass: string; testName: string; flakyCommits: number }[];
   slowest: { suite: string; testClass: string; testName: string; averageMs: number; runs: number }[];
   pullRequests: { prNumber: number; title: string; url: string; headSha: string; gate: string; affectedModules: number; impactNotes: number }[];
@@ -151,3 +151,11 @@ export interface QaSchedule {
 }
 
 export interface Tool { name: string; version: number; target: string; enabled: boolean; requiresApproval: boolean; retryable: boolean }
+
+export interface FailingTest { suite: string; testClass: string; testName: string; category: string | null; consecutiveFailures: number; failingSince: string | null; failingSinceAt: string | null }
+
+/** A test whose failures do not block the release gate until it expires or is released. */
+export interface Quarantine {
+  id: string; projectKey: string; suiteKey: string; testClass: string; testName: string; reason: string; createdBy: string;
+  createdAt: string; expiresAt: string; releasedAt: string | null; releasedBy: string | null; active: boolean;
+}

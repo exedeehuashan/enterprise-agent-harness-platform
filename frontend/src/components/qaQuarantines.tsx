@@ -1,0 +1,59 @@
+import { useState, type FormEvent } from 'react';
+import { api } from '../api/client';
+import type { FailingTest } from '../api/types';
+import { useAction, usePolling } from '../hooks';
+import { useSession } from '../session';
+import { Empty, ErrorBanner, Section, Time } from './ui';
+
+/** Short test label: the simple class name for Java (com.example.OrderTest), the file path as-is for JavaScript runners. */
+export const testLabel = (cls: string, test: string) => `${cls.includes('/') ? cls : cls.split('.').pop()}${test ? `#${test}` : ''}`;
+
+/**
+ * Tests whose failures do not block the release gate for a limited time. Everyone sees them; approvers quarantine
+ * a currently failing test with a reason, or release one early.
+ */
+export function QuarantinePanel({ project, failing }: { project: string; failing: FailingTest[] }) {
+  const { can } = useSession();
+  const quarantines = usePolling(() => api.quarantines(project), [project], 30000);
+  const action = useAction();
+  const candidates = failing.filter(f => !(quarantines.data ?? []).some(q => q.suiteKey === f.suite && q.testClass === f.testClass && q.testName === f.testName));
+  const [form, setForm] = useState({ test: '', reason: '', days: 7 });
+  const change = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) { setForm({ test: '', reason: '', days: 7 }); void quarantines.reload(); } };
+  const create = (e: FormEvent) => {
+    e.preventDefault();
+    const f = candidates[Number(form.test)];
+    if (!f) return;
+    void change(() => api.admin.quarantine({ project, suite: f.suite, testClass: f.testClass, testName: f.testName, reason: form.reason.trim(), days: form.days }));
+  };
+  return (
+    <Section title="Quarantined tests">
+      <p className="muted small">A quarantined test still runs and is recorded, but a suite that fails only in quarantined tests does not block the gate, as long as it ran at least as many tests as its last passing run. Quarantines expire after at most 30 days.</p>
+      <ErrorBanner error={quarantines.error ?? action.error} />
+      {quarantines.data?.length === 0 && <Empty>No test is quarantined.</Empty>}
+      {quarantines.data && quarantines.data.length > 0 && (
+        <div className="table-wrap"><table>
+          <thead><tr><th>Test</th><th>Suite</th><th>Reason</th><th>By</th><th>Expires</th>{can('APPROVER') && <th />}</tr></thead>
+          <tbody>{quarantines.data.map(q => (
+            <tr key={q.id}>
+              <td className="wrap-cell"><code title={`${q.testClass}#${q.testName}`}>{testLabel(q.testClass, q.testName)}</code></td>
+              <td>{q.suiteKey}</td><td className="wrap-cell">{q.reason}</td><td>{q.createdBy}</td><td><Time value={q.expiresAt} /></td>
+              {can('APPROVER') && <td><button className="secondary" disabled={action.busy}
+                onClick={() => window.confirm('Release this quarantine? Its failures will block the gate again.') && change(() => api.admin.releaseQuarantine(q.id))}>Release</button></td>}
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {can('APPROVER') && candidates.length > 0 && (
+        <form className="row" onSubmit={create}>
+          <label className="inline">Failing test<select value={form.test} onChange={e => setForm({ ...form, test: e.target.value })} required>
+            <option value="">choose…</option>
+            {candidates.map((f, i) => <option key={i} value={i}>{f.suite}: {testLabel(f.testClass, f.testName)}</option>)}
+          </select></label>
+          <label className="inline">Reason<input value={form.reason} minLength={10} maxLength={500} onChange={e => setForm({ ...form, reason: e.target.value })} required /></label>
+          <label className="inline">Days<input type="number" min={1} max={30} value={form.days} onChange={e => setForm({ ...form, days: Number(e.target.value) })} required /></label>
+          <button type="submit" className="secondary" disabled={action.busy}>Quarantine</button>
+        </form>
+      )}
+    </Section>
+  );
+}

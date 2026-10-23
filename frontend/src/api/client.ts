@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, Quarantine, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -103,7 +103,10 @@ export const api = {
     createSchedule: (body: Record<string, unknown>) => post<QaSchedule>('/qa/admin/schedules', body),
     scheduleEnabled: (id: string, enabled: boolean) => request<QaSchedule>(`/qa/admin/schedules/${id}/enabled`, { method: 'PUT', body: { enabled } }).then(r => r.data),
     deleteSchedule: (id: string) => request<null>(`/qa/admin/schedules/${id}`, { method: 'DELETE' }).then(r => r.data),
+    quarantine: (body: Record<string, unknown>) => post<Quarantine>('/qa/admin/quarantines', body),
+    releaseQuarantine: (id: string) => post<Quarantine>(`/qa/admin/quarantines/${id}/release`, undefined),
   },
+  quarantines: (project: string) => get<Quarantine[]>(`/qa/quarantines${query({ project })}`),
   qaTriage: (runId: string) => get<Triage>(`/qa/runs/${runId}/triage`),
   suiteCatalog: (project: string, ref?: string) => get<SuiteCatalog>(`/qa/projects/${project}/suites${query({ ref })}`),
   pullRequestRuns: (project?: string) => get<PullRequestRun[]>(`/qa/pull-requests${query({ project, limit: 100 })}`),
