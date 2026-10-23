@@ -1,0 +1,9 @@
+# Opt-in: lets the backend start QA test containers (方案 4) on the host's Docker daemon.
+# The Docker socket is host-level access. Only enable this on a machine dedicated to EAHP and its test runs.
+# Usage: EAHP_QA_RUNNER=on scripts/deploy.sh   (or add -f docker-compose.qa.yml to docker compose commands)
+services:
+  backend:
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

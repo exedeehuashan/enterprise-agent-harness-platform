@@ -15,6 +15,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=build /src/target/agent-harness-backend-0.0.1-SNAPSHOT.jar /app/app.jar
+# A new named volume mounted here inherits this ownership, so the QA work directory is writable without root.
+RUN mkdir -p /var/lib/eahp-qa && chown 10001:10001 /var/lib/eahp-qa
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

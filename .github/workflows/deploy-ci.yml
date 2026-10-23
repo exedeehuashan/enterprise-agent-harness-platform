@@ -1,0 +1,42 @@
+name: Deployment CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create throwaway .env
+        run: |
+          token() { openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n'; }
+          {
+            echo "DB_PASSWORD=$(token)"
+            echo "EAHP_SECURITY_ADMIN_TOKEN=$(token)"
+            echo "EAHP_SECURITY_OPERATOR_TOKEN=$(token)"
+            echo "EAHP_SECURITY_VIEWER_TOKEN=$(token)"
+            echo "EAHP_QA_RUNNER=on"
+            echo "DOCKER_SOCKET_GID=$(stat -c %g /var/run/docker.sock)"
+          } > .env
+          chmod 600 .env
+      - name: Deploy the full stack
+        run: scripts/deploy.sh
+      - name: Smoke checks
+        run: |
+          set -a; . ./.env; set +a
+          console=http://127.0.0.1:8088
+          auth() { printf 'Authorization: Bearer %s\n' "$1"; }
+          test "$(curl -s -o /dev/null -w '%{http_code}' $console/tasks/deep-link)" = 200
+          curl -sI $console/ | grep -qi '^content-security-policy:'
+          auth "$EAHP_SECURITY_VIEWER_TOKEN" | curl -fsS -H @- $console/api/v1/qa/projects | grep -q '"key":"online-shop"'
+          test "$(auth "$EAHP_SECURITY_VIEWER_TOKEN" | curl -s -o /dev/null -w '%{http_code}' -H @- -X POST $console/api/v1/agent-tasks -H 'Content-Type: application/json' -d '{"title":"x"}')" = 403
+          docker compose exec -T backend docker version --format '{{.Server.Version}}'
+      - name: Redeploy is repeatable and backs up first
+        run: |
+          scripts/deploy.sh
+          ls backups/*.dump
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.qa.yml logs --no-color --tail=200

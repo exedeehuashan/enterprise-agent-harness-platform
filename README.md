@@ -3,7 +3,30 @@
 Java 17 / Spring Boot 3 backend for Agent Task Management, with a React +
 TypeScript web console in `frontend/`.
 
-## Run locally
+## One-command local deployment
+
+Prerequisites: Docker with Compose v2, curl and openssl. From the repository root:
+
+```sh
+cp .env.example .env && chmod 600 .env
+# Edit .env: set DB_PASSWORD and three distinct random API tokens.
+scripts/deploy.sh                      # backend, console and PostgreSQL
+EAHP_QA_RUNNER=on scripts/deploy.sh    # also lets the backend run QA test containers
+```
+
+The script validates the Compose files, backs up the database to `backups/` when
+it is already running, builds the images, starts everything with health checks,
+and smoke-tests the console proxy. Rerun it to upgrade. The console is at
+http://127.0.0.1:8088 and the API at http://127.0.0.1:8080/api/v1 (both bound to
+localhost only). Data lives in the `postgres_data` and `eahp-qa-work` volumes.
+
+`EAHP_QA_RUNNER=on` adds `docker-compose.qa.yml`, which mounts the Docker socket
+into the backend. That is host-level access: enable it only on a machine
+dedicated to EAHP. Set `DOCKER_SOCKET_GID` to the socket's group as seen by
+containers (0 on Docker Desktop). Without it, QA runs fail with `RUNNER_UNAVAILABLE`.
+See [P9 deployment notes](docs/p9-one-command-deploy.md).
+
+## Run the backend from source
 
 Prerequisites: Java 17, Maven 3.6.3+, Docker with Compose, a running Docker daemon, and a random admin API token.
 From the repository root:
