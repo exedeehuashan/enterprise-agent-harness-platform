@@ -75,3 +75,16 @@ English: It never passed, so merging it adds a failure. Counting it only as
 
   The report case now checks the "Compared with base" section.
 - Frontend: 21 tests, including the comparison view.
+
+## Observed local results
+
+I deployed with `scripts/deploy.sh` and compared online-shop#53 (base `ed2442b`,
+head `8640b31`):
+
+| Suite | Result |
+| --- | --- |
+| `backend-unit` | Compared, 42 → 42 tests, same scope; no new failures, fixes, additions or removals |
+| `frontend-unit` | `NO_BASE_RESULT`; the suite did not exist at the base commit |
+
+The PR's QA report shows the same results in its "Compared with base
+`ed2442b52931`" section.
