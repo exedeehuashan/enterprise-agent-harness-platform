@@ -5,8 +5,8 @@ import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Status, Time } from './ui';
 
 /** Suites that need Docker access must use the approval-gated tool; the backend enforces the same split. */
-export const QA_TOOLS = { normal: 'QA_RUN_SUITE', privileged: 'QA_RUN_PRIVILEGED_SUITE' } as const;
-export const isQaTool = (tool: string) => tool === QA_TOOLS.normal || tool === QA_TOOLS.privileged;
+export const QA_TOOLS = { normal: 'QA_RUN_SUITE', privileged: 'QA_RUN_PRIVILEGED_SUITE', api: 'QA_RUN_API_TESTS' } as const;
+export const isQaTool = (tool: string) => tool === QA_TOOLS.normal || tool === QA_TOOLS.privileged || tool === QA_TOOLS.api;
 
 /** "online-shop/backend-unit @ 39a6a0b" for QA runs, otherwise the tool name. */
 export function runLabel(run: Run): string {

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, newKey } from '../api/client';
 import type { ModelCall, Page, PlanExecution, Task } from '../api/types';
 import { RunSuiteForm, isQaTool, runLabel } from '../components/qa';
+import { RunApiTestsForm } from '../components/qaApiTests';
 import { Empty, ErrorBanner, Section, ShortId, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
@@ -91,6 +92,11 @@ function Runs({ taskId }: { taskId: string }) {
     {can('OPERATOR') && (
       <Section title="Run test suite">
         <RunSuiteForm taskId={taskId} onStarted={() => void runs.reload()} />
+      </Section>
+    )}
+    {can('OPERATOR') && (
+      <Section title="Run API tests">
+        <RunApiTestsForm taskId={taskId} onStarted={() => void runs.reload()} />
       </Section>
     )}
     <Section title="Runs">

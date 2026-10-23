@@ -7,12 +7,37 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-/** Schedules are readable by viewers; creating, enabling and deleting them is an approver action. */
+/** Schedules and environments are readable by viewers; changing them is an approver action. */
 @RestController
 @RequestMapping("/api/v1/qa")
 public class QaScheduleController {
     private final QaSchedules schedules;
-    public QaScheduleController(QaSchedules schedules) { this.schedules = schedules; }
+    private final QaEnvironments environments;
+    private final QaApiTestTool apiTests;
+    public QaScheduleController(QaSchedules schedules, QaEnvironments environments, QaApiTestTool apiTests) {
+        this.schedules = schedules; this.environments = environments; this.apiTests = apiTests;
+    }
+
+    /** API test collections declared in the repository at a ref, plus the environments they can run against. */
+    @GetMapping("/projects/{project}/api-tests")
+    public QaApiTestTool.Catalog apiTests(@PathVariable String project, @RequestParam(required = false) String ref) {
+        try { return apiTests.catalog(project, ref); }
+        catch (IllegalArgumentException ex) { throw new com.enterprise.agentharness.run.RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
+    }
+
+    @GetMapping("/environments")
+    public List<QaEnvironments.Environment> environments(@RequestParam(required = false) String project) { return environments.list(project); }
+
+    @PutMapping("/admin/projects/{project}/environments/{key}")
+    public QaEnvironments.Environment putEnvironment(@PathVariable String project, @PathVariable String key, @RequestBody JsonNode body) {
+        return environments.put(project, key, body);
+    }
+
+    @DeleteMapping("/admin/projects/{project}/environments/{key}")
+    public ResponseEntity<Void> deleteEnvironment(@PathVariable String project, @PathVariable String key) {
+        environments.delete(project, key);
+        return ResponseEntity.noContent().build();
+    }
 
     @GetMapping("/schedules")
     public List<QaSchedules.Schedule> list(@RequestParam(required = false) String project) { return schedules.list(project); }
