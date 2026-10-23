@@ -10,8 +10,8 @@ import java.util.TreeSet;
 
 /**
  * Works out what a change could break in a Maven multi-module build: the modules containing changed files, every
- * module that depends on them, and the test classes in those modules. It is advisory: it explains scope and risk,
- * it does not decide which tests may be skipped.
+ * module that depends on them, and the test classes in those modules. It explains scope and risk; whether a run
+ * may be narrowed to these modules is decided separately and conservatively by {@link ImpactSelection}.
  */
 public final class ChangeImpactAnalyzer {
     static final int MAX_CHANGED_FILES = 2000;
