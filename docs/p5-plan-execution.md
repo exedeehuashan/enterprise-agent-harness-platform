@@ -118,3 +118,28 @@ active execution per task, roles, request validation and history.
 
 Local results: the 14 new tests pass, and the related suites (run, approval,
 planning, task edit; 130 tests) pass unchanged. The full `mvn verify` runs in CI.
+
+## Hands-on Verification
+
+1. As operator, create a task and a plan; poll until the model call is VALIDATED.
+2. POST its executions endpoint with a new Idempotency-Key and `{}`; expect 202,
+   a Location, and step 1 LAUNCHED with a WAITING_APPROVAL run (Mock plans use
+   DEMO_REVIEW).
+3. Replay the same key; expect the same execution ID. A different key returns 409.
+4. Approve the step run's approval as admin with its exact digest.
+5. Poll the execution; expect COMPLETED with the step and run COMPLETED.
+6. Start another execution and cancel it; expect CANCELLED, and 200 on repeat.
+
+## Observed local results
+
+The local deployment backed up the database (`pre-p5.dump`) and the prior JAR,
+then applied V6 with V1–V5 still valid; prior tasks and P3/P4 approvals remained.
+HTTP checks against the running backend confirmed: viewer start 403; operator
+start 202 with Location; step run waiting for approval with zero invocations;
+same-key replay returned the same execution; a different key 409; operator
+decision 403 and admin approval 200; execution COMPLETED with the approval
+CONSUMED; audit linking operator RUN_CREATED/PLAN_STEP_LAUNCHED, admin approval
+and worker dispatch/completion; task summary COMPLETED. A second execution
+cancelled while waiting for approval became CANCELLED with its run CANCELLED,
+and a repeated cancel returned 200. The completed execution response was
+byte-identical after a backend restart.
