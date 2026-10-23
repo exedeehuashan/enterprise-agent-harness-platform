@@ -8,7 +8,25 @@ import type { PullRequestRun } from '../api/types';
 const REASONS: Record<string, string> = {
   FORK_NOT_TRUSTED: 'From a fork: not run automatically',
   SUITE_UNAVAILABLE: 'Suite disabled',
+  NOT_AFFECTED: 'No backend module affected: not needed',
 };
+
+/** Why a selective suite still ran in full. */
+const FULL_REASONS: Record<string, string> = {
+  BUILD_CHANGED: 'build files changed', IMPACT_UNAVAILABLE: 'impact unavailable', TOO_MANY_CHANGES: 'too many changes',
+  TOO_MANY_MODULES: 'too many modules', ROOT_MODULE: 'root module changed', NOT_MAVEN: 'not a Maven build',
+};
+
+function Scope({ row }: { row: PullRequestRun }) {
+  if (row.selection === 'MODULES' && row.selectedModules?.length) {
+    const n = row.selectedModules.length;
+    return <div className="muted small" title={row.selectedModules.join('\n')}>{n} affected module{n === 1 ? '' : 's'} only</div>;
+  }
+  if (row.selection === 'FULL' && row.selectionReason && FULL_REASONS[row.selectionReason]) {
+    return <div className="muted small">full suite: {FULL_REASONS[row.selectionReason]}</div>;
+  }
+  return null;
+}
 
 /** What the GitHub poller saw for each pull request head commit, and what EAHP did about it. */
 export function PullRequestsPage() {
@@ -31,7 +49,7 @@ export function PullRequestsPage() {
         ))}
       </Section>
       <Section title="Pull request runs">
-        <p className="muted small">Each new head commit of a same-repository pull request runs the project's enabled trigger suites. A newer push supersedes the previous commit's run. Results are not posted back to GitHub.</p>
+        <p className="muted small">Each new head commit of a same-repository pull request runs the project's enabled trigger suites. A newer push supersedes the previous commit's run. Suites that declare <code>maven-modules</code> selection run only the affected modules. Results are not posted back to GitHub.</p>
         <ErrorBanner error={rows.error} />
         {rows.data?.length === 0 && <Empty>No pull requests have been seen yet.</Empty>}
         {rows.data && rows.data.length > 0 && (
@@ -43,7 +61,7 @@ export function PullRequestsPage() {
                 <td className="wrap-cell"><a href={r.prUrl} target="_blank" rel="noopener noreferrer">{r.projectKey} #{r.prNumber}</a> {r.prTitle}</td>
                 <td><code title={r.headSha}>{r.headSha.slice(0, 7)}</code></td>
                 <td>{r.suiteKey}</td>
-                <td><Status value={r.status} />{r.skipReason && <div className="muted small">{REASONS[r.skipReason] ?? r.skipReason}</div>}</td>
+                <td><Status value={r.status} />{r.skipReason && <div className="muted small">{REASONS[r.skipReason] ?? r.skipReason}</div>}<Scope row={r} /></td>
                 <td>{r.runId ? <Link to={`/runs/${r.runId}`}><Status value={r.runStatus} /></Link> : <span className="muted">—</span>}
                   {r.runErrorCode && <div className="muted small">{r.runErrorCode}</div>}</td>
                 <td><Time value={r.createdAt} /></td>

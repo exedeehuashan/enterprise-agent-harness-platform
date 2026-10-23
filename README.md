@@ -342,9 +342,17 @@ See [P13 design notes](docs/p13-test-history-and-triage.md).
 **Change impact.** For each pull request commit EAHP diffs against the PR's merge
 base and reports the changed files, the affected Maven modules (including modules
 that depend on changed ones), the test classes in scope and warnings such as
-changed modules without tests. It is advisory and does not skip tests:
-`GET /api/v1/qa/pull-requests/{id}/impact`, or the Impact toggle on the console's
-Pull requests page. See [P14 design notes](docs/p14-change-impact-analysis.md).
+changed modules without tests: `GET /api/v1/qa/pull-requests/{id}/impact`, or the
+Impact toggle on the console's Pull requests page. See
+[P14 design notes](docs/p14-change-impact-analysis.md).
+
+**Impact-based test selection.** A suite that declares `"selection": "maven-modules"`
+runs on pull requests with only the affected modules and their dependencies
+(`-pl … -am`), is skipped as `NOT_AFFECTED` when no module changed, and runs in full
+whenever the impact is uncertain (build files, `.mvn/`, the suites file, too many
+changes). Manual runs may pass `modules`. The selection is bound into the run and
+the gate notes when a suite ran only some modules. See
+[P19 design notes](docs/p19-impact-based-test-selection.md).
 
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,

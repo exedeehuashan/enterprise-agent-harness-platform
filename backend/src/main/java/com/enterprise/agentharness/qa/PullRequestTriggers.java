@@ -1,5 +1,7 @@
 package com.enterprise.agentharness.qa;
 
+import com.enterprise.agentharness.qa.impact.ChangeImpactService;
+import com.enterprise.agentharness.qa.impact.ImpactSelection;
 import com.enterprise.agentharness.run.RunException;
 import com.enterprise.agentharness.run.RunService;
 import com.enterprise.agentharness.run.StartRunRequest;
@@ -19,7 +21,9 @@ import org.springframework.stereotype.Service;
 /**
  * Turns open pull requests into QA runs (方案 4, event-driven testing). For each registered GitHub project and
  * each enabled trigger suite, every new PR head commit gets one run pinned to that commit. A newer commit
- * supersedes the previous one: its pending row is marked SUPERSEDED and its active run is cancelled. Pull
+ * supersedes the previous one: its pending row is marked SUPERSEDED and its active run is cancelled. A suite that
+ * declares {@code maven-modules} selection runs only the modules the change affects, or is skipped when it affects
+ * none; anything uncertain runs in full (see {@link ImpactSelection}). Pull
  * requests from forks are recorded but never run, because their code is untrusted. Nothing is written to GitHub.
  */
 @Service
@@ -32,14 +36,16 @@ public class PullRequestTriggers {
     private final AgentTaskService tasks;
     private final RunService runs;
     private final QaSuiteResolver resolver;
+    private final ChangeImpactService impacts;
 
-    public PullRequestTriggers(JdbcTemplate jdbc, QaRegistry registry, GitHubClient github, AgentTaskService tasks, RunService runs, QaSuiteResolver resolver) {
-        this.jdbc = jdbc; this.registry = registry; this.github = github; this.tasks = tasks; this.runs = runs; this.resolver = resolver;
+    public PullRequestTriggers(JdbcTemplate jdbc, QaRegistry registry, GitHubClient github, AgentTaskService tasks, RunService runs, QaSuiteResolver resolver,
+            ChangeImpactService impacts) {
+        this.jdbc = jdbc; this.registry = registry; this.github = github; this.tasks = tasks; this.runs = runs; this.resolver = resolver; this.impacts = impacts;
     }
 
     public record PullRequestRun(UUID id, String projectKey, int prNumber, String headSha, String suiteKey, String prTitle, String prUrl,
             String headRef, String status, String skipReason, UUID taskId, UUID runId, String runStatus, String runErrorCode,
-            Instant createdAt, Instant startedAt, String baseSha) {}
+            Instant createdAt, Instant startedAt, String baseSha, String selection, String selectionReason, List<String> selectedModules) {}
     public record Poll(String projectKey, Instant lastPolledAt, Instant lastSuccessAt, Integer openPullRequests, String lastError) {}
 
     /** One polling cycle: record new PR head commits, then start whatever can start now. */
@@ -109,11 +115,23 @@ public class PullRequestTriggers {
         var row = jdbc.queryForMap("SELECT * FROM qa_pr_runs WHERE id=?", id);
         String project = (String) row.get("project_key"), suiteKey = (String) row.get("suite_key"), sha = (String) row.get("head_sha");
         int number = ((Number) row.get("pr_number")).intValue();
-        SuiteDefinition suite;
+        QaSuiteResolver.Resolved resolved;
         try {
-            suite = resolver.resolve(project, suiteKey, sha).suite();
+            resolved = resolver.resolve(project, suiteKey, sha);
         } catch (IllegalArgumentException ex) {
             skip(id, ex.getMessage() != null && ex.getMessage().startsWith("invalid suites file") ? "INVALID_SUITES_FILE" : "SUITE_UNAVAILABLE");
+            return;
+        }
+        SuiteDefinition suite = resolved.suite();
+        ImpactSelection.Decision selection = SuiteDefinition.MAVEN_MODULES.equals(suite.selection())
+                ? ImpactSelection.decide(impacts.forPullRequestRun(id).impact(), resolved.project().suitesFile())
+                : ImpactSelection.Decision.full("SUITE_NOT_SELECTIVE");
+        var selected = JsonNodeFactory.instance.arrayNode();
+        selection.modules().forEach(selected::add);
+        jdbc.update("UPDATE qa_pr_runs SET selection=?, selection_reason=?, selected_modules=?::jsonb WHERE id=?", selection.mode().name(), selection.reason(),
+                selected.isEmpty() ? null : selected.toString(), id);
+        if (selection.mode() == ImpactSelection.Mode.NOT_AFFECTED) {
+            skip(id, "NOT_AFFECTED");
             return;
         }
 
@@ -136,6 +154,7 @@ public class PullRequestTriggers {
             taskId = tasks.create(new CreateTaskRequest(title, description)).id();
         }
         var args = JsonNodeFactory.instance.objectNode().put("project", project).put("suite", suiteKey).put("ref", sha);
+        if (selection.mode() == ImpactSelection.Mode.MODULES) args.set("modules", selected);
         String tool = suite.dockerAccess() ? "QA_RUN_PRIVILEGED_SUITE" : "QA_RUN_SUITE";
         String key = "github-pr-" + number + "-" + sha.substring(0, 12) + "-" + suiteKey;
         try {
@@ -172,7 +191,13 @@ public class PullRequestTriggers {
         return new PullRequestRun(r.getObject("id", UUID.class), r.getString("project_key"), r.getInt("pr_number"), r.getString("head_sha"),
                 r.getString("suite_key"), r.getString("pr_title"), r.getString("pr_url"), r.getString("head_ref"), r.getString("status"),
                 r.getString("skip_reason"), r.getObject("task_id", UUID.class), r.getObject("run_id", UUID.class), r.getString("run_status"),
-                r.getString("run_error"), instant(r, "created_at"), instant(r, "started_at"), r.getString("base_sha"));
+                r.getString("run_error"), instant(r, "created_at"), instant(r, "started_at"), r.getString("base_sha"),
+                r.getString("selection"), r.getString("selection_reason"), modules(r.getString("selected_modules")));
+    }
+    private static List<String> modules(String json) {
+        if (json == null) return List.of();
+        try { return List.of(new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, String[].class)); }
+        catch (java.io.IOException ex) { return List.of(); }
     }
     private static Instant instant(ResultSet r, String key) throws SQLException { var t = r.getTimestamp(key); return t == null ? null : t.toInstant(); }
 }

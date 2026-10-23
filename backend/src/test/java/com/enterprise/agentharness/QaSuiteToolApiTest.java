@@ -84,7 +84,7 @@ class QaSuiteToolApiTest {
             }
             if (argv.get(0).equals("git") && argv.contains("clone")) { Files.createDirectories(Path.of(argv.get(argv.size()-1))); return new Result(cloneExit,false,false); }
             if (argv.get(0).equals("git") && argv.contains("cat-file") && argv.get(argv.size()-1).contains(":")) {
-                if (repoFile == null) return new Result(128,false,false);
+                if (repoFile == null || argv.get(argv.size()-1).contains("missing-module")) return new Result(128,false,false);
                 if (argv.contains("-p")) Files.writeString(logFile, repoFile);
                 return new Result(0,false,false);
             }
@@ -362,6 +362,37 @@ class QaSuiteToolApiTest {
         assertThat(dockerRun()).contains("-DexcludedGroups=docker").doesNotContain("-Dtest=!CatalogApiTest,!PostgresPersistenceTest,!OrderApiTest,!IdentityPersistenceTest")
                 .containsSequence("--network","bridge");
         assertThat(summary(run).get("suiteSource").asText()).isEqualTo("repository");
+    }
+
+    @Test
+    void selectiveSuitesRunOnlyTheRequestedModulesAndTheGateSaysSo() throws Exception {
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"selection\":\"maven-modules\"}");
+        String c="c".repeat(40);
+        UUID run=UUID.fromString(mapper.readTree(start(task(),"sel","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":900,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"ref\":\""+c+"\","
+                +"\"modules\":[\"backend/order-api\",\"backend/catalog-api\",\"backend/order-api\"]}}")
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.arguments.modules.length()").value(2))
+                .andExpect(jsonPath("$.arguments.modules[0]").value("backend/catalog-api"))
+                .andReturn().getResponse().getContentAsString()).get("id").asText());
+        worker();
+        assertThat(runs.get(run).status()).isEqualTo("COMPLETED");
+        assertThat(dockerRun()).endsWith("-DexcludedGroups=docker","-pl","backend/catalog-api,backend/order-api","-am");
+        assertThat(summary(run).get("scope").asText()).isEqualTo("MODULES");
+        assertThat(summary(run).get("modules").get(1).asText()).isEqualTo("backend/order-api");
+        ingestor.runOnce();
+        var gate=gate(c);
+        assertThat(gate.get("verdict").asText()).isEqualTo("PASS");
+        assertThat(gate.get("suites").get(0).get("modules").get(0).asText()).isEqualTo("backend/catalog-api");
+        assertThat(gate.get("notes").get(0).asText()).isEqualTo("backend-unit ran only the affected modules at this commit: backend/catalog-api, backend/order-api.");
+
+        for (String modules : List.of("[]","\"backend/order-api\"","[\"../etc\"]","[\"/abs\"]","[\"backend/missing-module\"]","[1]")) {
+            start(task(),"bad"+modules.hashCode(),"{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":900,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"modules\":"+modules+"}}")
+                    .andExpect(status().isBadRequest());
+        }
+        start(task(),"smoke-sel","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"smoke\",\"modules\":[\"backend/order-api\"]}}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("does not support module selection")));
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":600}","\"timeoutSeconds\":600,\"selection\":\"all\"}");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER)))
+                .andExpect(jsonPath("$.repositoryFile").value("invalid")).andExpect(jsonPath("$.repositoryError").value("invalid suites file: smoke: selection must be maven-modules"));
     }
 
     @Test
