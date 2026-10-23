@@ -61,11 +61,12 @@ public class AnthropicLlm implements LlmProvider {
         } catch (RuntimeException ex) {
             throw new LlmException("AI_UNAVAILABLE", "The model provider could not be reached.");
         }
+        long in = message.usage().inputTokens(), out = message.usage().outputTokens();
         if (message.stopReason().filter(StopReason.REFUSAL::equals).isPresent()) {
-            throw new LlmException("AI_REFUSED", "The model declined this request.");
+            throw new LlmException("AI_REFUSED", "The model declined this request.", in, out);
         }
         if (message.stopReason().filter(StopReason.MAX_TOKENS::equals).isPresent()) {
-            throw new LlmException("AI_TRUNCATED", "The answer exceeded the output limit.");
+            throw new LlmException("AI_TRUNCATED", "The answer exceeded the output limit.", in, out);
         }
         var text = new StringBuilder();
         message.content().forEach(block -> block.text().ifPresent(t -> text.append(t.text())));

@@ -23,7 +23,14 @@ public interface LlmProvider {
     /** A failure with a bounded code that is safe to show (never the provider's raw message, which may echo input). */
     class LlmException extends Exception {
         private final String code;
-        public LlmException(String code, String message) { super(message); this.code = code; }
+        private final long inputTokens, outputTokens;
+        public LlmException(String code, String message) { this(code, message, 0, 0); }
+        /** For failures after the provider answered (refusal, truncation): the tokens it still charged. */
+        public LlmException(String code, String message, long inputTokens, long outputTokens) {
+            super(message); this.code = code; this.inputTokens = inputTokens; this.outputTokens = outputTokens;
+        }
         public String code() { return code; }
+        public long inputTokens() { return inputTokens; }
+        public long outputTokens() { return outputTokens; }
     }
 }

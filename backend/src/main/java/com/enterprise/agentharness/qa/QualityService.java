@@ -86,7 +86,7 @@ public class QualityService {
             List<String> modules = modules(row.get("modules"));
             if (!modules.isEmpty()) notes.add(suite + " ran only the affected modules at this commit: " + String.join(", ", modules) + ".");
             Double lineCoverage = lineCoverage(runId);
-            String coverageFailure = coverageFailure(policy, suite, modules, lineCoverage, notes);
+            String coverageFailure = coverageFailure(policy, suite, modules, exactLineCoverage(runId), lineCoverage, notes);
             if ("PASSED".equals(outcome) && coverageFailure != null) {
                 failed = true;
                 checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, null, coverageFailure, modules, lineCoverage));
@@ -96,7 +96,12 @@ public class QualityService {
                 if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
             } else {
                 var waiver = "TESTS_FAILED".equals(outcome) ? quarantineWaiver(project, suite, row) : null;
-                if (waiver != null && waiver.accepted()) {
+                if (waiver != null && waiver.accepted() && coverageFailure != null) {
+                    // A quarantine waives test failures, not the separate coverage requirement.
+                    failed = true;
+                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, coverageFailure, modules, lineCoverage));
+                    reasons.add(coverageFailure);
+                } else if (waiver != null && waiver.accepted()) {
                     checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, category, waiver.message(), modules, lineCoverage));
                     notes.add(waiver.message());
                     if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
@@ -229,22 +234,28 @@ public class QualityService {
 
     /** Line coverage the run recorded, in percent with one decimal, or null when it reported none. */
     private Double lineCoverage(UUID runId) {
+        Double exact = exactLineCoverage(runId);
+        return exact == null ? null : Math.floor(exact * 10) / 10.0; // display value; never rounds up past a threshold
+    }
+
+    /** Unrounded percentage, used for threshold checks (99.95% must not pass a 100% minimum). */
+    private Double exactLineCoverage(UUID runId) {
         var rows = jdbc.queryForList("SELECT lines_covered, lines_missed FROM qa_coverage WHERE run_id=?", runId);
         if (rows.isEmpty()) return null;
         long covered = ((Number) rows.get(0).get("lines_covered")).longValue(), missed = ((Number) rows.get(0).get("lines_missed")).longValue();
-        return covered + missed == 0 ? null : Math.round(1000.0 * covered / (covered + missed)) / 10.0;
+        return covered + missed == 0 ? null : 100.0 * covered / (covered + missed);
     }
 
     /**
      * The gate's coverage requirement for a passing suite: null when met or not configured. A module-selected run
      * only covers part of the code, so its percentage is not comparable and the check is skipped with a note.
      */
-    private static String coverageFailure(GatePolicy policy, String suite, List<String> modules, Double coverage, List<String> notes) {
+    private static String coverageFailure(GatePolicy policy, String suite, List<String> modules, Double exact, Double display, List<String> notes) {
         Double min = policy.minLineCoverage().get(suite);
         if (min == null) return null;
         if (!modules.isEmpty()) { notes.add("Coverage of " + suite + " was not checked: the run covered only selected modules."); return null; }
-        if (coverage == null) return suite + " passed but reported no coverage; the gate requires at least " + min + "% line coverage.";
-        if (coverage < min) return suite + " line coverage " + coverage + "% is below the gate's " + min + "%.";
+        if (exact == null) return suite + " passed but reported no coverage; the gate requires at least " + min + "% line coverage.";
+        if (exact < min) return suite + " line coverage " + display + "% is below the gate's " + min + "%.";
         return null;
     }
 

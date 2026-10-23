@@ -104,7 +104,7 @@ public class QaSchedules {
         if (taskId == null || jdbc.queryForObject("SELECT count(*) FROM agent_tasks WHERE id=?", Long.class, taskId) == 0) {
             String title = (s.kind().equals("CRON") ? "Scheduled " : "On change: ") + s.suiteKey() + " on " + s.projectKey() + "@" + s.ref()
                     + (s.environment() == null ? "" : " against " + s.environment());
-            taskId = tasks.create(new CreateTaskRequest(title, "Created by EAHP schedule " + s.id() + ".")).id();
+            taskId = tasks.create(new CreateTaskRequest(PullRequestTriggers.clean(title, 255), "Created by EAHP schedule " + s.id() + ".")).id();
             jdbc.update("UPDATE qa_schedules SET task_id=? WHERE id=?", taskId, s.id());
         }
         if (jdbc.queryForObject("SELECT count(*) FROM agent_runs WHERE task_id=? AND status IN ('QUEUED','RUNNING','WAITING_APPROVAL')", Long.class, taskId) > 0) {
