@@ -225,6 +225,7 @@ describe('quality page', () => {
       'GET /qa/projects/online-shop/gate': () => ({ body: { project: 'online-shop', commit: '1ca9ae5'.padEnd(40, '0'), verdict: 'FAIL',
         suites: [], reasons: ['backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).'], notes: ['Already failing in backend-unit: CatalogMigrationTest.'],
         policy: { requiredSuites: ['backend-unit'] } } }),
+      'GET /qa/quarantines': () => ({ body: [] }),
     });
     renderApp('/qa/quality');
     expect(await screen.findByText('50%')).toBeInTheDocument();
@@ -242,6 +243,41 @@ describe('quality page', () => {
     expect(screen.getByText('Already failing in backend-unit: CatalogMigrationTest.')).toBeInTheDocument();
     expect(calls.find(c => c.path.startsWith('/qa/projects/online-shop/gate'))?.path).toBe('/qa/projects/online-shop/gate?ref=main');
     expect(screen.getByRole('link', { name: 'Quality' })).toBeInTheDocument();
+    expect(screen.getByText('No test is quarantined.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Quarantine' })).not.toBeInTheDocument();
+  });
+
+  it('lets approvers quarantine a failing test with a reason and release it', async () => {
+    tokenStore.set(TOKEN);
+    const failing = { suite: 'frontend-unit', testClass: 'src/cart.test.tsx', testName: 'totals', category: 'ASSERTION', consecutiveFailures: 2, failingSince: null, failingSinceAt: null };
+    let active: unknown[] = [];
+    const calls = fakeApi({
+      'GET /me': () => ({ body: { name: 'admin', roles: ['APPROVER', 'OPERATOR', 'VIEWER'] } }),
+      'GET /qa/projects': () => ({ body: projects }),
+      'GET /qa/projects/online-shop/dashboard': () => ({ body: { project: 'online-shop', days: 14, runs: 1, passed: 0, passRate: 0, gate: null,
+        suites: [], failingNow: [failing], flaky: [], slowest: [], pullRequests: [] } }),
+      'GET /qa/quarantines': () => ({ body: active }),
+      'POST /qa/admin/quarantines': () => {
+        active = [{ id: 'q1', projectKey: 'online-shop', suiteKey: 'frontend-unit', testClass: 'src/cart.test.tsx', testName: 'totals',
+          reason: 'Rounding bug tracked in issue 7', createdBy: 'admin', createdAt: '2026-10-24T00:00:00Z', expiresAt: '2026-10-31T00:00:00Z',
+          releasedAt: null, releasedBy: null, active: true }];
+        return { status: 201, body: active[0] };
+      },
+      'POST /qa/admin/quarantines/q1/release': () => { active = []; return { body: {} }; },
+    });
+    renderApp('/qa/quality');
+    await userEvent.selectOptions(await screen.findByLabelText('Failing test'), 'frontend-unit: src/cart.test.tsx#totals');
+    await userEvent.type(screen.getByLabelText('Reason'), 'Rounding bug tracked in issue 7');
+    await userEvent.clear(screen.getByLabelText('Days'));
+    await userEvent.type(screen.getByLabelText('Days'), '7');
+    await userEvent.click(screen.getByRole('button', { name: 'Quarantine' }));
+    expect(await screen.findByText('Rounding bug tracked in issue 7')).toBeInTheDocument();
+    expect(calls.find(c => c.method === 'POST' && c.path === '/qa/admin/quarantines')?.body).toEqual({ project: 'online-shop', suite: 'frontend-unit',
+      testClass: 'src/cart.test.tsx', testName: 'totals', reason: 'Rounding bug tracked in issue 7', days: 7 });
+    expect(screen.queryByLabelText('Failing test')).not.toBeInTheDocument();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Release' }));
+    expect(await screen.findByText('No test is quarantined.')).toBeInTheDocument();
   });
 });
 

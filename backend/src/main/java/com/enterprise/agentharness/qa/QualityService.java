@@ -24,8 +24,9 @@ public class QualityService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final QaTriageService triage;
-    public QualityService(JdbcTemplate jdbc, ObjectMapper mapper, QaTriageService triage) {
-        this.jdbc = jdbc; this.mapper = mapper; this.triage = triage;
+    private final QaQuarantines quarantines;
+    public QualityService(JdbcTemplate jdbc, ObjectMapper mapper, QaTriageService triage, QaQuarantines quarantines) {
+        this.jdbc = jdbc; this.mapper = mapper; this.triage = triage; this.quarantines = quarantines;
     }
 
     public record GatePolicy(List<String> requiredSuites) {}
@@ -62,7 +63,8 @@ public class QualityService {
         boolean pending = false, failed = false;
         for (String suite : policy.requiredSuites()) {
             var latest = jdbc.queryForList("""
-                    SELECT i.run_id, i.outcome, i.category, r.arguments::jsonb->'modules' AS modules FROM qa_run_ingestions i JOIN agent_runs r ON r.id = i.run_id
+                    SELECT i.run_id, i.outcome, i.category, i.test_count, i.failed_count, r.created_at, r.arguments::jsonb->'modules' AS modules
+                    FROM qa_run_ingestions i JOIN agent_runs r ON r.id = i.run_id
                     WHERE i.project_key=? AND i.suite_key=? AND i.commit_sha=? ORDER BY r.created_at DESC LIMIT 1
                     """, project, suite, commit);
             boolean active = !jdbc.queryForList("""
@@ -85,10 +87,18 @@ public class QualityService {
                 checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, null, active ? suite + " passed but is running again." : null, modules));
                 if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
             } else {
-                failed = true;
-                String reason = suite + " " + (outcome == null ? "did not produce a result" : "failed (" + outcome + (category == null ? "" : ", " + category) + ")") + ".";
-                checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason, modules));
-                reasons.add(reason);
+                var waiver = "TESTS_FAILED".equals(outcome) ? quarantineWaiver(project, suite, row) : null;
+                if (waiver != null && waiver.accepted()) {
+                    checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, category, waiver.message(), modules));
+                    notes.add(waiver.message());
+                    if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
+                } else {
+                    failed = true;
+                    String reason = suite + " " + (outcome == null ? "did not produce a result" : "failed (" + outcome + (category == null ? "" : ", " + category) + ")") + ".";
+                    if (waiver != null) reason += " " + waiver.message();
+                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason, modules));
+                    reasons.add(reason);
+                }
             }
             for (var f : triage.triage(runId).failures()) {
                 String test = f.testClass() + (f.testName().isEmpty() ? "" : "#" + f.testName());
@@ -207,6 +217,40 @@ public class QualityService {
                     gate(project, head).verdict(), modules, notes));
         }
         return result;
+    }
+
+    record Waiver(boolean accepted, String message) {}
+
+    /**
+     * A run whose only failures are quarantined tests does not block the gate, provided the rest of the suite still
+     * ran: Maven skips modules downstream of a failure, so the run must have executed at least as many tests as the
+     * suite's last passing run with the same scope. Null when some failure is not quarantined.
+     */
+    private Waiver quarantineWaiver(String project, String suite, Map<String, Object> run) {
+        UUID runId = (UUID) run.get("run_id");
+        var failures = jdbc.queryForList("SELECT test_class, test_name FROM qa_test_results WHERE run_id=? AND status IN ('FAILED','ERROR')", runId);
+        int failedCount = ((Number) run.get("failed_count")).intValue();
+        if (failures.isEmpty() || failures.size() != failedCount) return null;
+        for (var f : failures) {
+            if (!quarantines.active(project, suite, (String) f.get("test_class"), (String) f.get("test_name"))) return null;
+        }
+        String tests = failures.stream().map(f -> f.get("test_class") + (((String) f.get("test_name")).isEmpty() ? "" : "#" + f.get("test_name")))
+                .sorted().collect(java.util.stream.Collectors.joining(", "));
+        var baseline = jdbc.queryForList("""
+                SELECT i.test_count FROM qa_run_ingestions i JOIN agent_runs r ON r.id = i.run_id
+                WHERE i.project_key=? AND i.suite_key=? AND i.outcome='PASSED' AND r.created_at < ?
+                  AND (r.arguments::jsonb->'modules') IS NOT DISTINCT FROM ?::jsonb
+                ORDER BY r.created_at DESC LIMIT 1
+                """, Integer.class, project, suite, run.get("created_at"), run.get("modules") == null ? null : run.get("modules").toString());
+        int ran = ((Number) run.get("test_count")).intValue();
+        if (baseline.isEmpty()) {
+            return new Waiver(false, "Only quarantined tests failed (" + tests + "), but no earlier passing run of " + suite + " confirms the rest of the suite ran.");
+        }
+        if (ran < baseline.get(0)) {
+            return new Waiver(false, "Only quarantined tests failed (" + tests + "), but the run executed " + ran + " tests, fewer than the "
+                    + baseline.get(0) + " of its last passing run, so tests after the failure may not have run.");
+        }
+        return new Waiver(true, suite + " failed only in quarantined tests, which do not block the gate: " + tests + ".");
     }
 
     private List<String> modules(Object json) {

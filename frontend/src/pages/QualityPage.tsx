@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import type { Gate, QualityDashboard } from '../api/types';
+import { QuarantinePanel, testLabel as test } from '../components/qaQuarantines';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 
 const percent = (v: number | null) => (v === null ? '—' : `${v}%`);
-const test = (cls: string, name: string) => `${cls.split('.').pop()}${name ? `#${name}` : ''}`;
 const label = (s: string | null) => (s ? s.replace(/_/g, ' ').toLowerCase() : '—');
 
 /** Release readiness for one project: gate verdicts, pass-rate trend, failing, flaky and slow tests. */
@@ -76,6 +76,7 @@ export function QualityPage() {
               </table></div>
             )}
           </Section>
+          <QuarantinePanel project={project.key} failing={d.failingNow} />
           <div className="grid-2">
             <Section title="Flaky tests">
               {d.flaky.length === 0 ? <Empty>No flaky tests in this period.</Empty> : (

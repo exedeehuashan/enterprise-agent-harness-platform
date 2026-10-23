@@ -148,7 +148,7 @@ class QaSuiteToolApiTest {
         reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();
         jdbc.update("DELETE FROM qa_schedules WHERE id<>'6b8c0f2e-7f3a-4c1e-9a54-3d2f0e5b7a10'");
         jdbc.update("UPDATE qa_schedules SET enabled=FALSE, last_commit=NULL, last_run_id=NULL, task_id=NULL, last_error=NULL");
-        jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");
+        jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");jdbc.update("DELETE FROM qa_quarantines");
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE, allow_docker_access=TRUE, allow_network_egress=TRUE, max_timeout_seconds=2400, allowed_images='[\"maven:3.9.11-eclipse-temurin-17\"]'");
     }
 
@@ -559,6 +559,61 @@ class QaSuiteToolApiTest {
     private JsonNode gate(String ref) throws Exception {
         return mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/gate").param("ref",ref).header("Authorization",auth(VIEWER)))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private ResultActions quarantine(String token,String body) throws Exception {
+        return mvc.perform(post("/api/v1/qa/admin/quarantines").header("Authorization",auth(token)).contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    @Test
+    void quarantinedFailuresDoNotBlockTheGateWhileTheRestOfTheSuiteRan() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40),c="c".repeat(40);
+        UUID task=task();
+        runAt(task,"q1",a,PASS,0);ingestor.runOnce();
+        runAt(task,"q2",b,ORDER_FAIL,1);ingestor.runOnce();
+        assertThat(gate(b).get("verdict").asText()).isEqualTo("FAIL");
+
+        String body="{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"testClass\":\"OrderTest\",\"testName\":\"creates\",\"reason\":\"Flaky clock in CI, tracked in issue 12\",\"days\":7}";
+        quarantine(OPERATOR,body).andExpect(status().isForbidden());
+        quarantine(ADMIN,body.replace("\"days\":7","\"days\":31")).andExpect(status().isBadRequest());
+        quarantine(ADMIN,body.replace("Flaky clock in CI, tracked in issue 12","flaky")).andExpect(status().isBadRequest());
+        quarantine(ADMIN,body.replace("\"days\":7","\"days\":7,\"extra\":1")).andExpect(status().isBadRequest());
+        quarantine(ADMIN,body.replace("online-shop","nope")).andExpect(status().isNotFound());
+        String id=mapper.readTree(quarantine(ADMIN,body).andExpect(status().isCreated()).andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdBy").value("admin")).andReturn().getResponse().getContentAsString()).get("id").asText();
+        quarantine(ADMIN,body).andExpect(status().isConflict());
+
+        var waived=gate(b);
+        assertThat(waived.get("verdict").asText()).isEqualTo("PASS");
+        assertThat(waived.get("suites").get(0).get("status").asText()).isEqualTo("PASSED");
+        assertThat(waived.get("suites").get(0).get("outcome").asText()).isEqualTo("TESTS_FAILED");
+        assertThat(waived.get("notes").toString()).contains("backend-unit failed only in quarantined tests, which do not block the gate: OrderTest#creates.");
+
+        // Fewer tests than the last passing run: something after the failure may not have run, so the gate still fails.
+        runAt(task,"q3",c,"<testsuite name=\"OrderTest\" tests=\"1\" failures=\"1\"><testcase classname=\"OrderTest\" name=\"creates\"><failure message=\"x\"/></testcase></testsuite>",1);
+        ingestor.runOnce();
+        var partial=gate(c);
+        assertThat(partial.get("verdict").asText()).isEqualTo("FAIL");
+        assertThat(partial.get("reasons").get(0).asText()).contains("executed 1 tests, fewer than the 2 of its last passing run");
+
+        mvc.perform(get("/api/v1/qa/quarantines").param("project","online-shop").header("Authorization",auth(VIEWER)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].testName").value("creates"));
+        mvc.perform(post("/api/v1/qa/admin/quarantines/"+id+"/release").header("Authorization",auth(OPERATOR))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/qa/admin/quarantines/"+id+"/release").header("Authorization",auth(ADMIN))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false)).andExpect(jsonPath("$.releasedBy").value("admin"));
+        assertThat(gate(b).get("verdict").asText()).isEqualTo("FAIL");
+        mvc.perform(get("/api/v1/qa/quarantines").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/v1/qa/quarantines").param("all","true").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.length()").value(1));
+        assertThat(jdbc.queryForList("SELECT action FROM qa_admin_events WHERE action LIKE 'QUARANTINE%' ORDER BY id",String.class))
+                .containsExactly("QUARANTINE_CREATED","QUARANTINE_RELEASED");
+
+        // An expired quarantine stops applying and can be replaced.
+        String again=mapper.readTree(quarantine(ADMIN,body).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
+        jdbc.update("UPDATE qa_quarantines SET created_at=clock_timestamp()-interval '9 days', expires_at=clock_timestamp()-interval '1 day' WHERE id=?::uuid",again);
+        assertThat(gate(b).get("verdict").asText()).isEqualTo("FAIL");
+        quarantine(ADMIN,body).andExpect(status().isCreated());
+        assertThat(jdbc.queryForObject("SELECT released_by FROM qa_quarantines WHERE id=?::uuid",String.class,again)).isEqualTo("expiry");
+        mvc.perform(get("/api/v1/qa/quarantines")).andExpect(status().isUnauthorized());
     }
 
     @Test
