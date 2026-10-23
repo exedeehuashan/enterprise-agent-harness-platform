@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, newKey } from '../api/client';
 import type { ModelCall, Page, PlanExecution, Task } from '../api/types';
+import { RunSuiteForm, isQaTool, runLabel } from '../components/qa';
 import { Empty, ErrorBanner, Section, ShortId, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
@@ -86,12 +87,18 @@ function Runs({ taskId }: { taskId: string }) {
   };
 
   return (
+    <>
+    {can('OPERATOR') && (
+      <Section title="Run test suite">
+        <RunSuiteForm taskId={taskId} onStarted={() => void runs.reload()} />
+      </Section>
+    )}
     <Section title="Runs">
       {can('OPERATOR') && (
         <form className="row" onSubmit={start}>
           <label className="inline">Tool
             <select value={tool} onChange={e => setTool(e.target.value)}>
-              {(tools.data ?? []).filter(t => t.enabled).map(t => (
+              {(tools.data ?? []).filter(t => t.enabled && !isQaTool(t.name)).map(t => (
                 <option key={t.name} value={t.name}>{t.name}{t.requiresApproval ? ' (needs approval)' : ''}</option>
               ))}
             </select>
@@ -107,12 +114,12 @@ function Runs({ taskId }: { taskId: string }) {
       {runs.data && runs.data.items.length > 0 && (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Run</th><th>Tool</th><th>Status</th><th>Created</th><th>Error</th></tr></thead>
+            <thead><tr><th>Run</th><th>What</th><th>Status</th><th>Created</th><th>Error</th></tr></thead>
             <tbody>
               {runs.data.items.map(r => (
                 <tr key={r.id}>
                   <td><Link to={`/runs/${r.id}`}><ShortId id={r.id} /></Link></td>
-                  <td>{r.tool}</td>
+                  <td>{runLabel(r)}</td>
                   <td><Status value={r.status} /></td>
                   <td><Time value={r.createdAt} /></td>
                   <td>{r.errorCode ?? ''}</td>
@@ -123,6 +130,7 @@ function Runs({ taskId }: { taskId: string }) {
         </div>
       )}
     </Section>
+    </>
   );
 }
 

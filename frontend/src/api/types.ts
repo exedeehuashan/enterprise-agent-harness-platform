@@ -18,6 +18,7 @@ export interface Run {
   timeoutSeconds: number; createdAt: string; startedAt: string | null; finishedAt: string | null; deadlineAt: string;
   attemptCount: number; cancelRequested: boolean; errorCode: string | null; steps: RunStep[];
   toolVersion: number; target: string; inputDigest: string; approvalId: string | null;
+  arguments: Record<string, unknown> | null;
 }
 
 export interface PlanStep { tool: string; toolVersion: number; target: string; timeoutSeconds: number }
@@ -50,6 +51,27 @@ export interface AuditEvent { id: number; actor: string; action: string; runId: 
 export interface Invocation {
   id: string; runId: string; attempt: number; inputDigest: string; status: string;
   startedAt: string; finishedAt: string | null; errorCode: string | null;
+}
+
+export interface Artifact {
+  id: string; runId: string; invocationId: string; attempt: number; name: string; mediaType: string;
+  sizeBytes: number; sha256: string; createdAt: string;
+}
+
+export interface QaSuite {
+  projectKey: string; key: string; name: string; description: string | null; runnerImage: string; command: string[];
+  reportDirs: string[]; network: string; dockerAccess: boolean; maxTimeoutSeconds: number; enabled: boolean;
+}
+
+export interface QaProject { key: string; name: string; repositoryUrl: string; defaultRef: string; enabled: boolean; suites: QaSuite[] }
+
+/** summary.json written by the QA suite runner. */
+export interface QaSummary {
+  project: string; suite: string; ref: string; commit: string; runnerImage: string; command: string[]; dockerAccess: boolean;
+  exitCode: number | null; stopped: boolean; timedOut: boolean; outcome: string; startedAt: string; finishedAt: string;
+  durationSeconds: number; tests: number; failures: number; errors: number; skipped: number; reportFiles: number;
+  unreadableReportFiles: number; reportsTruncated: boolean;
+  failedTests: { suite: string; name: string; kind: string; message: string }[];
 }
 
 export interface Tool { name: string; version: number; target: string; enabled: boolean; requiresApproval: boolean; retryable: boolean }
