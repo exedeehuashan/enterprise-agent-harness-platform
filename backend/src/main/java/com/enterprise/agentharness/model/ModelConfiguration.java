@@ -16,8 +16,9 @@ public class ModelConfiguration {
     /** Planning uses the configured AI provider (EAHP_AI_PROVIDER); the mock keeps its deterministic fixture plan. */
     @Bean ModelProvider modelProvider(com.enterprise.agentharness.ai.LlmProvider llm,
             org.springframework.beans.factory.ObjectProvider<com.enterprise.agentharness.governance.ToolCatalog> catalog,
-            org.springframework.beans.factory.ObjectProvider<com.enterprise.agentharness.tool.ToolRegistry> registry) {
-        return llm.id().equals("mock") ? new MockModelProvider() : new LlmPlanProvider(llm, catalog, registry);
+            org.springframework.beans.factory.ObjectProvider<com.enterprise.agentharness.tool.ToolRegistry> registry,
+            org.springframework.beans.factory.ObjectProvider<com.enterprise.agentharness.ai.AiService> ai) {
+        return llm.id().equals("mock") ? new MockModelProvider() : new LlmPlanProvider(llm, ai, catalog, registry);
     }
     @Bean Policy modelPolicy(@Value("${eahp.model.daily-token-budget:20000}") long budget) {
         if(budget<1 || budget>1_000_000_000L) throw new IllegalStateException("Model daily token budget must be 1..1000000000");

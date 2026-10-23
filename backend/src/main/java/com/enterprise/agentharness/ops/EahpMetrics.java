@@ -14,7 +14,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class EahpMetrics implements MeterBinder {
-    static final List<String> RUN_STATUSES = List.of("QUEUED", "RUNNING", "WAITING_APPROVAL", "NEEDS_REVIEW", "COMPLETED", "FAILED", "CANCELLED");
+    static final List<String> RUN_STATUSES = List.of("QUEUED", "RUNNING", "WAITING_APPROVAL", "NEEDS_REVIEW", "COMPLETED", "FAILED", "CANCELLED",
+            "TIMED_OUT", "REJECTED", "EXPIRED");
     static final List<String> QA_OUTCOMES = List.of("PASSED", "TESTS_FAILED", "BUILD_FAILED", "ENVIRONMENT_UNAVAILABLE", "SUITE_TIMEOUT", "RUNNER_ERROR");
     private final JdbcTemplate jdbc;
     public EahpMetrics(JdbcTemplate jdbc) { this.jdbc = jdbc; }

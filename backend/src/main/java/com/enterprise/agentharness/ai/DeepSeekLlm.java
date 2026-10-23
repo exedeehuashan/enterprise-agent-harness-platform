@@ -59,8 +59,9 @@ public class DeepSeekLlm implements LlmProvider {
         try { json = mapper.readTree(response.body()); } catch (IOException ex) { throw new LlmException("AI_PROVIDER_ERROR", "The model provider returned an unreadable answer."); }
         JsonNode choice = json.path("choices").path(0);
         String finish = choice.path("finish_reason").asText("");
-        if (finish.equals("length")) throw new LlmException("AI_TRUNCATED", "The answer exceeded the output limit.");
-        if (finish.equals("content_filter")) throw new LlmException("AI_REFUSED", "The model declined this request.");
+        long in = json.path("usage").path("prompt_tokens").asLong(), out = json.path("usage").path("completion_tokens").asLong();
+        if (finish.equals("length")) throw new LlmException("AI_TRUNCATED", "The answer exceeded the output limit.", in, out);
+        if (finish.equals("content_filter")) throw new LlmException("AI_REFUSED", "The model declined this request.", in, out);
         String text = choice.path("message").path("content").asText("");
         if (text.isBlank()) throw new LlmException("AI_EMPTY", "The model returned no answer.");
         return new Completion(text, json.path("usage").path("prompt_tokens").asLong(), json.path("usage").path("completion_tokens").asLong());

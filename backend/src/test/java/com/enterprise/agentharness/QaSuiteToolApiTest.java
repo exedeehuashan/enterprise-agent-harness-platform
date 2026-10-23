@@ -769,6 +769,14 @@ class QaSuiteToolApiTest {
             mvc.perform(put("/api/v1/qa/admin/projects/online-shop/gate").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
                     .content("{\"requiredSuites\":[\"backend-unit\"],\"minLineCoverage\":{\"backend-unit\":70}}")).andExpect(status().isOk());
             assertThat(gate(a).get("verdict").asText()).isEqualTo("PASS");
+            // Thresholds compare the exact percentage: 99.95% does not meet a 100% minimum.
+            jdbc.update("UPDATE qa_coverage SET lines_covered=1999, lines_missed=1 WHERE run_id=?",run);
+            mvc.perform(put("/api/v1/qa/admin/projects/online-shop/gate").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"requiredSuites\":[\"backend-unit\"],\"minLineCoverage\":{\"backend-unit\":100}}")).andExpect(status().isOk());
+            assertThat(gate(a).get("reasons").get(0).asText()).isEqualTo("backend-unit line coverage 99.9% is below the gate's 100.0%.");
+            jdbc.update("UPDATE qa_coverage SET lines_covered=75, lines_missed=25 WHERE run_id=?",run);
+            mvc.perform(put("/api/v1/qa/admin/projects/online-shop/gate").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"requiredSuites\":[\"backend-unit\"],\"minLineCoverage\":{\"backend-unit\":70}}")).andExpect(status().isOk());
             String md=mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref",a).header("Authorization",auth(VIEWER)))
                     .andReturn().getResponse().getContentAsString()).get("markdown").asText();
             assertThat(md).contains("| backend-unit | PASSED | 2 | 0 | 75.0% | full |");
@@ -807,6 +815,14 @@ class QaSuiteToolApiTest {
                 .andExpect(jsonPath("$.usedToday").value(org.hamcrest.Matchers.greaterThan(0)));
         assertThat(jdbc.queryForObject("SELECT feature FROM ai_usage ORDER BY id DESC LIMIT 1",String.class)).isEqualTo("qa-failure-analysis");
         assertThat(runs.get(failed).errorCode()).isEqualTo("TESTS_FAILED"); // the analysis changes nothing about the run
+        // The budget is reserved before the call: a request that does not fit is refused without contacting the model.
+        jdbc.update("INSERT INTO ai_usage(feature,provider,model,input_tokens,output_tokens,actor) VALUES ('test','mock','mock-v1',499500,0,'test')");
+        try {
+            mvc.perform(post("/api/v1/qa/runs/"+failed+"/ai-analysis").header("Authorization",auth(OPERATOR))).andExpect(status().isTooManyRequests())
+                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("AI_BUDGET_EXHAUSTED")));
+        } finally {
+            jdbc.update("DELETE FROM ai_usage");
+        }
     }
 
     @Test

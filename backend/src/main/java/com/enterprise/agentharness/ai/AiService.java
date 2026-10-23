@@ -21,7 +21,8 @@ import org.springframework.stereotype.Service;
 public class AiService {
     /** Common credential shapes: bearer tokens, key=value secrets, provider keys, private keys, JWTs, basic-auth URLs. */
     static final Pattern SECRETS = Pattern.compile(
-            "(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]{12,}"
+            "(?i)(\"(?:password|passwd|secret|token|access_token|refresh_token|api[_-]?key|apikey|authorization|client_secret)\"\\s*:\\s*\")[^\"]*(?=\")"
+            + "|(bearer\\s+)[A-Za-z0-9._~+/=-]{12,}"
             + "|((?:password|passwd|secret|token|api[_-]?key|authorization)\\s*[:=]\\s*)(?:bearer\\s+|basic\\s+)?[^\\s,;\"']{4,}"
             + "|(sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|eahp_[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16})"
             + "|(-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----)"
@@ -30,10 +31,12 @@ public class AiService {
     private final LlmProvider provider;
     private final JdbcTemplate jdbc;
     private final long dailyBudget;
+    private final org.springframework.transaction.support.TransactionTemplate tx;
     private final ObjectMapper strict = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
-    public AiService(LlmProvider provider, JdbcTemplate jdbc, @Value("${eahp.ai.daily-token-budget:500000}") long dailyBudget) {
-        this.provider = provider; this.jdbc = jdbc; this.dailyBudget = dailyBudget;
+    public AiService(LlmProvider provider, JdbcTemplate jdbc, org.springframework.transaction.support.TransactionTemplate tx,
+            @Value("${eahp.ai.daily-token-budget:500000}") long dailyBudget) {
+        this.provider = provider; this.jdbc = jdbc; this.tx = tx; this.dailyBudget = dailyBudget;
     }
 
     public record Status(String provider, String model, long dailyTokenBudget, long usedToday) {}
@@ -41,18 +44,33 @@ public class AiService {
 
     public Status status() { return new Status(provider.id(), provider.model(), dailyBudget, usedToday()); }
 
-    /** Runs one completion for {@code feature}; failures become RunExceptions with a bounded code. */
+    /**
+     * Runs one completion for {@code feature}; failures become RunExceptions with a bounded code. The worst case (an
+     * input estimate plus the full output allowance) is reserved under a lock before the call, so concurrent calls can
+     * never overspend the daily budget; the reservation is replaced by the actual usage afterwards, including for
+     * refused or truncated answers the provider still charged for.
+     */
     public Answer complete(String feature, LlmProvider.Request request) {
-        if (usedToday() >= dailyBudget) throw new RunException(HttpStatus.TOO_MANY_REQUESTS, "AI_BUDGET_EXHAUSTED: the daily AI token budget is used up");
         var safe = new LlmProvider.Request(redact(request.system()), redact(request.user()), request.schema(), request.maxOutputTokens());
+        long reserve = (safe.system().length() + safe.user().length() + request.schema().toString().length()) / 3 + request.maxOutputTokens();
+        Long reservation = tx.execute(status -> {
+            jdbc.queryForList("SELECT pg_advisory_xact_lock(724001)");
+            if (usedToday() + reserve > dailyBudget) return null;
+            return jdbc.queryForObject("INSERT INTO ai_usage(feature,provider,model,input_tokens,output_tokens,actor,error) VALUES (?,?,?,?,0,?,'RESERVED') RETURNING id",
+                    Long.class, feature, provider.id(), provider.model(), reserve, AuditService.actor());
+        });
+        if (reservation == null) throw new RunException(HttpStatus.TOO_MANY_REQUESTS, "AI_BUDGET_EXHAUSTED: the daily AI token budget does not cover this request");
         LlmProvider.Completion completion;
         try {
             completion = provider.complete(safe);
         } catch (LlmProvider.LlmException ex) {
-            record(feature, 0, 0, ex.code());
+            settle(reservation, ex.inputTokens(), ex.outputTokens(), ex.code());
             throw new RunException(ex.code().equals("AI_RATE_LIMITED") ? HttpStatus.TOO_MANY_REQUESTS : HttpStatus.BAD_GATEWAY, ex.code() + ": " + ex.getMessage());
+        } catch (RuntimeException ex) {
+            settle(reservation, 0, 0, "AI_UNAVAILABLE");
+            throw new RunException(HttpStatus.BAD_GATEWAY, "AI_UNAVAILABLE: the model provider failed");
         }
-        record(feature, completion.inputTokens(), completion.outputTokens(), null);
+        settle(reservation, completion.inputTokens(), completion.outputTokens(), null);
         JsonNode json;
         try {
             json = strict.readTree(completion.text().strip());
@@ -63,13 +81,17 @@ public class AiService {
         return new Answer(json, provider.id(), provider.model(), completion.inputTokens(), completion.outputTokens());
     }
 
+    private void settle(long reservation, long in, long out, String error) {
+        jdbc.update("UPDATE ai_usage SET input_tokens=?, output_tokens=?, error=? WHERE id=?", in, out, error, reservation);
+    }
+
     static String redact(String text) {
         if (text == null) return "";
         var m = SECRETS.matcher(text);
         var out = new StringBuilder();
         while (m.find()) {
-            String keep = m.group(1) != null ? m.group(1) : m.group(2) != null ? m.group(2) : m.group(6) != null ? m.group(6) : "";
-            m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(keep + "[REDACTED]" + (m.group(6) != null ? "@" : "")));
+            String keep = m.group(1) != null ? m.group(1) : m.group(2) != null ? m.group(2) : m.group(3) != null ? m.group(3) : m.group(7) != null ? m.group(7) : "";
+            m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(keep + "[REDACTED]" + (m.group(7) != null ? "@" : "")));
         }
         m.appendTail(out);
         return out.toString();
@@ -80,8 +102,4 @@ public class AiService {
         return used == null ? 0 : used;
     }
 
-    private void record(String feature, long in, long out, String error) {
-        jdbc.update("INSERT INTO ai_usage(feature,provider,model,input_tokens,output_tokens,actor,error) VALUES (?,?,?,?,?,?,?)",
-                feature, provider.id(), provider.model(), in, out, AuditService.actor(), error);
-    }
 }

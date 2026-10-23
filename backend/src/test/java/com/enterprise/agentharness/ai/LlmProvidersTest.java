@@ -81,6 +81,7 @@ class LlmProvidersTest {
         assertThatThrownBy(() -> llm.complete(request())).isInstanceOf(LlmProvider.LlmException.class).extracting(e -> ((LlmProvider.LlmException) e).code()).isEqualTo("AI_REFUSED");
         reply = message("max_tokens", "{\"summ");
         assertThatThrownBy(() -> llm.complete(request())).extracting(e -> ((LlmProvider.LlmException) e).code()).isEqualTo("AI_TRUNCATED");
+        assertThatThrownBy(() -> llm.complete(request())).extracting(e -> ((LlmProvider.LlmException) e).outputTokens()).isEqualTo(30L); // still charged
         status = 400; reply = "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"echo of the prompt\"}}";
         assertThatThrownBy(() -> llm.complete(request())).extracting(e -> ((LlmProvider.LlmException) e).code()).isEqualTo("AI_PROVIDER_ERROR");
         assertThat(headers.get().get("anthropic-beta")).isNull(); // fallbacks switched off: no beta header
@@ -117,5 +118,7 @@ class LlmProvidersTest {
         String safe = AiService.redact(text);
         assertThat(safe).doesNotContain("abcdefghijklmnopqrstuvwxyz").doesNotContain("hunter22").doesNotContain("sk-ant-api03").doesNotContain("ghp_aaaa")
                 .doesNotContain("pa55word").doesNotContain("eyJhbGci").contains("[REDACTED]").contains("://user:[REDACTED]@db/x");
+        String json = AiService.redact("{\"user\":\"ada\",\"password\":\"hunter22\",\"token\":\"opaque-credential\",\"client_secret\":\"s3\"}");
+        assertThat(json).isEqualTo("{\"user\":\"ada\",\"password\":\"[REDACTED]\",\"token\":\"[REDACTED]\",\"client_secret\":\"[REDACTED]\"}");
     }
 }

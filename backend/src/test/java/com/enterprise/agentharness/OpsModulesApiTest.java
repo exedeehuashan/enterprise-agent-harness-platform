@@ -51,6 +51,8 @@ class OpsModulesApiTest {
         mvc.perform(get("/actuator/prometheus").header("Authorization", "Bearer " + VIEWER)).andExpect(status().isOk())
                 .andExpect(content().string(containsString("eahp_runs{application=\"eahp\",status=\"QUEUED\"}")))
                 .andExpect(content().string(containsString("eahp_approvals_pending")))
+                .andExpect(content().string(containsString("eahp_runs{application=\"eahp\",status=\"TIMED_OUT\"}")))
+                .andExpect(content().string(containsString("eahp_runs{application=\"eahp\",status=\"REJECTED\"}")))
                 .andExpect(content().string(containsString("eahp_qa_results_24h{application=\"eahp\",outcome=\"PASSED\"}")))
                 .andExpect(content().string(containsString("jvm_memory_used_bytes")));
     }

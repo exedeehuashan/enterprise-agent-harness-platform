@@ -15,12 +15,14 @@ import org.springframework.beans.factory.ObjectProvider;
  */
 public class LlmPlanProvider implements ModelProvider {
     private final LlmProvider llm;
+    private final ObjectProvider<com.enterprise.agentharness.ai.AiService> ai;
     private final ObjectProvider<ToolCatalog> catalog;
     private final ObjectProvider<ToolRegistry> registry;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public LlmPlanProvider(LlmProvider llm, ObjectProvider<ToolCatalog> catalog, ObjectProvider<ToolRegistry> registry) {
-        this.llm = llm; this.catalog = catalog; this.registry = registry;
+    /** Calls go through {@link com.enterprise.agentharness.ai.AiService}: shared budget, redaction and usage records. */
+    public LlmPlanProvider(LlmProvider llm, ObjectProvider<com.enterprise.agentharness.ai.AiService> ai, ObjectProvider<ToolCatalog> catalog, ObjectProvider<ToolRegistry> registry) {
+        this.llm = llm; this.ai = ai; this.catalog = catalog; this.registry = registry;
     }
 
     public String id() { return llm.id(); }
@@ -40,8 +42,8 @@ public class LlmPlanProvider implements ModelProvider {
                 Available tools:
                 """ + tools;
         String user = "Task title: " + input.title() + "\nTask description: " + (input.description() == null ? "(none)" : input.description());
-        var completion = llm.complete(new LlmProvider.Request(system, user, schema(), maxOutputTokens));
-        return new Result(completion.text().strip(), completion.inputTokens(), completion.outputTokens());
+        var answer = ai.getObject().complete("planning", new LlmProvider.Request(system, user, schema(), maxOutputTokens));
+        return new Result(answer.json().toString(), answer.inputTokens(), answer.outputTokens());
     }
 
     private ObjectNode schema() {

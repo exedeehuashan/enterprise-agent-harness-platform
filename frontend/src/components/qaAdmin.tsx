@@ -108,14 +108,18 @@ function GateForm({ suites, coverage, busy, onSave }: { suites: string[]; covera
     onSave: (list: string[], minLineCoverage: Record<string, number>) => void }) {
   const [value, setValue] = useState(suites.join(', '));
   const [minimums, setMinimums] = useState(Object.entries(coverage).map(([k, v]) => `${k}=${v}`).join(', '));
+  const [invalid, setInvalid] = useState<string | null>(null);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    // "backend-unit=70, frontend-unit=60": minimum line coverage per required suite.
+    // "backend-unit=70, frontend-unit=60": minimum line coverage per required suite. A malformed entry stops the save
+    // rather than being dropped, which would silently weaken the gate.
     const parsed: Record<string, number> = {};
-    for (const part of minimums.split(/[,\s]+/).filter(Boolean)) {
-      const [k, v] = part.split('=');
-      if (k && v !== undefined && !Number.isNaN(Number(v))) parsed[k] = Number(v);
+    for (const part of minimums.split(',').map(p => p.trim()).filter(Boolean)) {
+      const m = /^([a-z0-9][a-z0-9-]{1,59})\s*=\s*(\d+(?:\.\d+)?)$/.exec(part);
+      if (!m || Number(m[2]) > 100) { setInvalid(`"${part}" is not suite=percentage (0-100)`); return; }
+      parsed[m[1]] = Number(m[2]);
     }
+    setInvalid(null);
     onSave(value.split(/[,\s]+/).filter(Boolean), parsed);
   };
   return (
@@ -124,6 +128,7 @@ function GateForm({ suites, coverage, busy, onSave }: { suites: string[]; covera
       <label className="inline">Required suites<input value={value} onChange={e => setValue(e.target.value)} placeholder="empty removes the gate" /></label>
       <label className="inline">Minimum line coverage<input value={minimums} onChange={e => setMinimums(e.target.value)} placeholder="backend-unit=70" /></label>
       <button type="submit" className="secondary" disabled={busy}>Save gate</button>
+      {invalid && <div className="error" role="alert">{invalid}</div>}
     </form>
   );
 }
