@@ -346,6 +346,9 @@ describe('project administration', () => {
       'GET /qa/schedules': () => ({ body: [] }),
       'GET /admin/storage': () => ({ body: storage }),
       'POST /admin/retention/run': () => ({ body: storage.lastRun }),
+      'GET /admin/webhooks': () => ({ body: [] }),
+      'POST /admin/webhooks': () => ({ status: 201, body: { secret: 'one-time-secret', subscription: { id: 'w1', name: 'Team chat', url: 'https://hooks.example.com/x',
+        events: ['RUN_*'], enabled: true, cursorId: 0, consecutiveFailures: 0, nextAttemptAt: null, lastDeliveryAt: null, lastError: null, createdBy: 'admin', createdAt: '2026-10-24T00:00:00Z' } } }),
     });
     const { unmount } = renderApp('/qa');
     const form = (await screen.findByRole('heading', { name: 'Register a project' })).closest('section')!;
@@ -365,6 +368,14 @@ describe('project administration', () => {
     expect(screen.getByText('42 KiB')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Apply retention now' }));
     await waitFor(() => expect(calls.some(c => c.method === 'POST' && c.path === '/admin/retention/run')).toBe(true));
+    const hooks = screen.getByRole('heading', { name: 'Webhooks' }).closest('section')!;
+    await userEvent.type(within(hooks).getByLabelText('Name'), 'Team chat');
+    await userEvent.type(within(hooks).getByLabelText('URL'), 'https://hooks.example.com/x');
+    await userEvent.clear(within(hooks).getByLabelText('Events'));
+    await userEvent.type(within(hooks).getByLabelText('Events'), 'RUN_*');
+    await userEvent.click(within(hooks).getByRole('button', { name: 'Add webhook' }));
+    expect(await within(hooks).findByText('one-time-secret')).toBeInTheDocument();
+    expect(calls.find(c => c.method === 'POST' && c.path === '/admin/webhooks')!.body).toEqual({ name: 'Team chat', url: 'https://hooks.example.com/x', events: ['RUN_*'] });
     unmount();
 
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });

@@ -100,6 +100,8 @@ public class QaResultIngestor {
                 INSERT INTO qa_run_ingestions(run_id,project_key,suite_key,commit_sha,run_status,outcome,category,test_count,failed_count)
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """, runId, project, suite, commit, run.get("status"), outcome, runCategory, cases.size(), failed);
+        // Makes the result an event like any other (for example for webhooks): code is the outcome.
+        jdbc.update("INSERT INTO audit_events(actor,action,run_id,code) VALUES ('qa','QA_RESULT_INGESTED',?,?)", runId, outcome == null ? "NO_RESULT" : outcome);
     }
 
     private void recordFailure(UUID runId) {

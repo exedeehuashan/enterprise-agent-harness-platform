@@ -391,6 +391,11 @@ JUnit output (such as contract scripts) feed history and gates too. online-shop
 also runs its Playwright end-to-end tests this way, in the official Playwright
 image. See [P25 design notes](docs/p25-exit-code-suites-and-more-suite-types.md).
 
+**Webhooks.** Approvers register webhook URLs for EAHP events (`RUN_*`,
+`APPROVAL_*`, `QA_RESULT_INGESTED`, …) under `/api/v1/admin/webhooks`. Events are
+delivered in order, at least once, signed with HMAC-SHA256 (`X-EAHP-Signature`),
+and retried with backoff. See [P26 design notes](docs/p26-webhooks.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;
