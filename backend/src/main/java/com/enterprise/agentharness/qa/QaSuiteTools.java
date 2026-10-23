@@ -170,9 +170,15 @@ public class QaSuiteTools {
                 var result = runner.run(dockerArgs(container, project, suite, source, context), consoleLog, remaining,
                         context::stopRequested, () -> kill(container));
                 Instant finished = Instant.now();
-                var reports = JUnitReports.find(source, suite.reportDirs());
+                Path reportRoot = source;
+                if (suite.exitCodeResults()) {
+                    reportRoot = runDir.resolve("results");
+                    Files.createDirectories(reportRoot);
+                    exitCodeReport(suite, result, consoleLog, reportRoot.resolve("TEST-" + suite.key() + ".xml"));
+                }
+                var reports = suite.exitCodeResults() ? JUnitReports.find(reportRoot, List.of("")) : JUnitReports.find(source, suite.reportDirs());
                 var summary = JUnitReports.summarize(reports);
-                byte[] zip = reports.isEmpty() ? null : JUnitReports.zip(source, reports, MAX_REPORT_ZIP);
+                byte[] zip = reports.isEmpty() ? null : JUnitReports.zip(reportRoot, reports, MAX_REPORT_ZIP);
                 String code = outcome(result, summary);
                 var evidence = new ArrayList<ToolResult.Artifact>();
                 evidence.add(new ToolResult.Artifact("summary.json", "application/json",
@@ -187,6 +193,40 @@ public class QaSuiteTools {
             } finally {
                 try { deleteTree(runDir); } catch (IOException ex) { log.warn("Could not clean up workspace for run {}", context.run().id()); }
             }
+        }
+
+        /**
+         * For exit-code suites: one test case named after the suite, failed with the console tail when the command
+         * exited non-zero. Nothing is written when the run was stopped, timed out or the runner itself failed
+         * (125..127), so those keep their own outcome.
+         */
+        static void exitCodeReport(SuiteDefinition suite, ProcessRunner.Result result, Path consoleLog, Path target) throws IOException {
+            int exit = result.exitCode();
+            if (result.stopped() || result.timedOut() || exit == 125 || exit == 126 || exit == 127) return;
+            String key = xml(suite.key());
+            var report = new StringBuilder("<testsuite name=\"").append(key).append("\" tests=\"1\" failures=\"").append(exit == 0 ? 0 : 1)
+                    .append("\" errors=\"0\" skipped=\"0\"><testcase classname=\"").append(key).append("\" name=\"").append(key).append('"');
+            if (exit == 0) report.append("/>");
+            else {
+                String tail = "";
+                if (Files.exists(consoleLog)) {
+                    String text = Files.readString(consoleLog, java.nio.charset.StandardCharsets.UTF_8);
+                    tail = text.substring(Math.max(0, text.length() - 4000));
+                }
+                report.append("><failure type=\"ExitCode\" message=\"exit code ").append(exit).append("\">").append(xml(tail)).append("</failure></testcase>");
+            }
+            Files.writeString(target, report.append("</testsuite>").toString());
+        }
+
+        private static String xml(String s) {
+            var out = new StringBuilder();
+            for (char c : s.toCharArray()) {
+                switch (c) {
+                    case '&' -> out.append("&amp;"); case '<' -> out.append("&lt;"); case '>' -> out.append("&gt;"); case '"' -> out.append("&quot;");
+                    default -> { if (c >= 0x20 || c == '\n' || c == '\t') out.append(c); }
+                }
+            }
+            return out.toString();
         }
 
         /** Success needs a zero exit code, at least one executed test and no failures or errors. */

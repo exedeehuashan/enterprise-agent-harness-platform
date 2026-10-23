@@ -11,7 +11,7 @@ import java.util.List;
  * arguments, so the approval digest covers the image and command, and the executor never re-reads a moving source.
  */
 public record SuiteDefinition(String source, String key, String name, String description, String image, List<String> command,
-        List<String> reportDirs, String network, boolean dockerAccess, int maxTimeoutSeconds, String selection, List<String> paths) {
+        List<String> reportDirs, String network, boolean dockerAccess, int maxTimeoutSeconds, String selection, List<String> paths, String results) {
     public static final String REGISTRY = "registry";
     public static final String REPOSITORY = "repository";
     /** The suite is a Maven build that may be narrowed to affected modules ({@code -pl ... -am}) for pull requests. */
@@ -19,13 +19,18 @@ public record SuiteDefinition(String source, String key, String name, String des
     /** The suite only needs to run for pull requests that change a file under one of its {@code paths}. */
     public static final String PATHS = "paths";
 
+    /** The suite writes no JUnit reports; its exit code is recorded as one test case named after the suite. */
+    public static final String EXIT_CODE = "exit-code";
+
     public SuiteDefinition {
         paths = paths == null ? List.of() : List.copyOf(paths);
     }
 
+    public boolean exitCodeResults() { return EXIT_CODE.equals(results); }
+
     static SuiteDefinition fromRegistry(QaRegistry.Suite s) {
         return new SuiteDefinition(REGISTRY, s.key(), s.name(), s.description(), s.runnerImage(), s.command(), s.reportDirs(),
-                s.network(), s.dockerAccess(), s.maxTimeoutSeconds(), null, List.of());
+                s.network(), s.dockerAccess(), s.maxTimeoutSeconds(), null, List.of(), null);
     }
 
     public ObjectNode toJson() {
@@ -34,6 +39,7 @@ public record SuiteDefinition(String source, String key, String name, String des
                 .put("network", network).put("dockerAccess", dockerAccess).put("maxTimeoutSeconds", maxTimeoutSeconds);
         if (selection != null) node.put("selection", selection); // absent rather than null, so older definitions keep their digest
         if (!paths.isEmpty()) paths.forEach(node.putArray("paths")::add);
+        if (results != null) node.put("results", results);
         command.forEach(node.putArray("command")::add);
         reportDirs.forEach(node.putArray("reportDirs")::add);
         return node;
@@ -43,7 +49,8 @@ public record SuiteDefinition(String source, String key, String name, String des
         return new SuiteDefinition(n.get("source").asText(), n.get("key").asText(), n.get("name").asText(),
                 n.get("description").isNull() ? null : n.get("description").asText(), n.get("image").asText(), texts(n.get("command")),
                 texts(n.get("reportDirs")), n.get("network").asText(), n.get("dockerAccess").asBoolean(), n.get("maxTimeoutSeconds").asInt(),
-                n.hasNonNull("selection") ? n.get("selection").asText() : null, n.has("paths") ? texts(n.get("paths")) : List.of());
+                n.hasNonNull("selection") ? n.get("selection").asText() : null, n.has("paths") ? texts(n.get("paths")) : List.of(),
+                n.hasNonNull("results") ? n.get("results").asText() : null);
     }
 
     private static List<String> texts(JsonNode array) {

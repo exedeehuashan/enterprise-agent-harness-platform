@@ -385,6 +385,12 @@ name → base URL). Projects declare HTTP test cases in `.eahp/api-tests.json`
 evidence as suite runs, without following redirects or leaving the registered
 origins. See [P24 design notes](docs/p24-api-test-execution.md).
 
+**Exit-code suites.** A repository suite with `"results": "exit-code"` (and no
+report directories) records its exit code as one test case, so checks without
+JUnit output (such as contract scripts) feed history and gates too. online-shop
+also runs its Playwright end-to-end tests this way, in the official Playwright
+image. See [P25 design notes](docs/p25-exit-code-suites-and-more-suite-types.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

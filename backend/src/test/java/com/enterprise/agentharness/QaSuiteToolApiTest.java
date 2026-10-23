@@ -403,6 +403,35 @@ class QaSuiteToolApiTest {
     }
 
     @Test
+    void exitCodeSuitesRecordTheirExitCodeAsOneTestCase() throws Exception {
+        repoFile=REPO_FILE.replace("\"command\":[\"mvn\",\"-B\",\"-pl\",\"backend/order-domain\",\"test\"],\"reportDirs\":[\"target/surefire-reports\"]",
+                "\"command\":[\"node\",\"tests/contracts/verify.mjs\"],\"reportDirs\":[],\"results\":\"exit-code\"");
+        reportXml=FAIL; // reports a JUnit file in the workspace would leave are ignored for exit-code suites
+        String body="{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":600,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"smoke\"}}";
+        UUID passed=UUID.fromString(mapper.readTree(start(task(),"ec1",body).andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.arguments.definition.results").value("exit-code")).andReturn().getResponse().getContentAsString()).get("id").asText());
+        worker();
+        assertThat(runs.get(passed).status()).isEqualTo("COMPLETED");
+        assertThat(summary(passed).get("tests").asInt()).isEqualTo(1);
+        dockerExit=3;consoleText="contract mismatch: OrderResponse.total\n";
+        UUID failed=UUID.fromString(mapper.readTree(start(task(),"ec2",body).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).get("id").asText());
+        worker();
+        assertThat(runs.get(failed).errorCode()).isEqualTo("TESTS_FAILED");
+        assertThat(summary(failed).get("failedTests").get(0).get("message").asText()).isEqualTo("exit code 3");
+        ingestor.runOnce();
+        assertThat(jdbc.queryForObject("SELECT test_class||'#'||status FROM qa_test_results WHERE run_id=?",String.class,failed)).isEqualTo("smoke#FAILED");
+        dockerExit=127;
+        UUID broken=UUID.fromString(mapper.readTree(start(task(),"ec3",body).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).get("id").asText());
+        worker();
+        assertThat(runs.get(broken).errorCode()).isEqualTo("RUNNER_ERROR");
+
+        repoFile=REPO_FILE.replace("\"test\"],\"reportDirs\":[\"target/surefire-reports\"]","\"test\"],\"reportDirs\":[\"target/surefire-reports\"],\"results\":\"exit-code\"");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryError").value("invalid suites file: smoke: exit-code suites have no reportDirs"));
+        repoFile=REPO_FILE.replace("\"test\"],\"reportDirs\":[\"target/surefire-reports\"]","\"test\"],\"reportDirs\":[]");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryError").value("invalid suites file: smoke: reportDirs must list at least one directory"));
+    }
+
+    @Test
     void repositoryOnlySuitesRunAndTheCatalogShowsBothSources() throws Exception {
         repoFile=REPO_FILE;
         mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(status().isOk())
