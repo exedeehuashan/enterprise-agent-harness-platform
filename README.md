@@ -359,6 +359,12 @@ registry suites, pull request triggers and release gates through
 Every change is validated like a repository suites file and audited with its
 before and after state. See [P16 design notes](docs/p16-qa-registry-administration.md).
 
+**Schedules.** `qa_schedules` runs a suite when a branch's head commit changes
+(`ON_CHANGE`, for example `main` after a merge) or on a UTC cron timetable (`CRON`,
+for example nightly), as the `scheduler` actor, keeping release gates current.
+`GET /api/v1/qa/schedules`; approvers manage them under `/api/v1/qa/admin/schedules`
+or on the Test projects page. See [P17 design notes](docs/p17-scheduled-qa-runs.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

@@ -3,6 +3,7 @@ import { Empty, ErrorBanner, Section } from '../components/ui';
 import { usePolling } from '../hooks';
 import { useSession } from '../session';
 import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
+import { ProjectSchedules } from '../components/qaSchedules';
 
 /** Read-only catalog of projects under test and their predefined suites. */
 export function QaProjectsPage() {
@@ -34,6 +35,7 @@ export function QaProjectsPage() {
               </tr>
             ))}</tbody>
           </table></div>
+          <ProjectSchedules project={p} />
           {can('APPROVER') && <ProjectAdminPanel project={p} onChanged={projects.reload} />}
         </Section>
       ))}

@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -88,6 +88,7 @@ export const api = {
   artifactBlob: async (id: string): Promise<Blob> => (await artifactContent(id)).blob(),
   qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
   qaProjects: () => get<QaProject[]>('/qa/projects'),
+  schedules: (project: string) => get<QaSchedule[]>(`/qa/schedules${query({ project })}`),
   admin: {
     project: (key: string) => get<ProjectAdmin>(`/qa/admin/projects/${key}`),
     create: (body: Record<string, unknown>) => post<ProjectAdmin>('/qa/admin/projects', body),
@@ -97,6 +98,9 @@ export const api = {
     gate: (key: string, requiredSuites: string[]) => request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'PUT', body: { requiredSuites } }).then(r => r.data),
     removeGate: (key: string) => request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'DELETE' }).then(r => r.data),
     events: (project: string) => get<AdminEvent[]>(`/qa/admin/events${query({ project, limit: 20 })}`),
+    createSchedule: (body: Record<string, unknown>) => post<QaSchedule>('/qa/admin/schedules', body),
+    scheduleEnabled: (id: string, enabled: boolean) => request<QaSchedule>(`/qa/admin/schedules/${id}/enabled`, { method: 'PUT', body: { enabled } }).then(r => r.data),
+    deleteSchedule: (id: string) => request<null>(`/qa/admin/schedules/${id}`, { method: 'DELETE' }).then(r => r.data),
   },
   qaTriage: (runId: string) => get<Triage>(`/qa/runs/${runId}/triage`),
   suiteCatalog: (project: string, ref?: string) => get<SuiteCatalog>(`/qa/projects/${project}/suites${query({ ref })}`),
