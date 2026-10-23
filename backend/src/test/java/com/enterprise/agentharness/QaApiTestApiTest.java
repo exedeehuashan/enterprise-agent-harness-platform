@@ -58,6 +58,7 @@ class QaApiTestApiTest {
     @Autowired RunService runs;
     @Autowired ToolRegistry registry;
     @Autowired com.enterprise.agentharness.qa.QaResultIngestor ingestor;
+    @Autowired com.enterprise.agentharness.qa.QaSchedules schedules;
 
     @TestConfiguration
     static class FakeGit {
@@ -129,6 +130,7 @@ class QaApiTestApiTest {
     @BeforeEach
     void reset() {
         repository.deleteAll();
+        jdbc.update("DELETE FROM qa_schedules WHERE environment IS NOT NULL");
         jdbc.update("DELETE FROM qa_environments");
         jdbc.update("DELETE FROM qa_test_results"); jdbc.update("DELETE FROM qa_run_ingestions");
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE, enabled=TRUE");
@@ -241,6 +243,26 @@ class QaApiTestApiTest {
                 .isEqualTo("order-api-smoke/TESTS_FAILED/4/2");
         assertThat(jdbc.queryForList("SELECT test_name FROM qa_test_results WHERE run_id=? AND status='PASSED' ORDER BY test_name", String.class, run))
                 .containsExactly("TC-001 Create and read an order", "TC-003 Redirects are not followed");
+    }
+
+    @Test
+    void schedulesRunApiCollectionsAgainstAnEnvironment() throws Exception {
+        String body = "{\"project\":\"online-shop\",\"suite\":\"order-api-smoke\",\"ref\":\"" + SHA + "\",\"kind\":\"ON_CHANGE\",\"environment\":\"uat\"}";
+        mvc.perform(post("/api/v1/qa/admin/schedules").header("Authorization", auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("unknown environment: uat"));
+        putEnv(ADMIN, env(SUT.getAddress().getPort())).andExpect(status().isOk());
+        String id = mapper.readTree(mvc.perform(post("/api/v1/qa/admin/schedules").header("Authorization", auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.environment").value("uat")).andReturn().getResponse().getContentAsString()).get("id").asText();
+        schedules.runOnce();
+        UUID run = jdbc.queryForObject("SELECT last_run_id FROM qa_schedules WHERE id=?::uuid", UUID.class, id);
+        var created = runs.get(run);
+        assertThat(created.tool()).isEqualTo("QA_RUN_API_TESTS");
+        assertThat(created.arguments().get("collection").asText()).isEqualTo("order-api-smoke");
+        assertThat(created.arguments().get("environment").asText()).isEqualTo("uat");
+        new RunWorker(runs, registry).runOnce();
+        assertThat(runs.get(run).errorCode()).isEqualTo("TESTS_FAILED"); // the fixture has failing cases
+        schedules.runOnce(); // same commit: nothing new
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs WHERE tool='QA_RUN_API_TESTS'", Long.class)).isEqualTo(1);
     }
 
     @Test
