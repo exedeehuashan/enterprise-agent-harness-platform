@@ -89,6 +89,41 @@ class ChangeImpactAnalyzerTest {
     }
 
     @Test
+    void aSingleModuleProjectAtTheRootIsAModuleNotOutsideTheBuild() throws IOException {
+        var repo = new Repo();
+        repo.files.put("pom.xml", "<project><groupId>g</groupId><artifactId>app</artifactId></project>");
+        repo.files.put("src/main/java/app/App.java", "");
+        repo.files.put("src/test/java/app/AppTest.java", "");
+        repo.files.put("README.md", "");
+        repo.changed.addAll(List.of("src/main/java/app/App.java", "README.md"));
+        var impact = ChangeImpactAnalyzer.analyze(repo, "b", "h");
+        assertThat(impact.modules()).extracting(ChangeImpactAnalyzer.AffectedModule::dir, ChangeImpactAnalyzer.AffectedModule::reason)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("", "CHANGED"));
+        assertThat(impact.testClasses()).containsExactly("app.AppTest");
+        assertThat(impact.filesOutsideModules()).containsExactly("README.md");
+        repo.changed.clear(); repo.changed.add("pom.xml");
+        assertThat(ChangeImpactAnalyzer.analyze(repo, "b", "h").testClasses()).containsExactly("app.AppTest");
+    }
+
+    @Test
+    void aParentPomChangeAffectsTheModulesInheritingFromIt() throws IOException {
+        var repo = new Repo();
+        repo.files.put("backend/pom.xml", "<project><groupId>g</groupId><artifactId>backend</artifactId></project>");
+        repo.files.put("backend/a/pom.xml", "<project><parent><groupId>g</groupId><artifactId>backend</artifactId></parent><artifactId>a</artifactId></project>");
+        repo.files.put("backend/b/pom.xml", "<project><parent><groupId>g</groupId><artifactId>backend</artifactId></parent><artifactId>b</artifactId>"
+                + "<dependencies><dependency><groupId>g</groupId><artifactId>a</artifactId></dependency></dependencies></project>");
+        repo.files.put("backend/b/src/test/java/BTest.java", "");
+        repo.files.put("other/pom.xml", "<project><groupId>h</groupId><artifactId>other</artifactId></project>");
+        repo.changed.add("backend/pom.xml");
+        var impact = ChangeImpactAnalyzer.analyze(repo, "b", "h");
+        assertThat(impact.modules()).extracting(ChangeImpactAnalyzer.AffectedModule::dir, ChangeImpactAnalyzer.AffectedModule::reason).containsExactly(
+                org.assertj.core.groups.Tuple.tuple("backend", "CHANGED"), org.assertj.core.groups.Tuple.tuple("backend/a", "DEPENDS_ON_CHANGED"),
+                org.assertj.core.groups.Tuple.tuple("backend/b", "DEPENDS_ON_CHANGED"));
+        assertThat(impact.testClasses()).containsExactly("BTest");
+        assertThat(impact.wholeBuild()).isFalse();
+    }
+
+    @Test
     void nonMavenRepositoriesAreReportedNotGuessed() throws IOException {
         var repo = new Repo();
         repo.files.put("package.json", "{}");
