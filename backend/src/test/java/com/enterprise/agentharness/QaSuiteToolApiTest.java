@@ -789,6 +789,27 @@ class QaSuiteToolApiTest {
     }
 
     @Test
+    void aiFailureAnalysisExplainsAFailedRunAndIsAdvisoryOnly() throws Exception {
+        UUID task=task();
+        UUID passed=runAt(task,"ai1","a".repeat(40),PASS,0);
+        consoleText="Authorization: Bearer supersecrettokenvalue123\nexpected: <1> but was: <2>\n";
+        UUID failed=runAt(task,"ai2","b".repeat(40),ORDER_FAIL,1);
+        mvc.perform(post("/api/v1/qa/runs/"+failed+"/ai-analysis").header("Authorization",auth(OPERATOR))).andExpect(status().isConflict()); // not ingested yet
+        ingestor.runOnce();
+        mvc.perform(post("/api/v1/qa/runs/"+failed+"/ai-analysis").header("Authorization",auth(VIEWER))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/qa/runs/"+passed+"/ai-analysis").header("Authorization",auth(OPERATOR))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/runs/"+failed+"/ai-analysis").header("Authorization",auth(VIEWER))).andExpect(status().isNotFound());
+        mvc.perform(post("/api/v1/qa/runs/"+failed+"/ai-analysis").header("Authorization",auth(OPERATOR))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("mock")).andExpect(jsonPath("$.analysis.category").value("PRODUCT_DEFECT"))
+                .andExpect(jsonPath("$.analysis.suggestedActions[0]").isString()).andExpect(jsonPath("$.createdBy").value("operator"));
+        mvc.perform(get("/api/v1/qa/runs/"+failed+"/ai-analysis").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.analysis.confidence").value("low"));
+        mvc.perform(get("/api/v1/ai/status").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.provider").value("mock"))
+                .andExpect(jsonPath("$.usedToday").value(org.hamcrest.Matchers.greaterThan(0)));
+        assertThat(jdbc.queryForObject("SELECT feature FROM ai_usage ORDER BY id DESC LIMIT 1",String.class)).isEqualTo("qa-failure-analysis");
+        assertThat(runs.get(failed).errorCode()).isEqualTo("TESTS_FAILED"); // the analysis changes nothing about the run
+    }
+
+    @Test
     void releaseGateFollowsTheEvidenceAtACommit() throws Exception {
         String a="a".repeat(40),b="b".repeat(40),c="c".repeat(40);
         assertThat(gate(a).get("verdict").asText()).isEqualTo("PENDING");
