@@ -124,5 +124,45 @@ now expects 4.
 4. Download `summary.json`, `junit-reports.zip` and `console.log` from the run's artifacts.
 5. Start `backend-integration` with `QA_RUN_PRIVILEGED_SUITE`; it waits for approval.
 
-The local hands-on run against the real `online-shop` repository is recorded
-below once completed.
+## Observed local results
+
+Deployment: the backend now runs from `backend/Dockerfile` (JRE, git, Docker CLI)
+as uid 1000 with the Docker socket and a named work volume (`eahp-qa-work`),
+after backing up the database (`pre-p8.dump`) and keeping the previous container
+for rollback. V8 and V9 applied; earlier data and approvals were kept.
+
+Runs against the real `exedeehuashan/online-shop` repository, `main` resolved to
+commit `39a6a0b`:
+
+| Run | Tool | Result |
+|---|---|---|
+| 1 | QA_RUN_SUITE `backend-unit` | FAILED `TESTS_FAILED`: exit 1, 43 tests, 1 error in 86 s (first run, dependency download) |
+| 2 | QA_RUN_SUITE `backend-unit` (after V9) | COMPLETED: exit 0, 42 tests, 0 failures in 13 s |
+| 3 | QA_RUN_PRIVILEGED_SUITE `backend-integration` | waited for approval; operator decision 403, admin approval 200; COMPLETED: exit 0, 64 tests in 34 s |
+
+Each run produced `summary.json`, `junit-reports.zip` and `console.log`, one
+tool invocation, and no leftover containers; the run workspace was removed and
+the Maven cache kept. Run 3's audit trail links operator creation and approval
+request, admin approval, and worker claim, approval consumption, dispatch and
+completion. Starting the integration suite through `QA_RUN_SUITE` was rejected
+with a message naming the correct tool.
+
+**Finding from run 1.** `online-shop` main added `IdentityPersistenceTest`, a
+Testcontainers test. The seeded unit selection (copied from online-shop's CI)
+did not exclude it, so without Docker it errored, and EAHP reported the run as
+FAILED with the test named in `summary.json`. V9 adds it to the exclusions. The
+same gap exists in online-shop itself: its `static-unit` CI job runs on a runner
+that has Docker, so this test silently runs inside the "unit" job, and
+`tests/integration/run.sh` does not include the identity module. Identity
+persistence is therefore covered only incidentally. This is reported to the
+online-shop project rather than fixed here.
+
+**Lesson.** Suite definitions copied into EAHP drift when the project changes.
+A follow-up should let projects declare suites in their own repository (versioned
+with the code), with EAHP validating them against the registry policy.
+
+**Deployment notes.** On Docker Desktop for Linux, bind-mounting a new host path
+hung file access and then stopped all container starts; a stale `virtiofsd`
+process blocked Docker Desktop's restart until it was killed. Using a named
+volume for the work directory avoids host file sharing entirely and is the
+recommended setup (`EAHP_QA_VOLUME`).

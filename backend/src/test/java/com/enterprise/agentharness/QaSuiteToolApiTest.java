@@ -177,7 +177,7 @@ class QaSuiteToolApiTest {
 
         var argv=dockerRun();
         assertThat(argv).containsSequence("--cap-drop","ALL").containsSequence("--security-opt","no-new-privileges")
-                .containsSequence("--network","bridge").contains("--user","maven:3.9.11-eclipse-temurin-17","-Dtest=!CatalogApiTest,!PostgresPersistenceTest,!OrderApiTest");
+                .containsSequence("--network","bridge").contains("--user","maven:3.9.11-eclipse-temurin-17","-Dtest=!CatalogApiTest,!PostgresPersistenceTest,!OrderApiTest,!IdentityPersistenceTest");
         assertThat(String.join(" ",argv)).doesNotContain("docker.sock").doesNotContain("TESTCONTAINERS");
         assertThat(argv).containsSequence("-v",WORKDIR+":"+WORKDIR).contains("HOME="+WORKDIR.resolve("cache/online-shop"));
         assertThat(calls.stream().filter(c->c.contains("archive")).findFirst().orElseThrow()).contains(MAIN_SHA);
