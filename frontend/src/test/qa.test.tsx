@@ -184,15 +184,30 @@ describe('QA console', () => {
 
   it('lists registered projects and marks Docker-access suites', async () => {
     tokenStore.set(TOKEN);
+    const aiDrafts: Record<string, unknown>[] = [{ id: 'd1', projectKey: 'online-shop', commitSha: 'c'.repeat(40), specPath: 'openapi/order-api.json', service: 'order-api',
+      instructions: null, collection: null, valid: false, error: 'invalid API test file: case path must be an absolute path', notes: null, provider: 'mock', model: 'mock-v1',
+      inputTokens: 10, outputTokens: 10, createdBy: 'operator', createdAt: '2026-10-24T00:00:00Z' }];
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }),
       'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://host.docker.internal:18081' }, enabled: true }] }),
-      'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }) });
+      'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }),
+      'GET /qa/projects/online-shop/ai/api-tests': () => ({ body: aiDrafts }),
+      'POST /qa/projects/online-shop/ai/api-tests': () => { aiDrafts.unshift({ ...aiDrafts[0], id: 'd2', valid: true, error: null, collection: { key: 'ai-orders', name: 'Orders by AI', service: 'order-api', cases: [{}, {}, {}] } }); return { body: aiDrafts[0] }; },
+      'POST /qa/projects/online-shop/ai/api-tests/d2/run': () => ({ body: { runId: 'run-ai' } }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
     expect(await screen.findByText('Local UAT')).toBeInTheDocument();
     expect(screen.getByText('http://host.docker.internal:18081')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save environment' })).not.toBeInTheDocument();
     expect(await screen.findByText(/No write token is configured/)).toBeInTheDocument();
+    expect(await screen.findByText('invalid')).toBeInTheDocument();
+    expect(screen.getByText('invalid API test file: case path must be an absolute path')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('OpenAPI file'), 'openapi/order-api.json');
+    await userEvent.type(screen.getByLabelText('Service'), 'order-api');
+    await userEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
+    expect(await screen.findByText('Orders by AI')).toBeInTheDocument();
+    expect(screen.getByText('3 cases')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Run against uat' }));
+    expect(await screen.findByRole('link', { name: "the draft's run" })).toHaveAttribute('href', '/runs/run-ai');
     expect(screen.queryByRole('button', { name: 'Turn on' })).not.toBeInTheDocument();
     expect(screen.getByText('Docker · approval')).toBeInTheDocument();
     expect(screen.getByText('isolated')).toBeInTheDocument();

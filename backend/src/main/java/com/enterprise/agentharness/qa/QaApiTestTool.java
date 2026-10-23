@@ -42,14 +42,16 @@ public class QaApiTestTool implements ToolExecutor {
     private final QaEnvironments environments;
     private final ObjectMapper mapper;
     private final ApiTestRunner.Transport transport;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @org.springframework.beans.factory.annotation.Autowired
-    public QaApiTestTool(QaSuiteResolver resolver, GitMirror git, QaEnvironments environments, ObjectMapper mapper) {
-        this(resolver, git, environments, mapper, httpTransport());
+    public QaApiTestTool(QaSuiteResolver resolver, GitMirror git, QaEnvironments environments, ObjectMapper mapper, org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        this(resolver, git, environments, mapper, jdbc, httpTransport());
     }
 
-    QaApiTestTool(QaSuiteResolver resolver, GitMirror git, QaEnvironments environments, ObjectMapper mapper, ApiTestRunner.Transport transport) {
-        this.resolver = resolver; this.git = git; this.environments = environments; this.mapper = mapper; this.transport = transport;
+    QaApiTestTool(QaSuiteResolver resolver, GitMirror git, QaEnvironments environments, ObjectMapper mapper, org.springframework.jdbc.core.JdbcTemplate jdbc,
+            ApiTestRunner.Transport transport) {
+        this.resolver = resolver; this.git = git; this.environments = environments; this.mapper = mapper; this.jdbc = jdbc; this.transport = transport;
     }
 
     public String name() { return "QA_RUN_API_TESTS"; }
@@ -63,6 +65,7 @@ public class QaApiTestTool implements ToolExecutor {
     @Override
     public JsonNode normalize(JsonNode arguments) {
         if (arguments == null || !arguments.isObject()) throw new IllegalArgumentException("project, collection and environment are required");
+        if (arguments.has("draft")) return normalizeDraft(arguments);
         for (var it = arguments.fieldNames(); it.hasNext(); ) if (!Set.of("project", "collection", "environment", "ref").contains(it.next())) throw new IllegalArgumentException("unknown argument");
         for (String f : List.of("project", "collection", "environment")) if (!arguments.path(f).isTextual()) throw new IllegalArgumentException(f + " is required");
         if (arguments.has("ref") && !arguments.get("ref").isTextual()) throw new IllegalArgumentException("ref must be text");
@@ -85,6 +88,31 @@ public class QaApiTestTool implements ToolExecutor {
         ObjectNode normalized = JsonNodeFactory.instance.objectNode();
         normalized.put("project", project.key()).put("suite", key).put("collection", key).put("environment", environment.key())
                 .put("ref", ref).put("commit", commit);
+        normalized.set("definition", collection);
+        normalized.set("services", mapper.valueToTree(environment.services()));
+        return normalized;
+    }
+
+    /**
+     * {project, draft, environment}: runs an AI-drafted collection (P34) at the commit it was drafted from. The draft was
+     * validated by the same parser as repository files when it was created, and is validated again here.
+     */
+    private JsonNode normalizeDraft(JsonNode arguments) {
+        for (var it = arguments.fieldNames(); it.hasNext(); ) if (!Set.of("project", "draft", "environment").contains(it.next())) throw new IllegalArgumentException("unknown argument");
+        for (String f : List.of("project", "draft", "environment")) if (!arguments.path(f).isTextual()) throw new IllegalArgumentException(f + " is required");
+        var project = resolver.enabledProject(arguments.get("project").textValue());
+        java.util.UUID draftId;
+        try { draftId = java.util.UUID.fromString(arguments.get("draft").textValue()); } catch (IllegalArgumentException ex) { throw new IllegalArgumentException("draft must be a draft id"); }
+        var rows = jdbc.queryForList("SELECT commit_sha, collection::text AS collection FROM qa_ai_test_drafts WHERE id=? AND project_key=? AND valid", draftId, project.key());
+        if (rows.isEmpty()) throw new IllegalArgumentException("unknown or invalid draft for this project");
+        String commit = (String) rows.get(0).get("commit_sha");
+        JsonNode collection = ApiCollections.parse("{\"schemaVersion\":1,\"collections\":[" + rows.get(0).get("collection") + "]}").get(0);
+        var environment = environments.find(project.key(), arguments.get("environment").textValue()).filter(QaEnvironments.Environment::enabled)
+                .orElseThrow(() -> new IllegalArgumentException("unknown or disabled environment"));
+        String key = collection.get("key").asText();
+        ObjectNode normalized = JsonNodeFactory.instance.objectNode();
+        normalized.put("project", project.key()).put("suite", key).put("collection", key).put("environment", environment.key())
+                .put("ref", commit).put("commit", commit).put("draft", draftId.toString());
         normalized.set("definition", collection);
         normalized.set("services", mapper.valueToTree(environment.services()));
         return normalized;

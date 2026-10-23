@@ -17,8 +17,8 @@ public class MockLlm implements LlmProvider {
                      "category":"PRODUCT_DEFECT","confidence":"low","suggestedActions":["Compare the failing assertion with the latest change to the code under test."],
                      "affectedTests":[]}""";
             case "api_test_collection" -> """
-                    {"key":"ai-generated","name":"AI-generated API tests","service":"%s","cases":[{"id":"TC-AI-001","name":"Health of the first documented path",
-                     "steps":[{"request":{"method":"GET","path":"/"},"expect":{"status":[200,401,404]}}]}]}""";
+                    {"collection":"{\\"key\\":\\"ai-generated\\",\\"name\\":\\"AI-generated API tests\\",\\"service\\":\\"%s\\",\\"cases\\":[{\\"id\\":\\"TC-AI-001\\",\\"name\\":\\"The service answers\\",\\"steps\\":[{\\"request\\":{\\"method\\":\\"GET\\",\\"path\\":\\"/\\"},\\"expect\\":{\\"status\\":[200,401,404]}}]}]}",
+                     "notes":"Mock draft: one smoke case."}""";
             case "plan" -> """
                     {"schemaVersion":1,"summary":"Review the task with the controlled local demo tool.","steps":[{"tool":"DEMO_REVIEW","toolVersion":1,"target":"local-demo","timeoutSeconds":30}]}""";
             default -> "{}";

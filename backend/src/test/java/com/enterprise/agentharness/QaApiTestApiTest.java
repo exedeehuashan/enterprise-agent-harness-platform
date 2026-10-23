@@ -50,6 +50,9 @@ class QaApiTestApiTest {
     private static final HttpServer SUT = startSut();
     static final List<String> requests = new CopyOnWriteArrayList<>();
     static volatile String apiFile;
+    static volatile String specFile;
+    /** When set, the AI provider answers with this JSON instead of the mock's. */
+    static volatile String aiAnswer;
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
@@ -62,13 +65,23 @@ class QaApiTestApiTest {
 
     @TestConfiguration
     static class FakeGit {
+        @Bean @Primary com.enterprise.agentharness.ai.LlmProvider scriptedAi() {
+            var mock = new com.enterprise.agentharness.ai.MockLlm();
+            return new com.enterprise.agentharness.ai.LlmProvider() {
+                public String id() { return "mock"; }
+                public String model() { return "mock-v1"; }
+                public Completion complete(Request r) { return aiAnswer == null ? mock.complete(r) : new Completion(aiAnswer, 10, 10); }
+            };
+        }
+
         @Bean @Primary ProcessRunner fakeGit() {
             return (argv, logFile, timeout, stop, onStop) -> {
                 String last = argv.get(argv.size() - 1);
                 if (argv.contains("clone")) Files.createDirectories(Path.of(last));
                 if (argv.contains("cat-file") && last.contains(":")) {
-                    if (apiFile == null || !last.endsWith(":.eahp/api-tests.json")) return new ProcessRunner.Result(128, false, false);
-                    if (argv.contains("-p")) Files.writeString(logFile, apiFile);
+                    String content = last.endsWith(":.eahp/api-tests.json") ? apiFile : last.endsWith(":openapi.json") ? specFile : null;
+                    if (content == null) return new ProcessRunner.Result(128, false, false);
+                    if (argv.contains("-p")) Files.writeString(logFile, content);
                 }
                 return new ProcessRunner.Result(0, false, false);
             };
@@ -134,7 +147,8 @@ class QaApiTestApiTest {
         jdbc.update("DELETE FROM qa_environments");
         jdbc.update("DELETE FROM qa_test_results"); jdbc.update("DELETE FROM qa_run_ingestions");
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE, enabled=TRUE");
-        apiFile = FILE; requests.clear();
+        apiFile = FILE; requests.clear(); specFile = "{\"openapi\":\"3.0.1\",\"paths\":{\"/customers/{id}/orders\":{\"get\":{}}}}"; aiAnswer = null;
+        jdbc.update("DELETE FROM qa_ai_test_drafts");
     }
 
     private static final String FILE = """
@@ -263,6 +277,45 @@ class QaApiTestApiTest {
         assertThat(runs.get(run).errorCode()).isEqualTo("TESTS_FAILED"); // the fixture has failing cases
         schedules.runOnce(); // same commit: nothing new
         assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs WHERE tool='QA_RUN_API_TESTS'", Long.class)).isEqualTo(1);
+    }
+
+    private ResultActions generate(String token, String body) throws Exception {
+        return mvc.perform(post("/api/v1/qa/projects/online-shop/ai/api-tests").header("Authorization", auth(token)).contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    @Test
+    void aiDraftsApiTestsFromOpenApiValidatesThemAndRunsValidDrafts() throws Exception {
+        String body = "{\"specPath\":\"openapi.json\",\"service\":\"order-api\",\"ref\":\"" + SHA + "\",\"instructions\":\"Focus on orders\"}";
+        generate(VIEWER, body).andExpect(status().isForbidden());
+        generate(OPERATOR, body.replace("openapi.json", "../etc/passwd.json")).andExpect(status().isBadRequest());
+        generate(OPERATOR, body.replace("openapi.json", "missing.json")).andExpect(status().isBadRequest());
+        generate(OPERATOR, body.replace("order-api", "Order API")).andExpect(status().isBadRequest());
+        String id = mapper.readTree(generate(OPERATOR, body).andExpect(status().isOk()).andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.collection.key").value("ai-generated")).andExpect(jsonPath("$.collection.service").value("order-api"))
+                .andExpect(jsonPath("$.commitSha").value(SHA)).andExpect(jsonPath("$.notes").value("Mock draft: one smoke case."))
+                .andReturn().getResponse().getContentAsString()).get("id").asText();
+
+        // A draft that tries to reach another host, or targets another service, is stored as invalid and cannot run.
+        aiAnswer = "{\"collection\":\"{\\\"key\\\":\\\"x\\\",\\\"name\\\":\\\"Evil\\\",\\\"service\\\":\\\"elsewhere\\\",\\\"cases\\\":[{\\\"id\\\":\\\"T1\\\",\\\"name\\\":\\\"x\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"http://evil.example/steal\\\"},\\\"expect\\\":{\\\"status\\\":200}}]}]}\",\"notes\":\"\"}";
+        String bad = mapper.readTree(generate(OPERATOR, body).andExpect(jsonPath("$.valid").value(false))
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("absolute path"))).andReturn().getResponse().getContentAsString()).get("id").asText();
+        aiAnswer = "not json";
+        generate(OPERATOR, body).andExpect(status().isBadGateway()).andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("AI_INVALID_ANSWER")));
+        aiAnswer = null;
+
+        putEnv(ADMIN, env(SUT.getAddress().getPort())).andExpect(status().isOk());
+        mvc.perform(post("/api/v1/qa/projects/online-shop/ai/api-tests/" + bad + "/run").header("Authorization", auth(OPERATOR)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"environment\":\"uat\"}")).andExpect(status().isBadRequest());
+        String runId = mapper.readTree(mvc.perform(post("/api/v1/qa/projects/online-shop/ai/api-tests/" + id + "/run").header("Authorization", auth(OPERATOR))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"environment\":\"uat\"}")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("runId").asText();
+        new RunWorker(runs, registry).runOnce();
+        var run = runs.get(UUID.fromString(runId));
+        assertThat(run.status()).isEqualTo("COMPLETED");
+        assertThat(run.arguments().get("draft").asText()).isEqualTo(id);
+        assertThat(run.arguments().get("suite").asText()).isEqualTo("ai-generated");
+        assertThat(requests).anyMatch(r -> r.startsWith("GET /shop/"));
+        mvc.perform(get("/api/v1/qa/projects/online-shop/ai/api-tests").header("Authorization", auth(VIEWER))).andExpect(jsonPath("$.length()").value(2));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_usage WHERE feature='qa-test-generation'", Long.class)).isGreaterThanOrEqualTo(3);
     }
 
     @Test

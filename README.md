@@ -439,6 +439,12 @@ example online-shop's k6 performance baseline. See
 evidence (advisory only). All calls share a daily token budget. See
 [P33 design notes](docs/p33-ai-providers-and-failure-analysis.md).
 
+**AI-generated API tests.** `POST /api/v1/qa/projects/{key}/ai/api-tests` drafts
+an API test collection from an OpenAPI file in the repository. The draft is
+validated by the same parser as human-written tests, can run against an
+environment, or can be downloaded to commit. See
+[P34 design notes](docs/p34-ai-api-test-generation.md). Setting up Claude or DeepSeek: [docs/ai-model-setup.md](docs/ai-model-setup.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

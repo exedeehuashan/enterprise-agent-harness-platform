@@ -206,3 +206,10 @@ export interface AiAnalysis {
   analysis: { summary: string; likelyCause: string; category: string; confidence: 'low' | 'medium' | 'high'; suggestedActions: string[]; affectedTests: string[] };
 }
 export interface AiStatus { provider: string; model: string; dailyTokenBudget: number; usedToday: number }
+
+/** An API test collection drafted by the AI from an OpenAPI document; only valid drafts can run. */
+export interface AiTestDraft {
+  id: string; projectKey: string; commitSha: string; specPath: string; service: string; instructions: string | null;
+  collection: { key: string; name: string; service: string; cases?: unknown[] } | null; valid: boolean; error: string | null; notes: string | null;
+  provider: string; model: string; inputTokens: number; outputTokens: number; createdBy: string; createdAt: string;
+}
