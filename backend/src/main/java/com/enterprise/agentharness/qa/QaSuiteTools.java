@@ -37,6 +37,8 @@ public class QaSuiteTools {
     private static final Logger log = LoggerFactory.getLogger(QaSuiteTools.class);
     static final int MAX_LOG_TAIL = 2 * 1024 * 1024;
     static final long MAX_REPORT_ZIP = 5L * 1024 * 1024;
+    /** Maven otherwise waits up to 30 minutes on a stalled download, silently consuming the whole suite deadline. */
+    static final String MAVEN_NETWORK_TIMEOUTS = " -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000";
 
     @Bean SuiteTool qaRunSuite(QaRegistry registry, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper) {
         return new SuiteTool("QA_RUN_SUITE", false, registry, git, runner, settings, mapper);
@@ -174,7 +176,7 @@ public class QaSuiteTools {
                     "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
                     "--network", suite.network().equals("none") ? "none" : "bridge",
                     "--user", user(),
-                    "-e", "HOME=" + home, "-e", "MAVEN_CONFIG=" + home.resolve(".m2"), "-e", "MAVEN_OPTS=-Duser.home=" + home,
+                    "-e", "HOME=" + home, "-e", "MAVEN_CONFIG=" + home.resolve(".m2"), "-e", "MAVEN_OPTS=-Duser.home=" + home + MAVEN_NETWORK_TIMEOUTS,
                     "-e", "CI=true",
                     "-v", settings.workdirMountSource() + ":" + settings.workdir(), "-w", source.toString()));
             if (suite.dockerAccess()) {

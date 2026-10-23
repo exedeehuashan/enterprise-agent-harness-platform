@@ -369,6 +369,12 @@ docker run -d --name eahp-console --network enterprise-agent-harness-platform_de
 
 See [P6 design notes](docs/p6-web-console.md).
 
+QA engineers can run a registered test suite from a task's **Run test suite**
+form, read the outcome, counts and failing tests on the run page, and download
+reports and logs (fetched with the Authorization header, never a token in a URL).
+The **Test projects** page lists projects and suites. See
+[P10 design notes](docs/p10-console-qa.md).
+
 ## Test and build
 
 ```sh

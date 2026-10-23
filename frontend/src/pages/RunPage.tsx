@@ -4,6 +4,7 @@ import { Empty, ErrorBanner, Section, ShortId, Status, Time } from '../component
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
 import { DecisionButtons } from './ApprovalsPage';
+import { ArtifactList, QaEvidence, isQaTool, runLabel } from '../components/qa';
 
 const ACTIVE = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL'];
 
@@ -26,7 +27,7 @@ export function RunPage() {
   return (
     <>
       <p><Link to={`/tasks/${r.taskId}`}>← Task</Link></p>
-      <Section title={`Run ${r.id.slice(0, 8)}`} actions={
+      <Section title={`Run ${r.id.slice(0, 8)} · ${runLabel(r)}`} actions={
         <>
           <Status value={r.status} />
           {can('OPERATOR') && ACTIVE.includes(r.status) && !r.cancelRequested && (
@@ -45,8 +46,11 @@ export function RunPage() {
           <dt>Finished</dt><dd><Time value={r.finishedAt} /></dd>
           <dt>Error</dt><dd>{r.errorCode ?? '—'}</dd>
           <dt>Input digest</dt><dd><code className="wrap">{r.inputDigest}</code></dd>
+          {r.arguments && <><dt>Arguments</dt><dd><code className="wrap">{JSON.stringify(r.arguments)}</code></dd></>}
         </dl>
       </Section>
+
+      {isQaTool(r.tool) && <QaEvidence run={r} />}
 
       {r.approvalId && (
         <Section title="Approval">
@@ -69,6 +73,8 @@ export function RunPage() {
           </article>
         ))}
       </Section>
+
+      <ArtifactList runId={r.id} />
 
       <Section title="Tool invocations">
         <ErrorBanner error={invocations.error} />

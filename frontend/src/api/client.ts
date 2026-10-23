@@ -1,5 +1,5 @@
 import type {
-  Approval, AuditEvent, Identity, Invocation, ModelCall, Page, PlanExecution, Run, Task, TaskStatus, Tool,
+  Approval, Artifact, AuditEvent, Identity, Invocation, ModelCall, Page, PlanExecution, QaProject, QaSummary, Run, Task, TaskStatus, Tool,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -45,6 +45,14 @@ async function request<T>(path: string, { method = 'GET', body, headers = {}, to
 }
 
 const get = async <T>(path: string) => (await request<T>(path)).data;
+
+/** Downloads with the Authorization header, so artifact links never carry the token in a URL. */
+async function artifactContent(id: string): Promise<Response> {
+  const auth = tokenStore.get();
+  const res = await fetch(`/api/v1/artifacts/${id}/content`, { headers: auth ? { Authorization: `Bearer ${auth}` } : {} });
+  if (!res.ok) throw new ApiError(res.status, `Download failed (HTTP ${res.status})`);
+  return res;
+}
 const post = async <T>(path: string, body: unknown = {}, headers: Record<string, string> = {}) =>
   (await request<T>(path, { method: 'POST', body, headers })).data;
 const idem = (key: string) => ({ 'Idempotency-Key': key });
@@ -69,12 +77,16 @@ export const api = {
   editTask: (id: string, etag: string, patch: { title?: string; description?: string | null }) =>
     request<Task>(`/agent-tasks/${id}`, { method: 'PATCH', body: patch, headers: { 'If-Match': etag } }).then(r => r.data),
 
-  startRun: (taskId: string, key: string, tool: string, timeoutSeconds: number) =>
-    post<Run>(`/agent-tasks/${taskId}/runs`, { tool, timeoutSeconds }, idem(key)),
+  startRun: (taskId: string, key: string, tool: string, timeoutSeconds: number, args?: Record<string, unknown>) =>
+    post<Run>(`/agent-tasks/${taskId}/runs`, args ? { tool, timeoutSeconds, arguments: args } : { tool, timeoutSeconds }, idem(key)),
   runs: (taskId: string, page = 0) => get<Page<Run>>(`/agent-tasks/${taskId}/runs${query({ page, size: 20 })}`),
   getRun: (id: string) => get<Run>(`/agent-runs/${id}`),
   cancelRun: (id: string) => post<Run>(`/agent-runs/${id}/cancel`, undefined),
   invocations: (runId: string) => get<Invocation[]>(`/agent-runs/${runId}/invocations`),
+  artifacts: (runId: string) => get<Artifact[]>(`/agent-runs/${runId}/artifacts`),
+  artifactBlob: async (id: string): Promise<Blob> => (await artifactContent(id)).blob(),
+  qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
+  qaProjects: () => get<QaProject[]>('/qa/projects'),
 
   startPlan: (taskId: string, key: string) => post<ModelCall>(`/agent-tasks/${taskId}/plans`, {}, idem(key)),
   plans: (taskId: string) => get<Page<ModelCall>>(`/agent-tasks/${taskId}/plans${query({ page: 0, size: 20 })}`),

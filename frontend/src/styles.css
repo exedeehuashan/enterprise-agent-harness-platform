@@ -48,6 +48,13 @@ pre { background: var(--muted-bg); padding: 8px 12px; border-radius: 6px; overfl
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
 .empty { color: var(--muted); margin: 8px 0; }
+.subhead { font-size: 0.95rem; margin: 16px 0 6px; }
+.wrap-cell { white-space: normal; word-break: break-word; min-width: 200px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.stat { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.stat strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.stat-ok strong { color: var(--ok); }
+.stat-bad strong { color: var(--bad); }
 
 label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: var(--muted); }
 label.inline { flex-direction: row; align-items: center; gap: 6px; }

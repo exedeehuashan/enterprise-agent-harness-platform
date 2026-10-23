@@ -1,0 +1,127 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { App } from '../App';
+import { api, tokenStore } from '../api/client';
+import { SessionProvider } from '../session';
+import { fakeApi } from './fakeApi';
+
+const TOKEN = 'q'.repeat(40);
+const page = <T,>(items: T[]) => ({ items, page: 0, size: 20, totalElements: items.length, totalPages: 1 });
+const operator = { name: 'operator', roles: ['OPERATOR', 'VIEWER'] };
+const suite = (key: string, dockerAccess: boolean) => ({
+  projectKey: 'online-shop', key, name: key === 'backend-unit' ? 'Backend unit' : 'Backend integration', description: `${key} description`,
+  runnerImage: 'maven:3.9.11-eclipse-temurin-17', command: ['mvn', 'verify'], reportDirs: ['target/surefire-reports'],
+  network: 'egress', dockerAccess, maxTimeoutSeconds: dockerAccess ? 2400 : 1800, enabled: true,
+});
+const projects = [{ key: 'online-shop', name: 'Online Shop', repositoryUrl: 'https://github.com/exedeehuashan/online-shop.git', defaultRef: 'main', enabled: true,
+  suites: [suite('backend-integration', true), suite('backend-unit', false)] }];
+const task = { id: 'task-1', title: 'Regression', description: null, status: 'PENDING', createdAt: '2026-10-23T00:00:00Z', updatedAt: '2026-10-23T00:00:00Z', version: 0 };
+const tools = [
+  { name: 'DEMO_ANALYZE', version: 1, target: 'local-demo', enabled: true, requiresApproval: false, retryable: true },
+  { name: 'QA_RUN_SUITE', version: 1, target: 'qa-runner', enabled: true, requiresApproval: false, retryable: false },
+];
+
+function renderApp(path: string) {
+  return render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><SessionProvider><App /></SessionProvider></MemoryRouter>);
+}
+function taskRoutes(extra: Record<string, Parameters<typeof fakeApi>[0][string]> = {}) {
+  return {
+    'GET /me': () => ({ body: operator }),
+    'GET /agent-tasks/task-1': () => ({ body: task, headers: { ETag: '"0"' } }),
+    'GET /agent-tasks/task-1/runs': () => ({ body: page([]) }),
+    'GET /agent-tasks/task-1/plans': () => ({ body: page([]) }),
+    'GET /agent-tasks/task-1/plan-executions': () => ({ body: page([]) }),
+    'GET /tools': () => ({ body: tools }),
+    'GET /qa/projects': () => ({ body: projects }),
+    ...extra,
+  };
+}
+
+afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
+
+describe('QA console', () => {
+  it('downloads artifacts with the Authorization header, not a token in the URL', async () => {
+    tokenStore.set(TOKEN);
+    const calls = fakeApi({ 'GET /artifacts/a-1/content': () => ({ body: { outcome: 'PASSED' } }) });
+    expect((await api.qaSummary('a-1')).outcome).toBe('PASSED');
+    expect((await api.artifactBlob('a-1')).size).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+      expect(call.path).not.toContain(TOKEN);
+    }
+  });
+
+  it('runs a Docker-access suite through the approval-gated tool with the chosen ref', async () => {
+    tokenStore.set(TOKEN);
+    const calls = fakeApi(taskRoutes({ 'POST /agent-tasks/task-1/runs': () => ({ status: 202, body: { id: 'run-1' } }) }));
+    renderApp('/tasks/task-1');
+    const form = (await screen.findByRole('heading', { name: 'Run test suite' })).closest('section')!;
+    await userEvent.selectOptions(await within(form).findByLabelText('Suite'), 'backend-integration');
+    expect(within(form).getByText(/an approver must approve the exact commit/)).toBeInTheDocument();
+    await userEvent.type(within(form).getByLabelText('Branch, tag or commit'), 'feature/cancel');
+    await userEvent.click(within(form).getByRole('button', { name: 'Run suite' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true));
+    const start = calls.find(c => c.method === 'POST')!;
+    expect(start.headers['Idempotency-Key']).toMatch(/^qa-/);
+    expect(start.body).toEqual({ tool: 'QA_RUN_PRIVILEGED_SUITE', timeoutSeconds: 1800,
+      arguments: { project: 'online-shop', suite: 'backend-integration', ref: 'feature/cancel' } });
+  });
+
+  it('runs an isolated suite through the normal tool and omits an empty ref', async () => {
+    tokenStore.set(TOKEN);
+    const calls = fakeApi(taskRoutes({ 'POST /agent-tasks/task-1/runs': () => ({ status: 202, body: { id: 'run-1' } }) }));
+    renderApp('/tasks/task-1');
+    const form = (await screen.findByRole('heading', { name: 'Run test suite' })).closest('section')!;
+    expect((await within(form).findByLabelText('Suite') as HTMLSelectElement).value).toBe('backend-unit');
+    await userEvent.click(within(form).getByRole('button', { name: 'Run suite' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true));
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual({ tool: 'QA_RUN_SUITE', timeoutSeconds: 1800,
+      arguments: { project: 'online-shop', suite: 'backend-unit' } });
+    const generic = screen.getByRole('heading', { name: 'Runs' }).closest('section')!;
+    expect(within(generic).queryByRole('option', { name: /QA_RUN_SUITE/ })).not.toBeInTheDocument();
+  });
+
+  it('shows the test result and failing tests from summary.json', async () => {
+    tokenStore.set(TOKEN);
+    const run = { id: 'run-12345678', taskId: 'task-1', tool: 'QA_RUN_SUITE', status: 'FAILED', snapshotTitle: 'Regression', snapshotDescription: null,
+      timeoutSeconds: 1800, createdAt: '2026-10-23T00:00:00Z', startedAt: null, finishedAt: null, deadlineAt: '2026-10-23T00:30:00Z',
+      attemptCount: 1, cancelRequested: false, errorCode: 'TESTS_FAILED', steps: [], toolVersion: 1, target: 'qa-runner', inputDigest: 'd'.repeat(64),
+      approvalId: null, arguments: { project: 'online-shop', suite: 'backend-unit', ref: 'main', commit: '39a6a0b55eba4924b2094505bcbadadb475fcff8' } };
+    const summary = { project: 'online-shop', suite: 'backend-unit', ref: 'main', commit: run.arguments.commit, runnerImage: 'maven:3.9.11-eclipse-temurin-17',
+      command: ['mvn', 'verify'], dockerAccess: false, exitCode: 1, stopped: false, timedOut: false, outcome: 'TESTS_FAILED',
+      startedAt: '2026-10-23T00:00:00Z', finishedAt: '2026-10-23T00:01:26Z', durationSeconds: 86, tests: 43, failures: 0, errors: 1, skipped: 0,
+      reportFiles: 15, unreadableReportFiles: 0, reportsTruncated: false,
+      failedTests: [{ suite: 'IdentityPersistenceTest', name: '', kind: 'error', message: 'Could not find a valid Docker environment' }] };
+    fakeApi({
+      'GET /me': () => ({ body: operator }),
+      'GET /agent-runs/run-12345678': () => ({ body: run }),
+      'GET /agent-runs/run-12345678/invocations': () => ({ body: [] }),
+      'GET /agent-runs/run-12345678/artifacts': () => ({ body: [
+        { id: 'sum', runId: run.id, invocationId: 'i', attempt: 1, name: 'summary.json', mediaType: 'application/json', sizeBytes: 900, sha256: 'a'.repeat(64), createdAt: '' },
+        { id: 'log', runId: run.id, invocationId: 'i', attempt: 1, name: 'console.log', mediaType: 'text/plain', sizeBytes: 30000, sha256: 'b'.repeat(64), createdAt: '' }] }),
+      'GET /artifacts/sum/content': () => ({ body: summary }),
+    });
+    renderApp('/runs/run-12345678');
+    expect(await screen.findByText('TESTS FAILED')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /online-shop\/backend-unit @ 39a6a0b/ })).toBeInTheDocument();
+    expect(screen.getByText('43')).toBeInTheDocument();
+    expect(screen.getByText('IdentityPersistenceTest')).toBeInTheDocument();
+    expect(screen.getByText('Could not find a valid Docker environment')).toBeInTheDocument();
+    const artifacts = screen.getByRole('heading', { name: 'Artifacts' }).closest('section')!;
+    expect(within(artifacts).getAllByRole('button', { name: 'Download' })).toHaveLength(2);
+    expect(within(artifacts).getByText('29.3 KiB')).toBeInTheDocument();
+  });
+
+  it('lists registered projects and marks Docker-access suites', async () => {
+    tokenStore.set(TOKEN);
+    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }) });
+    renderApp('/qa');
+    expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
+    expect(screen.getByText('Docker · approval')).toBeInTheDocument();
+    expect(screen.getByText('isolated')).toBeInTheDocument();
+    expect(screen.getByText('enabled')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Test projects' })).toBeInTheDocument();
+  });
+});
