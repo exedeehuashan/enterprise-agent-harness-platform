@@ -23,6 +23,45 @@ public final class JUnitReports {
 
     public record FailedTest(String suite, String name, String kind, String message) {}
     public record Summary(int tests, int failures, int errors, int skipped, int reportFiles, int unreadableFiles, List<FailedTest> failedTests) {}
+    /** One executed test case; {@code detail} is the start of the failure's stack trace, for triage. */
+    public record TestCase(String className, String name, String status, Integer durationMs, String failureType, String message, String detail) {}
+
+    /** All test cases of one report, parsed with the same protections as {@link #summarize}. */
+    public static List<TestCase> cases(java.io.InputStream xml) throws Exception {
+        var root = secureFactory().newDocumentBuilder().parse(xml).getDocumentElement();
+        NodeList testcases = root.getElementsByTagName("testcase");
+        List<TestCase> result = new ArrayList<>();
+        for (int i = 0; i < testcases.getLength() && result.size() < 5000; i++) {
+            var c = (Element) testcases.item(i);
+            String status = "PASSED", type = null, message = null, detail = null;
+            for (String kind : List.of("failure", "error", "skipped")) {
+                NodeList found = c.getElementsByTagName(kind);
+                if (found.getLength() == 0) continue;
+                var e = (Element) found.item(0);
+                status = kind.equals("failure") ? "FAILED" : kind.equals("error") ? "ERROR" : "SKIPPED";
+                type = clip(e.getAttribute("type"), 200);
+                message = clip(e.getAttribute("message"), 500);
+                detail = clip(e.getTextContent(), 2000);
+                break;
+            }
+            Integer duration = null;
+            try { duration = (int) Math.round(Double.parseDouble(c.getAttribute("time").trim()) * 1000); } catch (NumberFormatException ignored) { }
+            result.add(new TestCase(clip(c.getAttribute("classname"), 300), clip(c.getAttribute("name"), 300), status, duration,
+                    type == null || type.isEmpty() ? null : type, message, detail));
+        }
+        return result;
+    }
+
+    private static DocumentBuilderFactory secureFactory() throws Exception {
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        return factory;
+    }
 
     /** Finds {@code TEST-*.xml} under any directory whose path ends with one of {@code reportDirs}. */
     public static List<Path> find(Path root, List<String> reportDirs) throws IOException {
@@ -41,14 +80,7 @@ public final class JUnitReports {
         for (Path file : files) {
             try {
                 if (Files.size(file) > MAX_FILE_BYTES) { unreadable++; continue; }
-                var factory = DocumentBuilderFactory.newInstance();
-                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-                factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-                factory.setXIncludeAware(false);
-                factory.setExpandEntityReferences(false);
-                factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-                factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-                var root = factory.newDocumentBuilder().parse(file.toFile()).getDocumentElement();
+                var root = secureFactory().newDocumentBuilder().parse(file.toFile()).getDocumentElement();
                 NodeList suites = root.getTagName().equals("testsuite") ? null : root.getElementsByTagName("testsuite");
                 List<Element> elements = new ArrayList<>();
                 if (suites == null) elements.add(root);

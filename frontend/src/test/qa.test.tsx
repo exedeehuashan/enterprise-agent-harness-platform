@@ -15,6 +15,7 @@ const suite = (key: string, dockerAccess: boolean) => ({
   runnerImage: 'maven:3.9.11-eclipse-temurin-17', command: ['mvn', 'verify'], reportDirs: ['target/surefire-reports'],
   network: 'egress', dockerAccess, maxTimeoutSeconds: dockerAccess ? 2400 : 1800, enabled: true,
 });
+let triageBody: object = {};
 const projects = [{ key: 'online-shop', name: 'Online Shop', repositoryUrl: 'https://github.com/exedeehuashan/online-shop.git', defaultRef: 'main', enabled: true,
   suites: [suite('backend-integration', true), suite('backend-unit', false)], repositorySuitesEnabled: true, suitesFile: '.eahp/qa-suites.json',
   allowedImages: ['maven:3.9.11-eclipse-temurin-17'], allowDockerAccess: true, allowNetworkEgress: true, maxTimeoutSeconds: 2400 }];
@@ -113,6 +114,11 @@ describe('QA console', () => {
 
   it('shows the test result and failing tests from summary.json', async () => {
     tokenStore.set(TOKEN);
+    triageBody = { runId: 'run-12345678', ingested: true, outcome: 'TESTS_FAILED', category: 'ENVIRONMENT_DOCKER',
+      explanation: 'The test needs Docker (Testcontainers) but ran in a suite without Docker access.', tests: 43, failed: 1, error: null,
+      failures: [{ testClass: 'IdentityPersistenceTest', testName: '', status: 'ERROR', failureType: 'java.lang.IllegalStateException',
+        message: 'Could not find a valid Docker environment', category: 'ENVIRONMENT_DOCKER', explanation: 'needs Docker',
+        history: { label: 'NEW_FAILURE', previousStatus: 'PASSED', previousCommit: 'a'.repeat(40), lastPassedCommit: 'a'.repeat(40), recentRuns: 4, recentFailures: 1 } }] };
     const run = { id: 'run-12345678', taskId: 'task-1', tool: 'QA_RUN_SUITE', status: 'FAILED', snapshotTitle: 'Regression', snapshotDescription: null,
       timeoutSeconds: 1800, createdAt: '2026-10-23T00:00:00Z', startedAt: null, finishedAt: null, deadlineAt: '2026-10-23T00:30:00Z',
       attemptCount: 1, cancelRequested: false, errorCode: 'TESTS_FAILED', steps: [], toolVersion: 1, target: 'qa-runner', inputDigest: 'd'.repeat(64),
@@ -130,13 +136,18 @@ describe('QA console', () => {
         { id: 'sum', runId: run.id, invocationId: 'i', attempt: 1, name: 'summary.json', mediaType: 'application/json', sizeBytes: 900, sha256: 'a'.repeat(64), createdAt: '' },
         { id: 'log', runId: run.id, invocationId: 'i', attempt: 1, name: 'console.log', mediaType: 'text/plain', sizeBytes: 30000, sha256: 'b'.repeat(64), createdAt: '' }] }),
       'GET /artifacts/sum/content': () => ({ body: summary }),
+      'GET /qa/runs/run-12345678/triage': () => ({ body: triageBody }),
     });
     renderApp('/runs/run-12345678');
     expect(await screen.findByText('TESTS FAILED')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /online-shop\/backend-unit @ 39a6a0b/ })).toBeInTheDocument();
     expect(screen.getByText('43')).toBeInTheDocument();
+    expect(await screen.findByText('Why it failed: environment docker')).toBeInTheDocument();
+    expect(screen.getByText(/needs Docker \(Testcontainers\)/)).toBeInTheDocument();
     expect(screen.getByText('IdentityPersistenceTest')).toBeInTheDocument();
     expect(screen.getByText('Could not find a valid Docker environment')).toBeInTheDocument();
+    expect(screen.getByText('new failure')).toBeInTheDocument();
+    expect(screen.getByText(/1\/4 recent runs failed/)).toBeInTheDocument();
     const artifacts = screen.getByRole('heading', { name: 'Artifacts' }).closest('section')!;
     expect(within(artifacts).getAllByRole('button', { name: 'Download' })).toHaveLength(2);
     expect(within(artifacts).getByText('29.3 KiB')).toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, newKey } from '../api/client';
-import type { Artifact, QaProject, Run } from '../api/types';
+import type { Artifact, QaProject, QaSummary, Run } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Status, Time } from './ui';
 
@@ -153,20 +153,75 @@ export function QaEvidence({ run }: { run: Run }) {
             <dt>Command</dt><dd><code className="wrap">{summary.data.command.join(' ')}</code></dd>
             <dt>Reports</dt><dd>{summary.data.reportFiles} files{summary.data.unreadableReportFiles ? `, ${summary.data.unreadableReportFiles} unreadable` : ''}{summary.data.reportsTruncated ? ', archive omitted (too large)' : ''}</dd>
           </dl>
-          {summary.data.failedTests.length > 0 && (
-            <>
-              <h3 className="subhead">Failing tests</h3>
-              <div className="table-wrap"><table>
-                <thead><tr><th>Test</th><th>Kind</th><th>Message</th></tr></thead>
-                <tbody>{summary.data.failedTests.map((t, i) => (
-                  <tr key={i}><td><code>{t.suite}{t.name ? `#${t.name}` : ''}</code></td><td>{t.kind}</td><td className="wrap-cell">{t.message}</td></tr>
-                ))}</tbody>
-              </table></div>
-            </>
-          )}
+          <TriageView run={run} fallback={summary.data.failedTests} />
         </>
       )}
     </Section>
+  );
+}
+
+const HISTORY: Record<string, { text: string; tone: string }> = {
+  NEW_FAILURE: { text: 'new failure', tone: 'bad' },
+  PERSISTENT: { text: 'already failing', tone: 'warn' },
+  FLAKY: { text: 'flaky', tone: 'warn' },
+  FIRST_SEEN: { text: 'first run', tone: 'muted' },
+};
+
+/** Why the run failed, from the ingested test results: a category per failure and each test's history in this suite. */
+function TriageView({ run, fallback }: { run: Run; fallback: QaSummary['failedTests'] }) {
+  const triage = usePolling(() => api.qaTriage(run.id), [run.id, run.status], 5000);
+  const t = triage.data;
+  if (triage.error) return <ErrorBanner error={triage.error} />;
+  if (!t || !t.ingested) {
+    return (
+      <>
+        {fallback.length > 0 && <FailedList rows={fallback.map(f => ({ test: `${f.suite}${f.name ? `#${f.name}` : ''}`, message: f.message }))} />}
+        {['COMPLETED', 'FAILED', 'CANCELLED', 'TIMED_OUT'].includes(run.status) && <p className="muted small">Analysing test results…</p>}
+      </>
+    );
+  }
+  return (
+    <>
+      {t.category && (
+        <div className="triage">
+          <strong>Why it failed: {t.category.replace(/_/g, ' ').toLowerCase()}</strong>
+          <p>{t.explanation}</p>
+        </div>
+      )}
+      {t.failures.length > 0 && (
+        <>
+          <h3 className="subhead">Failing tests</h3>
+          <div className="table-wrap"><table>
+            <thead><tr><th>Test</th><th>Category</th><th>History</th><th>Message</th></tr></thead>
+            <tbody>{t.failures.map((f, i) => {
+              const h = HISTORY[f.history.label];
+              return (
+                <tr key={i}>
+                  <td><code>{f.testClass}{f.testName ? `#${f.testName}` : ''}</code>{f.failureType && <div className="muted small">{f.failureType}</div>}</td>
+                  <td title={f.explanation ?? ''}>{f.category.replace(/_/g, ' ').toLowerCase()}</td>
+                  <td><span className={`badge badge-${h?.tone ?? 'muted'}`}>{h?.text ?? f.history.label}</span>
+                    <div className="muted small">{f.history.recentFailures}/{f.history.recentRuns} recent runs failed
+                      {f.history.lastPassedCommit ? <>; last passed at <code>{f.history.lastPassedCommit.slice(0, 7)}</code></> : ''}</div></td>
+                  <td className="wrap-cell">{f.message}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table></div>
+        </>
+      )}
+    </>
+  );
+}
+
+function FailedList({ rows }: { rows: { test: string; message: string }[] }) {
+  return (
+    <>
+      <h3 className="subhead">Failing tests</h3>
+      <div className="table-wrap"><table>
+        <thead><tr><th>Test</th><th>Message</th></tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i}><td><code>{r.test}</code></td><td className="wrap-cell">{r.message}</td></tr>)}</tbody>
+      </table></div>
+    </>
   );
 }
 

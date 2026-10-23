@@ -1,5 +1,5 @@
 import type {
-  Approval, Artifact, AuditEvent, GitHubPoll, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task,
+  Approval, Artifact, AuditEvent, GitHubPoll, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -88,6 +88,7 @@ export const api = {
   artifactBlob: async (id: string): Promise<Blob> => (await artifactContent(id)).blob(),
   qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
   qaProjects: () => get<QaProject[]>('/qa/projects'),
+  qaTriage: (runId: string) => get<Triage>(`/qa/runs/${runId}/triage`),
   suiteCatalog: (project: string, ref?: string) => get<SuiteCatalog>(`/qa/projects/${project}/suites${query({ ref })}`),
   pullRequestRuns: (project?: string) => get<PullRequestRun[]>(`/qa/pull-requests${query({ project, limit: 100 })}`),
   gitHubPolls: () => get<GitHubPoll[]>('/qa/github-polls'),

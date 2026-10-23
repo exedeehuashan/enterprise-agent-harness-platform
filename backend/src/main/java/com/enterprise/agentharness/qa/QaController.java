@@ -15,8 +15,11 @@ public class QaController {
     private final QaRegistry registry;
     private final PullRequestTriggers pullRequests;
     private final QaSuiteResolver resolver;
-    public QaController(QaRegistry registry, PullRequestTriggers pullRequests, QaSuiteResolver resolver) {
-        this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver;
+    private final QaTriageService triageService;
+    private final com.enterprise.agentharness.run.RunService runs;
+    public QaController(QaRegistry registry, PullRequestTriggers pullRequests, QaSuiteResolver resolver, QaTriageService triageService,
+            com.enterprise.agentharness.run.RunService runs) {
+        this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver; this.triageService = triageService; this.runs = runs;
     }
 
     @GetMapping("/projects")
@@ -36,6 +39,21 @@ public class QaController {
     public QaSuiteResolver.Catalog suites(@org.springframework.web.bind.annotation.PathVariable String key, @RequestParam(required = false) String ref) {
         try { return resolver.catalog(key, ref); }
         catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
+    }
+
+    /** Why a QA run failed: a category and explanation per failing test, with each test's history in this suite. */
+    @GetMapping("/runs/{runId}/triage")
+    public QaTriageService.Triage triage(@org.springframework.web.bind.annotation.PathVariable java.util.UUID runId) {
+        runs.get(runId);
+        return triageService.triage(runId);
+    }
+
+    @GetMapping("/tests/history")
+    public java.util.List<QaTriageService.TestResult> testHistory(@RequestParam String project, @RequestParam String suite,
+            @RequestParam String testClass, @RequestParam(defaultValue = "") String testName, @RequestParam(defaultValue = "50") int limit) {
+        if (limit < 1 || limit > 200) throw new RunException(HttpStatus.BAD_REQUEST, "limit must be 1..200");
+        if (testClass.isBlank() || testClass.length() > 300 || testName.length() > 300) throw new RunException(HttpStatus.BAD_REQUEST, "Invalid test");
+        return triageService.history(project, suite, testClass, testName, limit);
     }
 
     @GetMapping("/github-polls")
