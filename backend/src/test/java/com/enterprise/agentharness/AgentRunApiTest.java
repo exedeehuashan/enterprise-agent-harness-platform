@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 class AgentRunApiTest {
     private static final String API = "/api/v1/agent-tasks";
     private static final EmbeddedPostgres POSTGRES = startPostgres();
@@ -125,7 +125,7 @@ class AgentRunApiTest {
     @Test
     void runningCancellationIsCooperative() throws Exception {
         var run=start(task(),"cancel-running");
-        var claim=runs.claim();
+        var claim=runs.claim();assertThat(runs.authorize(claim)).isTrue();
         mvc.perform(post("/api/v1/agent-runs/"+run.id()+"/cancel"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.cancelRequested").value(true));
         runs.finish(run.id(),claim.token(),"not published",false);
@@ -139,7 +139,7 @@ class AgentRunApiTest {
         expireDeadline(first.id());runs.recover();
         assertThat(runs.get(first.id()).status()).isEqualTo("TIMED_OUT");
         var second=start(task(),"timeout-running");
-        var claim=runs.claim();expireDeadline(second.id());
+        var claim=runs.claim();assertThat(runs.authorize(claim)).isTrue();expireDeadline(second.id());
         runs.finish(second.id(),claim.token(),"late output",false);
         assertThat(runs.get(second.id()).status()).isEqualTo("TIMED_OUT");
         assertThat(runs.get(second.id()).errorCode()).isEqualTo("DEADLINE_EXCEEDED");
@@ -148,11 +148,11 @@ class AgentRunApiTest {
     @Test
     void expiredLeaseRetriesOnceAndFencesStaleCompletion() {
         var run=start(task(),"recovery");
-        var first=runs.claim();expireLease(run.id());
+        var first=runs.claim();assertThat(runs.authorize(first)).isTrue();expireLease(run.id());
         runs.finish(run.id(),first.token(),"expired",false);
         assertThat(runs.get(run.id()).status()).isEqualTo("RUNNING");
         runs.recover();assertThat(runs.get(run.id()).status()).isEqualTo("QUEUED");
-        var second=runs.claim();assertThat(second.token()).isNotEqualTo(first.token());
+        var second=runs.claim();assertThat(runs.authorize(second)).isTrue();assertThat(second.token()).isNotEqualTo(first.token());
         runs.finish(run.id(),first.token(),"stale",false);
         assertThat(runs.get(run.id()).status()).isEqualTo("RUNNING");
         runs.finish(run.id(),second.token(),"current",false);

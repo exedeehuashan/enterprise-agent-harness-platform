@@ -5,7 +5,7 @@ for a future React + TypeScript application.
 
 ## Run locally
 
-Prerequisites: Java 17, Maven 3.6.3+, Docker with Compose, and a running Docker daemon.
+Prerequisites: Java 17, Maven 3.6.3+, Docker with Compose, a running Docker daemon, and a random admin API token.
 From the repository root:
 
 ```sh
@@ -16,31 +16,53 @@ set -a
 set +a
 docker compose up -d --wait postgres
 cd backend
-mvn spring-boot:run
+# Supply from a private secret source; minimum 32 URL-safe characters.
+# export EAHP_SECURITY_ADMIN_TOKEN=...
+SERVER_ADDRESS=127.0.0.1 mvn spring-boot:run
 ```
 
 The application listens on port 8080. Configuration is supplied through `DB_URL`,
 `DB_USERNAME`, `DB_PASSWORD`, and optionally `PORT`. Spring Boot does not load
 `.env` automatically; export it as shown. Do not commit `.env` or credentials.
-Flyway applies `V1__create_agent_tasks.sql` on startup; Hibernate validates the
+Flyway applies versioned SQL migrations on startup; Hibernate validates the
 schema and never creates it. PostgreSQL data persists in a named Compose volume.
 Use `docker compose stop` from the root to stop PostgreSQL while retaining data.
+
+## Local API identity and roles
+
+Every API call now requires `Authorization: Bearer <token>`. Startup fails if
+`EAHP_SECURITY_ADMIN_TOKEN` is absent/invalid. Use a cryptographically random
+token (32–256 URL-safe characters); never commit credentials. Optional distinct
+`EAHP_SECURITY_OPERATOR_TOKEN` and `EAHP_SECURITY_VIEWER_TOKEN` enable those
+identities. No default token, browser session or query-string token is accepted.
+
+Admin can operate and approve; operator can read and submit/edit/cancel but
+cannot approve or read approval/audit endpoints; viewer can only read ordinary
+resources. This is one local workspace, not multi-tenant authentication or SSO.
+Keep the server bound to localhost; remote deployment requires TLS.
+
+For the examples below, set `AUTH_HEADERS` to a private file containing one
+`Authorization: Bearer ...` line (mode 600):
+
+```sh
+AUTH_HEADERS=/absolute/private/path/admin.headers
+```
 
 ## API
 
 ```sh
-curl -i http://localhost:8080/api/v1/agent-tasks \
+curl -H "@$AUTH_HEADERS" -i http://localhost:8080/api/v1/agent-tasks \
   -H 'Content-Type: application/json' \
   -d '{"title":"Analyze report","description":"Prepare a summary"}'
 # Replace the value with the id returned by POST.
 TASK_ID=00000000-0000-0000-0000-000000000000
-curl "http://localhost:8080/api/v1/agent-tasks/$TASK_ID"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/agent-tasks/$TASK_ID"
 ```
 
 ### List tasks
 
 ```sh
-curl 'http://localhost:8080/api/v1/agent-tasks?page=0&size=20&status=PENDING&sort=createdAt,desc'
+curl -H "@$AUTH_HEADERS" 'http://localhost:8080/api/v1/agent-tasks?page=0&size=20&status=PENDING&sort=createdAt,desc'
 ```
 
 Collection GET returns a stable JSON envelope:
@@ -65,8 +87,8 @@ header. Collection items also include `version`. Retrieve the latest task, then
 send its ETag in `If-Match` when editing:
 
 ```sh
-curl -i "http://localhost:8080/api/v1/agent-tasks/$TASK_ID"
-curl -i -X PATCH "http://localhost:8080/api/v1/agent-tasks/$TASK_ID" \
+curl -H "@$AUTH_HEADERS" -i "http://localhost:8080/api/v1/agent-tasks/$TASK_ID"
+curl -H "@$AUTH_HEADERS" -i -X PATCH "http://localhost:8080/api/v1/agent-tasks/$TASK_ID" \
   -H 'Content-Type: application/json' -H 'If-Match: "0"' \
   -d '{"title":"Updated task"}'
 ```
@@ -88,19 +110,20 @@ unchanged.
 
 ```sh
 # Each new execution needs a new key. Reusing the same key/request replays it.
-curl -i -X POST "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/runs" \
+curl -H "@$AUTH_HEADERS" -i -X POST "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/runs" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-001' \
   -d '{"tool":"DEMO_ANALYZE","timeoutSeconds":30}'
 # Replace RUN_ID with the returned id.
 RUN_ID=00000000-0000-0000-0000-000000000000
-curl "http://localhost:8080/api/v1/agent-runs/$RUN_ID"
-curl "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/runs?page=0&size=20"
-curl -i -X POST "http://localhost:8080/api/v1/agent-runs/$RUN_ID/cancel"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/agent-runs/$RUN_ID"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/runs?page=0&size=20"
+curl -H "@$AUTH_HEADERS" -i -X POST "http://localhost:8080/api/v1/agent-runs/$RUN_ID/cancel"
 ```
 
 Start returns 202 and a Location for the durable run. The JSON object may be
 empty; defaults are DEMO_ANALYZE and 30 seconds. Only those two fields are
-accepted. Timeout is an integer 1–300 and includes queue time. The key is
+accepted. Timeout is an integer 1–300 and includes queued execution time. For
+approval-required runs, a separate 30-minute approval window precedes it. The key is
 required (1–128 ASCII letters/digits or `._:-`) and scoped to the task.
 Same key and normalized request return the original run, even after completion
 or later task edits; changing the request returns 409. A new key while a run
@@ -108,25 +131,56 @@ is QUEUED/RUNNING returns 409. Missing tasks/runs return 404; invalid requests
 return the existing structured 400 response.
 
 The Worker polls PostgreSQL every 500 ms, claims one run atomically and performs
-only a pure local length calculation. There are no model, Shell, network or
-order-writing tools. Run detail includes immutable task input snapshots, status,
+only a pure local length calculation. DEMO_ANALYZE executes directly;
+DEMO_REVIEW waits for human approval. Both tools are safe simulations, with no
+model, Shell, network or order-writing tools. Run detail includes immutable task input snapshots, status,
 deadline, timestamps, attempt count and one persisted step with its output.
 History uses page/size only and is sorted by createdAt/id descending.
 
-Run states: QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED, TIMED_OUT. A queued
+Run states include QUEUED, RUNNING, WAITING_APPROVAL, COMPLETED, FAILED,
+CANCELLED, TIMED_OUT, REJECTED, EXPIRED and NEEDS_REVIEW. A queued or approval-waiting
 cancel returns 200/CANCELLED; running cancel returns 202 with cancelRequested
 until the Worker acknowledges it. Terminal cancel is an idempotent 200.
 Task summary is RUNNING while queued/executing, COMPLETED after success and
 FAILED after other terminal outcomes. Run transitions update the task version,
 so clients must refresh ETag before editing.
 
-Claims expire after 10 seconds. Recovery retries this pure tool at most once
+Claims expire after 10 seconds. Recovery retries DEMO_ANALYZE at most once
 (two claims total), rejects old claim results and marks a second lost Worker
 FAILED/WORKER_LOST. Deadlines end runs as TIMED_OUT. This is bounded recovery,
 not an exactly-once guarantee or a hard process-kill mechanism. All future
 side-effecting or long-running tools need their own execution policy.
+DEMO_REVIEW is not retried automatically; a lost claim requires review.
 Disable automatic polling with `EAHP_WORKER_ENABLED=false` for controlled
 experiments; default is enabled. See [P2 design and verification](docs/p2-execution-core.md).
+
+### Approval and evidence
+
+Start a run with `{"tool":"DEMO_REVIEW"}` to obtain WAITING_APPROVAL, approvalId
+and inputDigest. The admin reviews the run snapshot, toolVersion and target,
+then submits a digest-bound decision:
+
+```sh
+APPROVAL_ID=00000000-0000-0000-0000-000000000000
+# Replace the digest with the exact inputDigest returned for this approval.
+curl -H "@$AUTH_HEADERS" -X POST "http://localhost:8080/api/v1/approvals/$APPROVAL_ID/decision" \
+  -H 'Content-Type: application/json' \
+  -d '{"decision":"APPROVE","expectedDigest":"<64-character digest>","reasonCode":"REVIEWED"}'
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/approvals/$APPROVAL_ID"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/approvals?page=0&size=20"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/audit-events?runId=$RUN_ID"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/agent-runs/$RUN_ID/invocations"
+curl -H "@$AUTH_HEADERS" http://localhost:8080/api/v1/tools
+```
+
+Decision accepts APPROVE/REJECT and reasonCode REVIEWED/RISK_NOT_ACCEPTED;
+unknown fields are rejected. Already decided or mismatched digests return 409.
+Expiry discovered during decision persists EXPIRED and returns 410 with the
+approval object; changed policy/input returns 409 with INVALIDATED. Other
+validation errors use the existing error shape. Approval is checked again and
+consumed atomically just before dispatch. A consumed decision cannot authorize
+another attempt. Policy changes, modified inputs and disabled tools cannot
+reuse approval. See [P3 design and limits](docs/p3-approval-and-audit.md).
 
 ### Create and retrieve behavior
 
