@@ -416,6 +416,12 @@ totals (`coverage.json`, `qa_coverage`), reports show line coverage, and the gat
 can require a minimum per suite (`minLineCoverage`). See
 [P29 design notes](docs/p29-code-coverage.md).
 
+**GitHub write-back.** With `EAHP_GITHUB_WRITE_TOKEN` set and write-back switched
+on for a project, QA results are posted to its pull requests: `eahp/<suite>` and
+`eahp/release-gate` commit statuses, plus one EAHP comment with the QA report,
+updated in place. Delivery goes through an outbox with retries. See
+[P30 design notes](docs/p30-github-write-back.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

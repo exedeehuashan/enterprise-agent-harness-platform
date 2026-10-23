@@ -39,6 +39,10 @@ services:
       EAHP_QA_VOLUME: eahp-qa-work
       EAHP_GITHUB_POLL_ENABLED: ${EAHP_GITHUB_POLL_ENABLED:-false}
       EAHP_GITHUB_TOKEN: ${EAHP_GITHUB_TOKEN:-}
+      # Optional: a token that may write commit statuses and pull request comments (QA write-back, P30).
+      EAHP_GITHUB_WRITE_TOKEN: ${EAHP_GITHUB_WRITE_TOKEN:-}
+      # Optional: the console's public URL, linked from GitHub commit statuses.
+      EAHP_PUBLIC_URL: ${EAHP_PUBLIC_URL:-}
     ports:
       - "127.0.0.1:${EAHP_BACKEND_PORT:-8080}:8080"
     # API tests (P24) reach systems under test published on the host, for example a local UAT stack.

@@ -14,8 +14,21 @@ public class QaScheduleController {
     private final QaSchedules schedules;
     private final QaEnvironments environments;
     private final QaApiTestTool apiTests;
-    public QaScheduleController(QaSchedules schedules, QaEnvironments environments, QaApiTestTool apiTests) {
-        this.schedules = schedules; this.environments = environments; this.apiTests = apiTests;
+    private final GitHubWriteBack writeBack;
+    public QaScheduleController(QaSchedules schedules, QaEnvironments environments, QaApiTestTool apiTests, GitHubWriteBack writeBack) {
+        this.schedules = schedules; this.environments = environments; this.apiTests = apiTests; this.writeBack = writeBack;
+    }
+
+    public record WriteBackView(GitHubWriteBack.Settings settings, List<GitHubWriteBack.OutboxEntry> recent) {}
+
+    /** Whether QA results are written back to this project's pull requests, and the latest GitHub calls. */
+    @GetMapping("/projects/{project}/github-write-back")
+    public WriteBackView writeBack(@PathVariable String project) { return new WriteBackView(writeBack.settings(project), writeBack.outbox(project, 20)); }
+
+    @PutMapping("/admin/projects/{project}/github-write-back")
+    public GitHubWriteBack.Settings setWriteBack(@PathVariable String project, @RequestBody JsonNode body) {
+        if (body == null || !body.path("enabled").isBoolean() || body.size() != 1) throw new com.enterprise.agentharness.run.RunException(HttpStatus.BAD_REQUEST, "Body must be {\"enabled\": true|false}");
+        return writeBack.setEnabled(project, body.get("enabled").booleanValue());
     }
 
     /** API test collections declared in the repository at a ref, plus the environments they can run against. */

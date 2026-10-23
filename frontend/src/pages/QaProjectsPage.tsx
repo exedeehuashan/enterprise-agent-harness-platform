@@ -5,6 +5,7 @@ import { useSession } from '../session';
 import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
 import { ProjectSchedules } from '../components/qaSchedules';
 import { ProjectEnvironments } from '../components/qaApiTests';
+import { GitHubWriteBackPanel } from '../components/githubWriteBack';
 
 /** Read-only catalog of projects under test and their predefined suites. */
 export function QaProjectsPage() {
@@ -38,6 +39,7 @@ export function QaProjectsPage() {
           </table></div>
           <ProjectSchedules project={p} />
           <ProjectEnvironments project={p} />
+          <GitHubWriteBackPanel project={p} />
           {can('APPROVER') && <ProjectAdminPanel project={p} onChanged={projects.reload} />}
         </Section>
       ))}
