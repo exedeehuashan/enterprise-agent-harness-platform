@@ -97,7 +97,8 @@ export const api = {
     update: (key: string, body: Record<string, unknown>) => request<ProjectAdmin>(`/qa/admin/projects/${key}`, { method: 'PATCH', body }).then(r => r.data),
     suite: (key: string, suite: string, body: Record<string, unknown>) => request<ProjectAdmin>(`/qa/admin/projects/${key}/suites/${suite}`, { method: 'PUT', body }).then(r => r.data),
     trigger: (key: string, suite: string, enabled: boolean) => request<ProjectAdmin>(`/qa/admin/projects/${key}/triggers/${suite}`, { method: 'PUT', body: { enabled } }).then(r => r.data),
-    gate: (key: string, requiredSuites: string[]) => request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'PUT', body: { requiredSuites } }).then(r => r.data),
+    gate: (key: string, requiredSuites: string[], minLineCoverage: Record<string, number> = {}) =>
+      request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'PUT', body: { requiredSuites, minLineCoverage } }).then(r => r.data),
     removeGate: (key: string) => request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'DELETE' }).then(r => r.data),
     events: (project: string) => get<AdminEvent[]>(`/qa/admin/events${query({ project, limit: 20 })}`),
     createSchedule: (body: Record<string, unknown>) => post<QaSchedule>('/qa/admin/schedules', body),

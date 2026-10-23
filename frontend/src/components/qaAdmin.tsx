@@ -62,7 +62,8 @@ export function ProjectAdminPanel({ project, onChanged }: { project: QaProject; 
         })}
         {suiteKeys.length === 0 && <span className="muted small">No suites yet.</span>}
       </div>
-      <GateForm suites={a.gateSuites} busy={action.busy} onSave={list => apply(() => list.length ? api.admin.gate(project.key, list) : api.admin.removeGate(project.key))} />
+      <GateForm suites={a.gateSuites} coverage={a.gateCoverage ?? {}} busy={action.busy}
+        onSave={(list, minimums) => apply(() => list.length ? api.admin.gate(project.key, list, minimums) : api.admin.removeGate(project.key))} />
       <SuiteForm busy={action.busy} onSave={(key, body) => apply(() => api.admin.suite(project.key, key, body))} />
       <h3 className="subhead">Change history</h3>
       {events.data?.length === 0 && <Empty>No changes recorded.</Empty>}
@@ -103,12 +104,25 @@ function PolicyForm({ project, busy, onSave }: { project: QaProject; busy: boole
   );
 }
 
-function GateForm({ suites, busy, onSave }: { suites: string[]; busy: boolean; onSave: (list: string[]) => void }) {
+function GateForm({ suites, coverage, busy, onSave }: { suites: string[]; coverage: Record<string, number>; busy: boolean;
+    onSave: (list: string[], minLineCoverage: Record<string, number>) => void }) {
   const [value, setValue] = useState(suites.join(', '));
+  const [minimums, setMinimums] = useState(Object.entries(coverage).map(([k, v]) => `${k}=${v}`).join(', '));
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    // "backend-unit=70, frontend-unit=60": minimum line coverage per required suite.
+    const parsed: Record<string, number> = {};
+    for (const part of minimums.split(/[,\s]+/).filter(Boolean)) {
+      const [k, v] = part.split('=');
+      if (k && v !== undefined && !Number.isNaN(Number(v))) parsed[k] = Number(v);
+    }
+    onSave(value.split(/[,\s]+/).filter(Boolean), parsed);
+  };
   return (
-    <form className="row" onSubmit={e => { e.preventDefault(); onSave(value.split(/[,\s]+/).filter(Boolean)); }}>
+    <form className="row" onSubmit={submit}>
       <h3 className="subhead">Release gate</h3>
       <label className="inline">Required suites<input value={value} onChange={e => setValue(e.target.value)} placeholder="empty removes the gate" /></label>
+      <label className="inline">Minimum line coverage<input value={minimums} onChange={e => setMinimums(e.target.value)} placeholder="backend-unit=70" /></label>
       <button type="submit" className="secondary" disabled={busy}>Save gate</button>
     </form>
   );

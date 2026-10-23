@@ -410,6 +410,12 @@ can switch a domain off, which disables its tools and pauses its jobs. Approver
 tools live on the console's Administration page. See
 [P28 design notes](docs/p28-metrics-and-domain-modules.md).
 
+**Code coverage.** Suites may list JaCoCo or Cobertura reports
+(`"coverage": ["target/site/jacoco/jacoco.xml"]`). Runs record line and branch
+totals (`coverage.json`, `qa_coverage`), reports show line coverage, and the gate
+can require a minimum per suite (`minLineCoverage`). See
+[P29 design notes](docs/p29-code-coverage.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

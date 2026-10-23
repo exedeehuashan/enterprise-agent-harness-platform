@@ -69,6 +69,8 @@ class QaSuiteToolApiTest {
     static volatile String repoFile;
     /** Console output written by the fake "docker run". */
     static volatile String consoleText;
+    /** A JaCoCo report the fake build leaves under backend/order-api/target/site/jacoco, or null for none. */
+    static volatile String coverageXml;
     /** Commit that "git ls-remote" reports for any branch. */
     static volatile String remoteSha;
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
@@ -101,6 +103,7 @@ class QaSuiteToolApiTest {
                     Path reports=Files.createDirectories(src.resolve("backend/order-api/target/surefire-reports"));
                     Files.writeString(reports.resolve("TEST-com.example.Test.xml"), reportXml);
                 }
+                if (coverageXml != null) Files.writeString(Files.createDirectories(src.resolve("backend/order-api/target/site/jacoco")).resolve("jacoco.xml"), coverageXml);
                 if (duringRun != null) duringRun.run();
                 if (stop.getAsBoolean()) { onStop.run(); return new Result(-1,true,false); }
                 return new Result(dockerExit,false,false);
@@ -145,7 +148,7 @@ class QaSuiteToolApiTest {
         repository.deleteAll();
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE");
         jdbc.update("UPDATE qa_projects SET enabled=TRUE");
-        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();
+        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();coverageXml=null;
         jdbc.update("DELETE FROM qa_schedules WHERE id<>'6b8c0f2e-7f3a-4c1e-9a54-3d2f0e5b7a10'");
         jdbc.update("UPDATE qa_schedules SET enabled=FALSE, last_commit=NULL, last_run_id=NULL, task_id=NULL, last_error=NULL");
         jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");jdbc.update("DELETE FROM qa_quarantines");
@@ -662,7 +665,7 @@ class QaSuiteToolApiTest {
             assertThat(report.get("commit").asText()).isEqualTo(b);
             String md=report.get("markdown").asText();
             assertThat(md).startsWith("## EAHP QA report: online-shop @ `bbbbbbbbbbbb`\n\n**Release gate: FAIL** (required: backend-unit)")
-                    .contains("| backend-unit | TESTS\\_FAILED | 2 | 1 | full | `"+failed.toString().substring(0,8)+"` |")
+                    .contains("| backend-unit | TESTS\\_FAILED | 2 | 1 | — | full | `"+failed.toString().substring(0,8)+"` |")
                     .contains("- backend-unit failed \\(TESTS\\_FAILED, ASSERTION\\).")
                     .contains("- backend-unit `OrderTest#creates` (failed, assertion, new failure): expected: &lt;1&gt; but was: &lt;2&gt;")
                     .contains("### Pull request #61: Fix @\u200Badmin \\[x\\]\\(http://evil\\) &lt;b&gt;")
@@ -700,6 +703,48 @@ class QaSuiteToolApiTest {
         mvc.perform(get("/api/v1/qa/projects/online-shop/compare").param("base",a).param("head",c).param("suite","Bad Suite").header("Authorization",auth(VIEWER)))
                 .andExpect(status().isBadRequest());
         mvc.perform(get("/api/v1/qa/projects/online-shop/compare").param("base",a).param("head",c)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void coverageIsRecordedReportedAndEnforcedByTheGate() throws Exception {
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"coverage\":[\"target/site/jacoco/jacoco.xml\"]}");
+        coverageXml=com.enterprise.agentharness.qa.CoverageReportsTest.JACOCO; // 75% lines, 60% branches
+        String a="a".repeat(40),b="b".repeat(40);
+        UUID run=runAt(task(),"cov1",a,PASS,0);
+        var cov=mapper.readTree(content(artifact(run,"coverage.json")));
+        assertThat(cov.get("linesCovered").asLong()).isEqualTo(75);
+        assertThat(cov.get("modules").get(0).get("name").asText()).isEqualTo("order-api");
+        ingestor.runOnce();
+        assertThat(jdbc.queryForObject("SELECT lines_covered||'/'||lines_missed FROM qa_coverage WHERE run_id=?",String.class,run)).isEqualTo("75/25");
+
+        mvc.perform(put("/api/v1/qa/admin/projects/online-shop/gate").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"requiredSuites\":[\"backend-unit\"],\"minLineCoverage\":{\"backend-unit\":80}}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.gateCoverage.backend-unit").value(80.0));
+        try {
+            var low=gate(a);
+            assertThat(low.get("verdict").asText()).isEqualTo("FAIL");
+            assertThat(low.get("reasons").get(0).asText()).isEqualTo("backend-unit line coverage 75.0% is below the gate's 80.0%.");
+            assertThat(low.get("suites").get(0).get("lineCoverage").asDouble()).isEqualTo(75.0);
+            mvc.perform(put("/api/v1/qa/admin/projects/online-shop/gate").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"requiredSuites\":[\"backend-unit\"],\"minLineCoverage\":{\"backend-unit\":70}}")).andExpect(status().isOk());
+            assertThat(gate(a).get("verdict").asText()).isEqualTo("PASS");
+            String md=mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref",a).header("Authorization",auth(VIEWER)))
+                    .andReturn().getResponse().getContentAsString()).get("markdown").asText();
+            assertThat(md).contains("| backend-unit | PASSED | 2 | 0 | 75.0% | full |");
+
+            coverageXml=null; // a passing run without a coverage report fails a gate that requires coverage
+            runAt(task(),"cov2",b,PASS,0);ingestor.runOnce();
+            assertThat(gate(b).get("reasons").get(0).asText()).isEqualTo("backend-unit passed but reported no coverage; the gate requires at least 70.0% line coverage.");
+            for (String bad : List.of("{\"requiredSuites\":[\"backend-unit\"],\"minLineCoverage\":{\"other\":50}}",
+                    "{\"requiredSuites\":[\"backend-unit\"],\"minLineCoverage\":{\"backend-unit\":101}}")) {
+                mvc.perform(put("/api/v1/qa/admin/projects/online-shop/gate").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content(bad))
+                        .andExpect(status().isBadRequest());
+            }
+        } finally {
+            jdbc.update("UPDATE qa_quality_gates SET min_line_coverage='{}'::jsonb");
+        }
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"coverage\":[\"/etc/passwd.xml\"]}");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("invalid"));
     }
 
     @Test

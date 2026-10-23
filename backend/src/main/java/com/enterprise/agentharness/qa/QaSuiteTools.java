@@ -185,6 +185,10 @@ public class QaSuiteTools {
                         mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(summaryJson(project, suite, args, result, summary, code, started, finished, zip == null && !reports.isEmpty()))));
                 if (zip != null) evidence.add(new ToolResult.Artifact("junit-reports.zip", "application/zip", zip));
                 evidence.add(tail("console.log", consoleLog));
+                if (!suite.coverage().isEmpty()) {
+                    var coverage = CoverageReports.summarize(source, CoverageReports.find(source, suite.coverage()));
+                    evidence.add(new ToolResult.Artifact("coverage.json", "application/json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(coverage)));
+                }
                 String text = String.format("%s/%s @ %s: exit %s, %d tests, %d failures, %d errors, %d skipped in %d s",
                         project.key(), suite.key(), commit.substring(0, 12), result.timedOut() || result.stopped() ? "n/a" : String.valueOf(result.exitCode()),
                         summary.tests(), summary.failures(), summary.errors(), summary.skipped(), Duration.between(started, finished).toSeconds());

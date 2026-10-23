@@ -29,9 +29,10 @@ public class QualityService {
         this.jdbc = jdbc; this.mapper = mapper; this.triage = triage; this.quarantines = quarantines;
     }
 
-    public record GatePolicy(List<String> requiredSuites) {}
+    /** {@code minLineCoverage}: optional minimum line coverage (percent) per required suite, checked on full-scope runs. */
+    public record GatePolicy(List<String> requiredSuites, Map<String, Double> minLineCoverage) {}
     /** {@code modules} is empty for a full run, or lists the only modules a selective run built and tested. */
-    public record SuiteCheck(String suite, String status, UUID runId, String outcome, String category, String reason, List<String> modules) {}
+    public record SuiteCheck(String suite, String status, UUID runId, String outcome, String category, String reason, List<String> modules, Double lineCoverage) {}
     /** {@code reasons} explain a FAIL or PENDING verdict; {@code notes} add context such as new or flaky failures. */
     public record Gate(String project, String commit, String verdict, List<SuiteCheck> suites, List<String> reasons, List<String> notes, GatePolicy policy) {}
 
@@ -45,10 +46,11 @@ public class QualityService {
             List<FlakyTest> flaky, List<SlowTest> slowest, List<PullRequestStatus> pullRequests, GatePolicy gate) {}
 
     public GatePolicy policy(String project) {
-        var rows = jdbc.queryForList("SELECT required_suites::text AS suites FROM qa_quality_gates WHERE project_key=?", String.class, project);
+        var rows = jdbc.queryForList("SELECT required_suites::text AS suites, min_line_coverage::text AS coverage FROM qa_quality_gates WHERE project_key=?", project);
         if (rows.isEmpty()) return null;
         try {
-            return new GatePolicy(mapper.readValue(rows.get(0), new TypeReference<List<String>>() {}));
+            return new GatePolicy(mapper.readValue((String) rows.get(0).get("suites"), new TypeReference<List<String>>() {}),
+                    mapper.readValue((String) rows.get(0).get("coverage"), new TypeReference<java.util.LinkedHashMap<String, Double>>() {}));
         } catch (Exception ex) {
             throw new IllegalStateException("Invalid gate policy", ex);
         }
@@ -74,7 +76,7 @@ public class QualityService {
             if (latest.isEmpty()) {
                 pending = true;
                 String reason = active ? suite + " is running at this commit." : suite + " has not run at this commit.";
-                checks.add(new SuiteCheck(suite, "PENDING", null, null, null, reason, List.of()));
+                checks.add(new SuiteCheck(suite, "PENDING", null, null, null, reason, List.of(), null));
                 reasons.add(reason);
                 continue;
             }
@@ -83,20 +85,26 @@ public class QualityService {
             String outcome = (String) row.get("outcome"), category = (String) row.get("category");
             List<String> modules = modules(row.get("modules"));
             if (!modules.isEmpty()) notes.add(suite + " ran only the affected modules at this commit: " + String.join(", ", modules) + ".");
-            if ("PASSED".equals(outcome)) {
-                checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, null, active ? suite + " passed but is running again." : null, modules));
+            Double lineCoverage = lineCoverage(runId);
+            String coverageFailure = coverageFailure(policy, suite, modules, lineCoverage, notes);
+            if ("PASSED".equals(outcome) && coverageFailure != null) {
+                failed = true;
+                checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, null, coverageFailure, modules, lineCoverage));
+                reasons.add(coverageFailure);
+            } else if ("PASSED".equals(outcome)) {
+                checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, null, active ? suite + " passed but is running again." : null, modules, lineCoverage));
                 if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
             } else {
                 var waiver = "TESTS_FAILED".equals(outcome) ? quarantineWaiver(project, suite, row) : null;
                 if (waiver != null && waiver.accepted()) {
-                    checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, category, waiver.message(), modules));
+                    checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, category, waiver.message(), modules, lineCoverage));
                     notes.add(waiver.message());
                     if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
                 } else {
                     failed = true;
                     String reason = suite + " " + (outcome == null ? "did not produce a result" : "failed (" + outcome + (category == null ? "" : ", " + category) + ")") + ".";
                     if (waiver != null) reason += " " + waiver.message();
-                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason, modules));
+                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason, modules, lineCoverage));
                     reasons.add(reason);
                 }
             }
@@ -217,6 +225,27 @@ public class QualityService {
                     gate(project, head).verdict(), modules, notes));
         }
         return result;
+    }
+
+    /** Line coverage the run recorded, in percent with one decimal, or null when it reported none. */
+    private Double lineCoverage(UUID runId) {
+        var rows = jdbc.queryForList("SELECT lines_covered, lines_missed FROM qa_coverage WHERE run_id=?", runId);
+        if (rows.isEmpty()) return null;
+        long covered = ((Number) rows.get(0).get("lines_covered")).longValue(), missed = ((Number) rows.get(0).get("lines_missed")).longValue();
+        return covered + missed == 0 ? null : Math.round(1000.0 * covered / (covered + missed)) / 10.0;
+    }
+
+    /**
+     * The gate's coverage requirement for a passing suite: null when met or not configured. A module-selected run
+     * only covers part of the code, so its percentage is not comparable and the check is skipped with a note.
+     */
+    private static String coverageFailure(GatePolicy policy, String suite, List<String> modules, Double coverage, List<String> notes) {
+        Double min = policy.minLineCoverage().get(suite);
+        if (min == null) return null;
+        if (!modules.isEmpty()) { notes.add("Coverage of " + suite + " was not checked: the run covered only selected modules."); return null; }
+        if (coverage == null) return suite + " passed but reported no coverage; the gate requires at least " + min + "% line coverage.";
+        if (coverage < min) return suite + " line coverage " + coverage + "% is below the gate's " + min + "%.";
+        return null;
     }
 
     record Waiver(boolean accepted, String message) {}

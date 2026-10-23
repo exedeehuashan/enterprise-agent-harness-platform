@@ -127,7 +127,7 @@ export interface Triage {
 
 export interface Gate {
   project: string; commit: string; verdict: 'PASS' | 'FAIL' | 'PENDING' | 'NOT_CONFIGURED';
-  suites: { suite: string; status: string; runId: string | null; outcome: string | null; category: string | null; reason: string | null; modules?: string[] }[];
+  suites: { suite: string; status: string; runId: string | null; outcome: string | null; category: string | null; reason: string | null; modules?: string[]; lineCoverage?: number | null }[];
   reasons: string[]; notes: string[]; policy: { requiredSuites: string[] } | null;
 }
 
@@ -142,7 +142,7 @@ export interface QualityDashboard {
   gate: { requiredSuites: string[] } | null;
 }
 
-export interface ProjectAdmin { project: QaProject; triggers: { suite: string; enabled: boolean }[]; gateSuites: string[] }
+export interface ProjectAdmin { project: QaProject; triggers: { suite: string; enabled: boolean }[]; gateSuites: string[]; gateCoverage?: Record<string, number> }
 export interface AdminEvent { id: number; actor: string; action: string; projectKey: string; subject: string | null; before: unknown; after: unknown; occurredAt: string }
 
 export interface QaSchedule {
