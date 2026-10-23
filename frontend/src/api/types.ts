@@ -191,3 +191,5 @@ export interface ApiToken {
   lastUsedAt: string | null; revokedAt: string | null; revokedBy: string | null; active: boolean;
 }
 export interface ApiTokenIssued { token: ApiToken; secret: string }
+
+export interface DomainModuleInfo { key: string; name: string; description: string; enabled: boolean; canDisable: boolean; tools: { name: string; enabled: boolean }[]; changedBy: string | null }

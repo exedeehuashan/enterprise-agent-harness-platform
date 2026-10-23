@@ -413,7 +413,7 @@ class QaSuiteToolApiTest {
         worker();
         assertThat(runs.get(passed).status()).isEqualTo("COMPLETED");
         assertThat(summary(passed).get("tests").asInt()).isEqualTo(1);
-        dockerExit=3;consoleText="contract mismatch: OrderResponse.total\n";
+        dockerExit=3;consoleText="x".repeat(300_000)+"\u00ff\ncontract mismatch: OrderResponse.total\n"; // large, with a non-ASCII byte
         UUID failed=UUID.fromString(mapper.readTree(start(task(),"ec2",body).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).get("id").asText());
         worker();
         assertThat(runs.get(failed).errorCode()).isEqualTo("TESTS_FAILED");

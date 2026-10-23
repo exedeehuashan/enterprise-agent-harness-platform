@@ -12,12 +12,15 @@ import org.springframework.stereotype.Component;
 public class PullRequestPoller {
     private final PullRequestTriggers triggers;
     private final com.enterprise.agentharness.qa.impact.ChangeImpactService impacts;
-    public PullRequestPoller(PullRequestTriggers triggers, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts) {
-        this.triggers = triggers; this.impacts = impacts;
+    private final com.enterprise.agentharness.module.ModuleRegistry modules;
+    public PullRequestPoller(PullRequestTriggers triggers, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts,
+            com.enterprise.agentharness.module.ModuleRegistry modules) {
+        this.triggers = triggers; this.impacts = impacts; this.modules = modules;
     }
 
     @Scheduled(initialDelayString = "${eahp.github.poll.initial-delay-ms:30000}", fixedDelayString = "${eahp.github.poll.interval-ms:300000}")
     public void poll() {
+        if (!modules.enabled(QaModule.KEY)) return; // the QA module is switched off
         triggers.runOnce();
         impacts.precompute(5);
     }

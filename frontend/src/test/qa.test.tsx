@@ -348,6 +348,10 @@ describe('project administration', () => {
       'POST /admin/retention/run': () => ({ body: storage.lastRun }),
       'GET /admin/webhooks': () => ({ body: [] }),
       'GET /admin/tokens': () => ({ body: [] }),
+      'GET /modules': () => ({ body: [
+        { key: 'core', name: 'EAHP core', description: 'Platform', enabled: true, canDisable: false, tools: [{ name: 'DEMO_ANALYZE', enabled: true }], changedBy: null },
+        { key: 'qa', name: '方案 4: AI Quality Engineering', description: 'QA', enabled: true, canDisable: true, tools: [{ name: 'QA_RUN_SUITE', enabled: true }], changedBy: null }] }),
+      'PUT /admin/modules/qa/enabled': () => ({ body: { key: 'qa', name: '方案 4: AI Quality Engineering', description: 'QA', enabled: false, canDisable: true, tools: [], changedBy: 'admin' } }),
       'POST /admin/tokens': () => ({ status: 201, body: { secret: 'eahp_issued-once', token: { id: 't1', name: 'alice', description: null, roles: ['OPERATOR', 'VIEWER'],
         createdBy: 'admin', createdAt: '2026-10-24T00:00:00Z', expiresAt: null, lastUsedAt: null, revokedAt: null, revokedBy: null, active: true } } }),
       'POST /admin/webhooks': () => ({ status: 201, body: { secret: 'one-time-secret', subscription: { id: 'w1', name: 'Team chat', url: 'https://hooks.example.com/x',
@@ -368,7 +372,14 @@ describe('project administration', () => {
     await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
     expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ enabled: true });
     expect(screen.getByText('gate set')).toBeInTheDocument();
-    expect(screen.getByText('42 KiB')).toBeInTheDocument();
+    unmount();
+
+    const admin2 = renderApp('/admin');
+    expect(await screen.findByText('42 KiB')).toBeInTheDocument();
+    expect(await screen.findByText('方案 4: AI Quality Engineering')).toBeInTheDocument();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Switch off' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'PUT' && c.path === '/admin/modules/qa/enabled')).toBe(true));
     await userEvent.click(screen.getByRole('button', { name: 'Apply retention now' }));
     await waitFor(() => expect(calls.some(c => c.method === 'POST' && c.path === '/admin/retention/run')).toBe(true));
     const hooks = screen.getByRole('heading', { name: 'Webhooks' }).closest('section')!;
@@ -385,7 +396,7 @@ describe('project administration', () => {
     await userEvent.click(within(tokenForm).getByRole('button', { name: 'Issue token' }));
     expect(await within(tokenForm).findByText('eahp_issued-once')).toBeInTheDocument();
     expect(calls.find(c => c.method === 'POST' && c.path === '/admin/tokens')!.body).toEqual({ name: 'alice', description: null, roles: ['OPERATOR'], expiresInDays: 90 });
-    unmount();
+    admin2.unmount();
 
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });
     renderApp('/qa');

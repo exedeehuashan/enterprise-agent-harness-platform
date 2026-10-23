@@ -210,8 +210,15 @@ public class QaSuiteTools {
             else {
                 String tail = "";
                 if (Files.exists(consoleLog)) {
-                    String text = Files.readString(consoleLog, java.nio.charset.StandardCharsets.UTF_8);
-                    tail = text.substring(Math.max(0, text.length() - 4000));
+                    // Only the last 16 KiB is read (the log can be arbitrarily large), and malformed bytes are replaced, not fatal.
+                    try (var raf = new RandomAccessFile(consoleLog.toFile(), "r")) {
+                        long start = Math.max(0, raf.length() - 16 * 1024);
+                        byte[] bytes = new byte[(int) (raf.length() - start)];
+                        raf.seek(start);
+                        raf.readFully(bytes);
+                        String text = new String(bytes, StandardCharsets.UTF_8);
+                        tail = text.substring(Math.max(0, text.length() - 4000));
+                    }
                 }
                 report.append("><failure type=\"ExitCode\" message=\"exit code ").append(exit).append("\">").append(xml(tail)).append("</failure></testcase>");
             }
