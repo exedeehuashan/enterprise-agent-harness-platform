@@ -174,3 +174,16 @@ the embedded PostgreSQL native binaries (Linux CI uses Ubuntu).
 GitHub Actions runs `mvn verify` with Java 17 on pushes and pull requests.
 Authentication, task execution, LLM integrations, list/update/delete APIs,
 deployment, and production hardening are outside Issue #1.
+
+## Approved Issue automation
+
+Issue #3 adds a guarded `agent-ready` label workflow using disposable hosted
+Ubuntu runners, an isolated Codex worker/verifier, and a separate GitHub App PR
+publisher. It requires trusted authorization and never merges or deploys.
+See [setup, security boundaries, smoke tests, and troubleshooting](docs/issue-automation.md)
+and [actual local testing evidence](docs/issue-automation-test-results.md).
+Local security tests need no App or OpenAI credentials:
+
+```sh
+python3 -I -B -m unittest discover -s .github/automation/tests -v
+```
