@@ -225,6 +225,36 @@ The planner is enabled by default and can be disabled independently with
 limit stuck calls; timeouts request interruption but cannot guarantee a future
 remote provider has stopped or avoided billing. See [P4 design and learning notes](docs/p4-model-planning.md).
 
+### Execute a validated plan
+
+```sh
+curl -H "@$AUTH_HEADERS" -i -X POST "http://localhost:8080/api/v1/model-calls/$CALL_ID/executions" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: exec-001' -d '{}'
+# Replace EXECUTION_ID with the returned id.
+EXECUTION_ID=00000000-0000-0000-0000-000000000000
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/plan-executions/$EXECUTION_ID"
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/plan-executions?page=0&size=20"
+curl -H "@$AUTH_HEADERS" -i -X POST "http://localhost:8080/api/v1/plan-executions/$EXECUTION_ID/cancel"
+```
+
+An operator turns a VALIDATED plan into a plan execution: 202/Location, with
+step 1 launched as an ordinary run and later steps PENDING. The body must be an
+empty object. Each step is a separate run created through the normal run start
+path, so gated tools such as DEMO_REVIEW wait for their own P3 approval and every
+step has its own snapshot, digest, invocation and audit trail. A step launches
+only after the previous run COMPLETED; any other terminal run outcome stops the
+execution with `STEP_<run status>` and marks later steps SKIPPED. Nothing is
+retried or resumed automatically.
+
+Execution and every later launch require the task title/description to still
+equal the planning snapshot, the plan to pass current tool policy, and the task
+to have no other active run. Violations return 409 at start, or stop a running
+execution with TASK_CHANGED, POLICY_CHANGED or TASK_BUSY. A plan can be executed
+once; the same key replays, a different key returns 409. Only one plan execution
+may be RUNNING per task. Cancel is idempotent: it stops the execution immediately
+and cancels the current run through the usual cooperative path. Advancement runs
+in the Worker (`EAHP_WORKER_ENABLED`). See [P5 design notes](docs/p5-plan-execution.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,
