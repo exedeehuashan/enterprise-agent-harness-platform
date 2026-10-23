@@ -35,9 +35,11 @@ public class QaResultIngestor {
     private final FailureClassifier classifier;
     private final ObjectMapper mapper;
     private final TransactionTemplate tx;
+    private final GitHubWriteBack writeBack;
 
-    public QaResultIngestor(JdbcTemplate jdbc, ArtifactStore artifacts, FailureClassifier classifier, ObjectMapper mapper, TransactionTemplate tx) {
-        this.jdbc = jdbc; this.artifacts = artifacts; this.classifier = classifier; this.mapper = mapper; this.tx = tx;
+    public QaResultIngestor(JdbcTemplate jdbc, ArtifactStore artifacts, FailureClassifier classifier, ObjectMapper mapper, TransactionTemplate tx,
+            GitHubWriteBack writeBack) {
+        this.jdbc = jdbc; this.artifacts = artifacts; this.classifier = classifier; this.mapper = mapper; this.tx = tx; this.writeBack = writeBack;
     }
 
     /** Ingests up to 20 finished QA runs; returns how many were processed. */
@@ -105,6 +107,7 @@ public class QaResultIngestor {
         if (coverage != null) recordCoverage(runId, project, suite, commit, coverage);
         // Makes the result an event like any other (for example for webhooks): code is the outcome.
         jdbc.update("INSERT INTO audit_events(actor,action,run_id,code) VALUES ('qa','QA_RESULT_INGESTED',?,?)", runId, outcome == null ? "NO_RESULT" : outcome);
+        writeBack.onIngested(project, suite, commit, outcome == null ? "NO_RESULT" : outcome, cases.size(), failed);
     }
 
     private void recordFailure(UUID runId) {

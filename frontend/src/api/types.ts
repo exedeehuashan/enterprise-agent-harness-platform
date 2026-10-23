@@ -193,3 +193,8 @@ export interface ApiToken {
 export interface ApiTokenIssued { token: ApiToken; secret: string }
 
 export interface DomainModuleInfo { key: string; name: string; description: string; enabled: boolean; canDisable: boolean; tools: { name: string; enabled: boolean }[]; changedBy: string | null }
+
+export interface GitHubWriteBackView {
+  settings: { project: string; enabled: boolean; tokenConfigured: boolean; changedBy: string | null };
+  recent: { id: number; kind: string; commitSha: string; prNumber: number | null; status: string; attempts: number; lastError: string | null; createdAt: string; sentAt: string | null }[];
+}

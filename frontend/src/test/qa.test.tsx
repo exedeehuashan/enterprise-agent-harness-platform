@@ -175,12 +175,15 @@ describe('QA console', () => {
   it('lists registered projects and marks Docker-access suites', async () => {
     tokenStore.set(TOKEN);
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }),
-      'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://host.docker.internal:18081' }, enabled: true }] }) });
+      'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://host.docker.internal:18081' }, enabled: true }] }),
+      'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
     expect(await screen.findByText('Local UAT')).toBeInTheDocument();
     expect(screen.getByText('http://host.docker.internal:18081')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save environment' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/No write token is configured/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Turn on' })).not.toBeInTheDocument();
     expect(screen.getByText('Docker · approval')).toBeInTheDocument();
     expect(screen.getByText('isolated')).toBeInTheDocument();
     expect(screen.getByText('enabled')).toBeInTheDocument();

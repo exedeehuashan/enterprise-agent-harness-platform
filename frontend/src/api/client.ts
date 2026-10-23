@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -112,6 +112,9 @@ export const api = {
   },
   environments: (project: string) => get<QaEnvironment[]>(`/qa/environments${query({ project })}`),
   apiTests: (project: string, ref?: string) => get<ApiTestCatalog>(`/qa/projects/${project}/api-tests${query({ ref })}`),
+  githubWriteBack: (project: string) => get<GitHubWriteBackView>(`/qa/projects/${project}/github-write-back`),
+  setGithubWriteBack: (project: string, enabled: boolean) =>
+    request<GitHubWriteBackView['settings']>(`/qa/admin/projects/${project}/github-write-back`, { method: 'PUT', body: { enabled } }).then(r => r.data),
   modules: () => get<DomainModuleInfo[]>('/modules'),
   moduleEnabled: (key: string, enabled: boolean) => request<DomainModuleInfo>(`/admin/modules/${key}/enabled`, { method: 'PUT', body: { enabled } }).then(r => r.data),
   tokens: () => get<ApiToken[]>('/admin/tokens'),
