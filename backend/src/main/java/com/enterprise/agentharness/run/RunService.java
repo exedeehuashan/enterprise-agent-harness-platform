@@ -23,7 +23,11 @@ public class RunService {
     public RunService(JdbcTemplate jdbc, ToolCatalog catalog, AuditService audit) { this.jdbc=jdbc;this.catalog=catalog;this.audit=audit; }
 
     @Transactional
-    public RunResponse start(UUID taskId, String key, StartRunRequest request) {
+    public RunResponse start(UUID taskId, String key, StartRunRequest request) { return start(taskId, key, request, AuditService.actor()); }
+
+    /** The actor is explicit so trusted plan advancement can launch runs outside a request context. */
+    @Transactional
+    public RunResponse start(UUID taskId, String key, StartRunRequest request, String actor) {
         StartRunRequest.validateKey(key);
         var tasks = jdbc.queryForList("SELECT title,description FROM agent_tasks WHERE id=? FOR UPDATE", taskId);
         if (tasks.isEmpty()) throw new TaskNotFoundException(taskId);
@@ -48,11 +52,11 @@ public class RunService {
                 VALUES (?,?,?,?,?,?,?,?,clock_timestamp() + (? * interval '1 second'),?,?)
                 """, id, taskId, key, request.timeoutSeconds(), request.tool(), task.get("title"), task.get("description"), initial, initialTimeout, policy.version(), policy.target());
         jdbc.update("INSERT INTO run_steps(run_id,sequence,tool,status) VALUES (?,1,?,?)", id, request.tool(), initial);
-        audit.record(AuditService.actor(),"RUN_CREATED",id,request.tool());
+        audit.record(actor,"RUN_CREATED",id,request.tool());
         if (policy.requiresApproval()) {
             String digest=catalog.digest(id,taskId,request.tool(),policy.version(),policy.target(),(String)task.get("title"),(String)task.get("description"),request.timeoutSeconds());
             jdbc.update("INSERT INTO approval_requests(id,run_id,input_digest,status,expires_at) VALUES (?,?,?,'PENDING',clock_timestamp()+interval '30 minutes')",UUID.randomUUID(),id,digest);
-            audit.record(AuditService.actor(),"APPROVAL_REQUESTED",id,null);
+            audit.record(actor,"APPROVAL_REQUESTED",id,null);
         }
         updateTask(taskId, "RUNNING");
         return get(id);
