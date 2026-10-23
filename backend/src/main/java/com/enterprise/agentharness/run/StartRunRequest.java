@@ -26,7 +26,7 @@ public record StartRunRequest(String tool, int timeoutSeconds, JsonNode argument
             if (!value.isIntegralNumber() || !value.canConvertToInt()) throw bad("Invalid timeoutSeconds");
             timeout = value.intValue();
         }
-        if (timeout < 1 || timeout > 300) throw bad("timeoutSeconds must be 1..300");
+        if (timeout < 1 || timeout > 3600) throw bad("timeoutSeconds must be 1..3600");
         return new StartRunRequest(tool, timeout, arguments);
     }
     public static void validateKey(String key) {

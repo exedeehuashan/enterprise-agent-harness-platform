@@ -24,6 +24,11 @@ public interface ToolExecutor {
         return null;
     }
 
+    /** Rejects run deadlines this tool does not support; most tools allow at most five minutes. */
+    default void checkTimeout(JsonNode normalizedArguments, int timeoutSeconds) {
+        if (timeoutSeconds > 300) throw new IllegalArgumentException("timeoutSeconds must be 1..300 for this tool");
+    }
+
     /**
      * Runs outside any database transaction. Long-running tools should poll
      * {@link ToolContext#stopRequested()} and stop promptly when it returns true.
