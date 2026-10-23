@@ -185,3 +185,9 @@ export interface Webhook {
   nextAttemptAt: string | null; lastDeliveryAt: string | null; lastError: string | null; createdBy: string; createdAt: string;
 }
 export interface WebhookCreated { subscription: Webhook; secret: string }
+
+export interface ApiToken {
+  id: string; name: string; description: string | null; roles: string[]; createdBy: string; createdAt: string; expiresAt: string | null;
+  lastUsedAt: string | null; revokedAt: string | null; revokedBy: string | null; active: boolean;
+}
+export interface ApiTokenIssued { token: ApiToken; secret: string }

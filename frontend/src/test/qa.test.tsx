@@ -347,6 +347,9 @@ describe('project administration', () => {
       'GET /admin/storage': () => ({ body: storage }),
       'POST /admin/retention/run': () => ({ body: storage.lastRun }),
       'GET /admin/webhooks': () => ({ body: [] }),
+      'GET /admin/tokens': () => ({ body: [] }),
+      'POST /admin/tokens': () => ({ status: 201, body: { secret: 'eahp_issued-once', token: { id: 't1', name: 'alice', description: null, roles: ['OPERATOR', 'VIEWER'],
+        createdBy: 'admin', createdAt: '2026-10-24T00:00:00Z', expiresAt: null, lastUsedAt: null, revokedAt: null, revokedBy: null, active: true } } }),
       'POST /admin/webhooks': () => ({ status: 201, body: { secret: 'one-time-secret', subscription: { id: 'w1', name: 'Team chat', url: 'https://hooks.example.com/x',
         events: ['RUN_*'], enabled: true, cursorId: 0, consecutiveFailures: 0, nextAttemptAt: null, lastDeliveryAt: null, lastError: null, createdBy: 'admin', createdAt: '2026-10-24T00:00:00Z' } } }),
     });
@@ -376,6 +379,12 @@ describe('project administration', () => {
     await userEvent.click(within(hooks).getByRole('button', { name: 'Add webhook' }));
     expect(await within(hooks).findByText('one-time-secret')).toBeInTheDocument();
     expect(calls.find(c => c.method === 'POST' && c.path === '/admin/webhooks')!.body).toEqual({ name: 'Team chat', url: 'https://hooks.example.com/x', events: ['RUN_*'] });
+    const tokenForm = screen.getByRole('heading', { name: 'API tokens' }).closest('section')!;
+    await userEvent.type(within(tokenForm).getByLabelText('Name'), 'alice');
+    await userEvent.click(within(tokenForm).getByLabelText('operator'));
+    await userEvent.click(within(tokenForm).getByRole('button', { name: 'Issue token' }));
+    expect(await within(tokenForm).findByText('eahp_issued-once')).toBeInTheDocument();
+    expect(calls.find(c => c.method === 'POST' && c.path === '/admin/tokens')!.body).toEqual({ name: 'alice', description: null, roles: ['OPERATOR'], expiresInDays: 90 });
     unmount();
 
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });

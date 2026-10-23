@@ -34,7 +34,9 @@ public class ApiSecurity {
     SecurityFilterChain apiFilterChain(HttpSecurity http, ObjectMapper mapper,
             @Value("${eahp.security.admin-token:}") String admin,
             @Value("${eahp.security.operator-token:}") String operator,
-            @Value("${eahp.security.viewer-token:}") String viewer) throws Exception {
+            @Value("${eahp.security.viewer-token:}") String viewer,
+            org.springframework.beans.factory.ObjectProvider<ApiTokens> namedTokens) throws Exception {
+        ApiTokens tokens = namedTokens.getIfAvailable(); // absent in slim security contexts: only deployment tokens apply
         if (!validToken(admin)) throw new IllegalStateException("Configure a random EAHP_SECURITY_ADMIN_TOKEN (32..256 URL-safe characters)");
         var identities = new ArrayList<Identity>();
         identities.add(identity("admin", admin, "VIEWER", "OPERATOR", "APPROVER"));
@@ -62,7 +64,12 @@ public class ApiSecurity {
                             byte[] actual = hash(header.substring(7));
                             Identity matched = null;
                             for (Identity candidate : identities) if (MessageDigest.isEqual(actual,candidate.hash())) matched=candidate;
-                            if (matched == null) { error(mapper,req,res,401); return; }
+                            if (matched == null) {
+                                // Named tokens issued by approvers (P27); looked up by hash, never by the token itself.
+                                var issued = tokens == null ? java.util.Optional.<ApiTokens.Principal>empty() : tokens.authenticate(actual);
+                                if (issued.isEmpty()) { error(mapper,req,res,401); return; }
+                                matched = new Identity(issued.get().name(), actual, issued.get().roles());
+                            }
                             var auth = new UsernamePasswordAuthenticationToken(matched.name(),null,
                                     matched.roles().stream().map(r -> new SimpleGrantedAuthority("ROLE_"+r)).toList());
                             var context = SecurityContextHolder.createEmptyContext();context.setAuthentication(auth);SecurityContextHolder.setContext(context);
@@ -78,7 +85,7 @@ public class ApiSecurity {
     }
     private static Identity identity(String name,String token,String... roles) { return new Identity(name,hash(token),List.of(roles)); }
     private static boolean validToken(String token) { return token.matches("[A-Za-z0-9_-]{32,256}"); }
-    private static byte[] hash(String value) {
+    static byte[] hash(String value) {
         try { return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)); }
         catch (NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
