@@ -97,4 +97,16 @@ export interface PullRequestRun {
 
 export interface GitHubPoll { projectKey: string; lastPolledAt: string; lastSuccessAt: string | null; openPullRequests: number | null; lastError: string | null }
 
+export interface TestHistory {
+  label: 'FIRST_SEEN' | 'NEW_FAILURE' | 'PERSISTENT' | 'FLAKY'; previousStatus: string | null; previousCommit: string | null;
+  lastPassedCommit: string | null; recentRuns: number; recentFailures: number;
+}
+
+export interface Triage {
+  runId: string; ingested: boolean; outcome: string | null; category: string | null; explanation: string | null; tests: number; failed: number;
+  failures: { testClass: string; testName: string; status: string; failureType: string | null; message: string | null; category: string;
+    explanation: string | null; history: TestHistory }[];
+  error: string | null;
+}
+
 export interface Tool { name: string; version: number; target: string; enabled: boolean; requiresApproval: boolean; retryable: boolean }

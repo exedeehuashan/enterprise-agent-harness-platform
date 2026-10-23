@@ -55,6 +55,8 @@ pre { background: var(--muted-bg); padding: 8px 12px; border-radius: 6px; overfl
 .stat strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .stat-ok strong { color: var(--ok); }
 .stat-bad strong { color: var(--bad); }
+.triage { border-left: 3px solid var(--warn); background: var(--warn-bg); padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 8px 0; }
+.triage p { margin: 4px 0 0; }
 
 label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: var(--muted); }
 label.inline { flex-direction: row; align-items: center; gap: 6px; }

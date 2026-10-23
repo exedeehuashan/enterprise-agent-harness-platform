@@ -56,6 +56,7 @@ class QaSuiteToolApiTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired RunService runs;
     @Autowired ToolRegistry registry;
+    @Autowired com.enterprise.agentharness.qa.QaResultIngestor ingestor;
 
     /** What the fake "docker run" leaves in the workspace and how it exits. */
     static volatile String reportXml;
@@ -65,6 +66,8 @@ class QaSuiteToolApiTest {
     static volatile boolean dockerAvailable;
     /** Content of .eahp/qa-suites.json at any commit, or null when the file does not exist. */
     static volatile String repoFile;
+    /** Console output written by the fake "docker run". */
+    static volatile String consoleText;
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
 
     /** Simulates git, tar and docker by argv, so every outcome is deterministic and no container runs. */
@@ -89,7 +92,7 @@ class QaSuiteToolApiTest {
                 return new Result(dockerAvailable ? 0 : 1,false,false);
             }
             if (argv.get(0).equals("docker") && argv.get(1).equals("run")) {
-                Files.writeString(logFile, "[INFO] BUILD output\n");
+                Files.writeString(logFile, consoleText);
                 Path src=Path.of(argv.get(argv.indexOf("-w")+1));
                 if (reportXml != null) {
                     Path reports=Files.createDirectories(src.resolve("backend/order-api/target/surefire-reports"));
@@ -139,7 +142,8 @@ class QaSuiteToolApiTest {
         repository.deleteAll();
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE");
         jdbc.update("UPDATE qa_projects SET enabled=TRUE");
-        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;calls.clear();
+        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";calls.clear();
+        jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE, allow_docker_access=TRUE, allow_network_egress=TRUE, max_timeout_seconds=2400, allowed_images='[\"maven:3.9.11-eclipse-temurin-17\"]'");
     }
 
@@ -426,6 +430,87 @@ class QaSuiteToolApiTest {
         worker();
         assertThat(runs.get(run).errorCode()).isEqualTo("SUITE_POLICY_CHANGED");
         assertThat(calls).noneMatch(c->c.get(0).equals("docker")&&c.get(1).equals("run"));
+    }
+
+    private static final String ORDER_FAIL="<testsuite name=\"OrderTest\" tests=\"2\" failures=\"1\"><testcase classname=\"OrderTest\" name=\"creates\" time=\"0.25\">"
+            +"<failure message=\"expected: &lt;1&gt; but was: &lt;2&gt;\" type=\"org.opentest4j.AssertionFailedError\">at OrderTest.creates</failure></testcase>"
+            +"<testcase classname=\"OrderTest\" name=\"lists\" time=\"0.01\"/></testsuite>";
+    private static final String DOCKER_ERROR="<testsuite name=\"IdentityPersistenceTest\" tests=\"1\" errors=\"1\"><testcase classname=\"IdentityPersistenceTest\" name=\"\">"
+            +"<error message=\"Could not find a valid Docker environment. Please see logs\" type=\"java.lang.IllegalStateException\"/></testcase></testsuite>";
+
+    private UUID runAt(UUID task,String key,String commit,String report,int exit) throws Exception {
+        reportXml=report;dockerExit=exit;
+        var body=start(task,key,"{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":900,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"ref\":\""+commit+"\"}}")
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
+        UUID run=UUID.fromString(mapper.readTree(body).get("id").asText());
+        worker();
+        return run;
+    }
+    private JsonNode triage(UUID run) throws Exception {
+        return mapper.readTree(mvc.perform(get("/api/v1/qa/runs/"+run+"/triage").header("Authorization",auth(VIEWER)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    @Test
+    void triageClassifiesFailuresAndTracksEachTestsHistory() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40),c="c".repeat(40);
+        UUID task=task();
+        UUID r1=runAt(task,"t1",a,PASS,0);
+        assertThat(triage(r1).get("ingested").asBoolean()).isFalse();
+        assertThat(ingestor.runOnce()).isEqualTo(1);
+        assertThat(ingestor.runOnce()).isZero();
+        var passed=triage(r1);
+        assertThat(passed.get("tests").asInt()).isEqualTo(2);assertThat(passed.get("failed").asInt()).isZero();assertThat(passed.get("category").isNull()).isTrue();
+
+        UUID r2=runAt(task,"t2",b,ORDER_FAIL,1);ingestor.runOnce();
+        var t2=triage(r2);
+        assertThat(t2.get("category").asText()).isEqualTo("ASSERTION");
+        assertThat(t2.get("explanation").asText()).contains("assertion failed");
+        var f=t2.get("failures").get(0);
+        assertThat(f.get("testClass").asText()).isEqualTo("OrderTest");assertThat(f.get("testName").asText()).isEqualTo("creates");
+        assertThat(f.get("failureType").asText()).isEqualTo("org.opentest4j.AssertionFailedError");
+        assertThat(f.get("history").get("label").asText()).isEqualTo("NEW_FAILURE");
+        assertThat(f.get("history").get("lastPassedCommit").asText()).isEqualTo(a);
+
+        runAt(task,"t3",b,PASS,0);
+        UUID r4=runAt(task,"t4",b,ORDER_FAIL,1);ingestor.runOnce();
+        assertThat(triage(r4).get("failures").get(0).get("history").get("label").asText()).isEqualTo("FLAKY");
+
+        UUID r5=runAt(task,"t5",c,ORDER_FAIL,1);ingestor.runOnce();
+        var persistent=triage(r5).get("failures").get(0).get("history");
+        assertThat(persistent.get("label").asText()).isEqualTo("PERSISTENT");
+        assertThat(persistent.get("previousCommit").asText()).isEqualTo(b);
+        assertThat(persistent.get("recentFailures").asInt()).isEqualTo(3);
+
+        UUID r6=runAt(task,"t6",c,DOCKER_ERROR,1);ingestor.runOnce();
+        var docker=triage(r6);
+        assertThat(docker.get("category").asText()).isEqualTo("ENVIRONMENT_DOCKER");
+        assertThat(docker.get("explanation").asText()).contains("needs Docker");
+        assertThat(docker.get("failures").get(0).get("history").get("label").asText()).isEqualTo("FIRST_SEEN");
+
+        mvc.perform(get("/api/v1/qa/tests/history").header("Authorization",auth(VIEWER)).param("project","online-shop").param("suite","backend-unit")
+                .param("testClass","OrderTest").param("testName","creates")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5)).andExpect(jsonPath("$[0].status").value("FAILED")).andExpect(jsonPath("$[0].durationMs").value(250));
+        mvc.perform(get("/api/v1/qa/tests/history").header("Authorization",auth(VIEWER)).param("project","online-shop").param("suite","backend-unit")
+                .param("testClass","OrderTest").param("limit","0")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/runs/"+UUID.randomUUID()+"/triage").header("Authorization",auth(VIEWER))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/qa/runs/"+r6+"/triage")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void runLevelFailuresAreCategorizedAndUnfinishedRunsWait() throws Exception {
+        UUID task=task();
+        consoleText="[ERROR] COMPILATION ERROR :\n[ERROR] cannot find symbol\n";
+        UUID build=runAt(task,"b1","d".repeat(40),null,1);
+        consoleText="[INFO] BUILD output\n";
+        var waiting=start(task(),"w1","{\"tool\":\"QA_RUN_PRIVILEGED_SUITE\",\"timeoutSeconds\":900,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-integration\"}}")
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
+        assertThat(ingestor.runOnce()).isEqualTo(1);
+        var t=triage(build);
+        assertThat(t.get("outcome").asText()).isEqualTo("BUILD_FAILED");
+        assertThat(t.get("category").asText()).isEqualTo("BUILD_COMPILATION");
+        assertThat(t.get("tests").asInt()).isZero();
+        assertThat(triage(UUID.fromString(mapper.readTree(waiting).get("id").asText())).get("ingested").asBoolean()).isFalse();
     }
 
     private static void deleteTree(Path dir) throws IOException {

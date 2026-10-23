@@ -332,6 +332,13 @@ definition is stored in the run, so approvals cover the exact command.
 `GET /api/v1/qa/projects/{key}/suites?ref=` lists what is available at a ref. See
 [P12 design notes](docs/p12-repository-declared-suites.md).
 
+**Failure triage and test history.** Finished QA runs are ingested from their
+stored reports into per-test history. Each failure gets a category
+(for example `ENVIRONMENT_DOCKER`, `ASSERTION`, `TIMEOUT`), an explanation and a
+history label (`FIRST_SEEN`, `NEW_FAILURE`, `PERSISTENT`, `FLAKY`), shown on the run
+page and via `GET /api/v1/qa/runs/{runId}/triage` and `GET /api/v1/qa/tests/history`.
+See [P13 design notes](docs/p13-test-history-and-triage.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,
