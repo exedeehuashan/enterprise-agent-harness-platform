@@ -11,8 +11,14 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "eahp.github.poll.enabled", havingValue = "true")
 public class PullRequestPoller {
     private final PullRequestTriggers triggers;
-    public PullRequestPoller(PullRequestTriggers triggers) { this.triggers = triggers; }
+    private final com.enterprise.agentharness.qa.impact.ChangeImpactService impacts;
+    public PullRequestPoller(PullRequestTriggers triggers, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts) {
+        this.triggers = triggers; this.impacts = impacts;
+    }
 
     @Scheduled(initialDelayString = "${eahp.github.poll.initial-delay-ms:30000}", fixedDelayString = "${eahp.github.poll.interval-ms:300000}")
-    public void poll() { triggers.runOnce(); }
+    public void poll() {
+        triggers.runOnce();
+        impacts.precompute(5);
+    }
 }

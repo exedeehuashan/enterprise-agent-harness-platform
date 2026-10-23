@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 
 /** Read-only view of a GitHub repository's open pull requests. */
 public interface GitHubClient {
-    record PullRequest(int number, String title, String headSha, String headRef, String baseRef, boolean sameRepository, String url) {}
+    record PullRequest(int number, String title, String headSha, String headRef, String baseRef, boolean sameRepository, String url, String baseSha) {}
     record Repository(String owner, String name) {}
 
     List<PullRequest> openPullRequests(Repository repository) throws IOException;
