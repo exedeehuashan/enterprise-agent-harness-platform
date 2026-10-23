@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
@@ -47,6 +48,42 @@ public class GitMirror {
 
     /** Exports exactly {@code commit} into {@code target}, fetching the mirror only when the commit is missing. */
     public void export(QaRegistry.Project project, String commit, Path target, Path log) throws IOException, InterruptedException {
+        Path mirror = ensureCommit(project, commit, log);
+        Path archive = target.resolveSibling("source.tar");
+        check(runner.run(List.of(settings.git(), "-C", mirror.toString(), "archive", "--format=tar", "-o", archive.toString(), commit), log, LOCAL), "archive");
+        Files.createDirectories(target);
+        check(runner.run(List.of("tar", "-xf", archive.toString(), "-C", target.toString()), log, LOCAL), "extract");
+        Files.deleteIfExists(archive);
+    }
+
+    /**
+     * Reads one file at {@code commit}; empty when the commit does not contain it. Content larger than
+     * {@code maxBytes} is rejected rather than truncated, so a partial file is never parsed.
+     */
+    public Optional<String> readFile(QaRegistry.Project project, String commit, String path, int maxBytes) throws IOException {
+        Path log = Files.createTempFile("eahp-git", ".log");
+        try {
+            Path mirror = ensureCommit(project, commit, log);
+            String object = commit + ":" + path;
+            if (runner.run(List.of(settings.git(), "-C", mirror.toString(), "cat-file", "-e", object), log, LOCAL).exitCode() != 0) return Optional.empty();
+            Path out = Files.createTempFile("eahp-git", ".out");
+            try {
+                check(runner.run(List.of(settings.git(), "-C", mirror.toString(), "cat-file", "-p", object), out, LOCAL), "read file");
+                if (Files.size(out) > maxBytes) throw new IOException(path + " is larger than " + maxBytes + " bytes");
+                return Optional.of(Files.readString(out, StandardCharsets.UTF_8));
+            } finally {
+                Files.deleteIfExists(out);
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted", ex);
+        } finally {
+            Files.deleteIfExists(log);
+        }
+    }
+
+    /** Clones the mirror on first use and fetches only when {@code commit} is missing. */
+    private Path ensureCommit(QaRegistry.Project project, String commit, Path log) throws IOException, InterruptedException {
         Path mirror = settings.workdir().resolve("mirrors").resolve(project.key() + ".git");
         Files.createDirectories(mirror.getParent());
         if (!Files.isDirectory(mirror)) {
@@ -57,11 +94,7 @@ public class GitMirror {
             check(runner.run(List.of(settings.git(), "-C", mirror.toString(), "fetch", "--prune", "--quiet", "origin"), log, NETWORK), "fetch");
             check(runner.run(List.of(settings.git(), "-C", mirror.toString(), "cat-file", "-e", commit + "^{commit}"), log, LOCAL), "find commit");
         }
-        Path archive = target.resolveSibling("source.tar");
-        check(runner.run(List.of(settings.git(), "-C", mirror.toString(), "archive", "--format=tar", "-o", archive.toString(), commit), log, LOCAL), "archive");
-        Files.createDirectories(target);
-        check(runner.run(List.of("tar", "-xf", archive.toString(), "-C", target.toString()), log, LOCAL), "extract");
-        Files.deleteIfExists(archive);
+        return mirror;
     }
 
     private String capture(List<String> argv, Duration timeout) throws IOException {

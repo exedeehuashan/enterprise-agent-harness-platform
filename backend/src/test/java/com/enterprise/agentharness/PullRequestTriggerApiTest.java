@@ -79,6 +79,8 @@ class PullRequestTriggerApiTest {
         jdbc.update("DELETE FROM qa_projects WHERE key<>'online-shop'");
         jdbc.update("UPDATE qa_pr_triggers SET enabled=(suite_key='backend-unit')");
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE"); jdbc.update("UPDATE tool_definitions SET enabled=TRUE");
+        // Repository suite files are covered in QaSuiteToolApiTest with a fake git; here the registry suites keep the test offline.
+        jdbc.update("UPDATE qa_projects SET repository_suites_enabled=FALSE");
         open.clear(); polled.clear(); failure=null;
     }
 
@@ -139,6 +141,19 @@ class PullRequestTriggerApiTest {
         assertThat(rowStatus(A)).isEqualTo("SKIPPED");
         assertThat(jdbc.queryForObject("SELECT skip_reason FROM qa_pr_runs WHERE head_sha=?",String.class,A)).isEqualTo("START_REJECTED_409");
         assertThat(count("SELECT count(*) FROM agent_runs")).isZero();
+    }
+
+    @Test
+    void triggersForSuitesMissingAtTheCommitAreSkipped() {
+        jdbc.update("INSERT INTO qa_pr_triggers VALUES ('online-shop','smoke',TRUE)");
+        try {
+            open.add(pr(47,A,true,"t"));
+            triggers.runOnce();
+            assertThat(jdbc.queryForObject("SELECT status||'/'||skip_reason FROM qa_pr_runs WHERE suite_key='smoke'",String.class)).isEqualTo("SKIPPED/SUITE_UNAVAILABLE");
+            assertThat(rowStatus(A)).isEqualTo("STARTED");
+        } finally {
+            jdbc.update("DELETE FROM qa_pr_triggers WHERE suite_key='smoke'");
+        }
     }
 
     @Test

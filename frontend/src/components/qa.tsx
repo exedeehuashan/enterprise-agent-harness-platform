@@ -20,13 +20,16 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
   const [projectKey, setProjectKey] = useState('');
   const [suiteKey, setSuiteKey] = useState('');
   const [ref, setRef] = useState('');
+  /** The ref whose suites are shown; updated when the ref field loses focus, so typing does not resolve every keystroke. */
+  const [checkedRef, setCheckedRef] = useState('');
   const [timeout, setTimeoutSeconds] = useState(1800);
   const action = useAction();
 
-  const enabled = (projects.data ?? []).filter(p => p.enabled && p.suites.some(s => s.enabled));
+  const enabled = (projects.data ?? []).filter(p => p.enabled);
   const project: QaProject | undefined = enabled.find(p => p.key === projectKey) ?? enabled[0];
+  const catalog = usePolling(() => (project ? api.suiteCatalog(project.key, checkedRef || undefined) : Promise.resolve(null)), [project?.key, checkedRef], 0);
   // Isolated suites first, so the default choice never needs host-level Docker access.
-  const suites = (project?.suites.filter(s => s.enabled) ?? []).slice().sort((x, y) => Number(x.dockerAccess) - Number(y.dockerAccess));
+  const suites = (catalog.data?.suites ?? []).slice().sort((x, y) => Number(x.dockerAccess) - Number(y.dockerAccess));
   const suite = suites.find(s => s.key === suiteKey) ?? suites[0];
 
   useEffect(() => { if (suite) setTimeoutSeconds(t => Math.min(Math.max(t, 1), suite.maxTimeoutSeconds)); }, [suite]);
@@ -42,30 +45,41 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
 
   if (projects.error) return <ErrorBanner error={projects.error} />;
   if (projects.data && enabled.length === 0) return <Empty>No test projects are registered.</Empty>;
-  if (!project || !suite) return null;
+  if (!project) return null;
   return (
     <form className="stack" onSubmit={submit}>
       <div className="row">
         <label className="inline">Project
-          <select value={project.key} onChange={e => { setProjectKey(e.target.value); setSuiteKey(''); }}>
+          <select value={project.key} onChange={e => { setProjectKey(e.target.value); setSuiteKey(''); setRef(''); setCheckedRef(''); }}>
             {enabled.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
           </select>
         </label>
+        <label className="inline">Branch, tag or commit
+          <input value={ref} onChange={e => setRef(e.target.value)} onBlur={() => setCheckedRef(ref.trim())} placeholder={project.defaultRef} maxLength={100} />
+        </label>
         <label className="inline">Suite
-          <select value={suite.key} onChange={e => setSuiteKey(e.target.value)}>
-            {suites.map(s => <option key={s.key} value={s.key}>{s.name}{s.dockerAccess ? ' (needs approval)' : ''}</option>)}
+          <select value={suite?.key ?? ''} onChange={e => setSuiteKey(e.target.value)} disabled={!suite}>
+            {suites.map(s => <option key={s.key} value={s.key}>{s.name}{s.source === 'repository' ? ' [repo]' : ''}{s.dockerAccess ? ' (needs approval)' : ''}</option>)}
           </select>
         </label>
-        <label className="inline">Branch, tag or commit
-          <input value={ref} onChange={e => setRef(e.target.value)} placeholder={project.defaultRef} maxLength={100} />
-        </label>
         <label className="inline">Timeout (s)
-          <input type="number" min={1} max={suite.maxTimeoutSeconds} value={timeout} onChange={e => setTimeoutSeconds(Number(e.target.value))} />
+          <input type="number" min={1} max={suite?.maxTimeoutSeconds ?? 300} value={timeout} onChange={e => setTimeoutSeconds(Number(e.target.value))} />
         </label>
-        <button type="submit" disabled={action.busy}>{action.busy ? 'Resolving…' : 'Run suite'}</button>
+        <button type="submit" disabled={action.busy || !suite || checkedRef !== ref.trim()}>{action.busy ? 'Resolving…' : 'Run suite'}</button>
       </div>
-      {suite.description && <p className="muted small">{suite.description}</p>}
-      {suite.dockerAccess && (
+      {catalog.data && (
+        <p className="muted small">
+          {catalog.data.ref} → <code>{catalog.data.commit.slice(0, 12)}</code> ·{' '}
+          {catalog.data.repositoryFile === 'found' && <>suites from <code>{project.suitesFile}</code> in the repository, registry suites as fallback</>}
+          {catalog.data.repositoryFile === 'absent' && <>no <code>{project.suitesFile}</code> at this commit; registry suites</>}
+          {catalog.data.repositoryFile === 'disabled' && <>registry suites</>}
+          {catalog.data.repositoryFile === 'invalid' && <>registry suites only</>}
+        </p>
+      )}
+      {catalog.data?.repositoryError && <div className="error" role="alert"><strong>{project.suitesFile} is invalid at this commit:</strong> {catalog.data.repositoryError}</div>}
+      <ErrorBanner error={catalog.error} />
+      {suite?.description && <p className="muted small">{suite.description}</p>}
+      {suite?.dockerAccess && (
         <p className="muted small">This suite needs Docker access on the runner host, so an approver must approve the exact commit before it runs.</p>
       )}
       <ErrorBanner error={action.error} />
@@ -133,6 +147,7 @@ export function QaEvidence({ run }: { run: Run }) {
             <Stat label="Duration" value={`${summary.data.durationSeconds} s`} />
           </div>
           <dl className="meta">
+            <dt>Suite source</dt><dd>{summary.data.suiteSource === 'repository' ? 'declared in the repository at this commit' : 'EAHP registry'}</dd>
             <dt>Started</dt><dd><Time value={summary.data.startedAt} /></dd>
             <dt>Runner</dt><dd><code>{summary.data.runnerImage}</code>{summary.data.dockerAccess ? ' with Docker access' : ''}</dd>
             <dt>Command</dt><dd><code className="wrap">{summary.data.command.join(' ')}</code></dd>

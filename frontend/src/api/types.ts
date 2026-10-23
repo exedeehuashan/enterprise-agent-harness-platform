@@ -63,12 +63,27 @@ export interface QaSuite {
   reportDirs: string[]; network: string; dockerAccess: boolean; maxTimeoutSeconds: number; enabled: boolean;
 }
 
-export interface QaProject { key: string; name: string; repositoryUrl: string; defaultRef: string; enabled: boolean; suites: QaSuite[] }
+export interface QaProject {
+  key: string; name: string; repositoryUrl: string; defaultRef: string; enabled: boolean; suites: QaSuite[];
+  repositorySuitesEnabled: boolean; suitesFile: string; allowedImages: string[]; allowDockerAccess: boolean;
+  allowNetworkEgress: boolean; maxTimeoutSeconds: number;
+}
+
+/** A suite as it will run at a commit: from the registry or the project's repository file. */
+export interface SuiteDefinition {
+  source: 'registry' | 'repository'; key: string; name: string; description: string | null; image: string; command: string[];
+  reportDirs: string[]; network: string; dockerAccess: boolean; maxTimeoutSeconds: number;
+}
+
+export interface SuiteCatalog {
+  project: string; ref: string; commit: string; repositoryFile: 'found' | 'absent' | 'disabled' | 'invalid';
+  repositoryError: string | null; suites: SuiteDefinition[];
+}
 
 /** summary.json written by the QA suite runner. */
 export interface QaSummary {
   project: string; suite: string; ref: string; commit: string; runnerImage: string; command: string[]; dockerAccess: boolean;
-  exitCode: number | null; stopped: boolean; timedOut: boolean; outcome: string; startedAt: string; finishedAt: string;
+  suiteSource?: 'registry' | 'repository'; exitCode: number | null; stopped: boolean; timedOut: boolean; outcome: string; startedAt: string; finishedAt: string;
   durationSeconds: number; tests: number; failures: number; errors: number; skipped: number; reportFiles: number;
   unreadableReportFiles: number; reportsTruncated: boolean;
   failedTests: { suite: string; name: string; kind: string; message: string }[];

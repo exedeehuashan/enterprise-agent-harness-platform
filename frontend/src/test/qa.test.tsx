@@ -16,7 +16,14 @@ const suite = (key: string, dockerAccess: boolean) => ({
   network: 'egress', dockerAccess, maxTimeoutSeconds: dockerAccess ? 2400 : 1800, enabled: true,
 });
 const projects = [{ key: 'online-shop', name: 'Online Shop', repositoryUrl: 'https://github.com/exedeehuashan/online-shop.git', defaultRef: 'main', enabled: true,
-  suites: [suite('backend-integration', true), suite('backend-unit', false)] }];
+  suites: [suite('backend-integration', true), suite('backend-unit', false)], repositorySuitesEnabled: true, suitesFile: '.eahp/qa-suites.json',
+  allowedImages: ['maven:3.9.11-eclipse-temurin-17'], allowDockerAccess: true, allowNetworkEgress: true, maxTimeoutSeconds: 2400 }];
+const definition = (key: string, dockerAccess: boolean, source: 'registry' | 'repository' = 'registry') => ({
+  source, key, name: key === 'backend-unit' ? 'Backend unit' : key === 'smoke' ? 'Smoke' : 'Backend integration', description: `${key} description`,
+  image: 'maven:3.9.11-eclipse-temurin-17', command: ['mvn', 'verify'], reportDirs: ['target/surefire-reports'], network: 'egress', dockerAccess,
+  maxTimeoutSeconds: dockerAccess ? 2400 : 1800 });
+const catalogFor = (ref: string, extra: object[] = [], file = 'absent', error: string | null = null) => ({ project: 'online-shop', ref, commit: 'c'.repeat(40),
+  repositoryFile: file, repositoryError: error, suites: [definition('backend-integration', true), definition('backend-unit', false), ...extra] });
 const task = { id: 'task-1', title: 'Regression', description: null, status: 'PENDING', createdAt: '2026-10-23T00:00:00Z', updatedAt: '2026-10-23T00:00:00Z', version: 0 };
 const tools = [
   { name: 'DEMO_ANALYZE', version: 1, target: 'local-demo', enabled: true, requiresApproval: false, retryable: true },
@@ -35,6 +42,7 @@ function taskRoutes(extra: Record<string, Parameters<typeof fakeApi>[0][string]>
     'GET /agent-tasks/task-1/plan-executions': () => ({ body: page([]) }),
     'GET /tools': () => ({ body: tools }),
     'GET /qa/projects': () => ({ body: projects }),
+    'GET /qa/projects/online-shop/suites': (c: { path: string }) => ({ body: catalogFor(new URLSearchParams(c.path.split('?')[1] ?? '').get('ref') ?? 'main') }),
     ...extra,
   };
 }
@@ -58,9 +66,12 @@ describe('QA console', () => {
     const calls = fakeApi(taskRoutes({ 'POST /agent-tasks/task-1/runs': () => ({ status: 202, body: { id: 'run-1' } }) }));
     renderApp('/tasks/task-1');
     const form = (await screen.findByRole('heading', { name: 'Run test suite' })).closest('section')!;
-    await userEvent.selectOptions(await within(form).findByLabelText('Suite'), 'backend-integration');
+    await within(form).findByRole('option', { name: /Backend integration/ });
+    await userEvent.selectOptions(within(form).getByLabelText('Suite'), 'backend-integration');
     expect(within(form).getByText(/an approver must approve the exact commit/)).toBeInTheDocument();
     await userEvent.type(within(form).getByLabelText('Branch, tag or commit'), 'feature/cancel');
+    await userEvent.tab();
+    expect(await within(form).findByText(/feature\/cancel →/)).toBeInTheDocument();
     await userEvent.click(within(form).getByRole('button', { name: 'Run suite' }));
     await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true));
     const start = calls.find(c => c.method === 'POST')!;
@@ -81,6 +92,23 @@ describe('QA console', () => {
       arguments: { project: 'online-shop', suite: 'backend-unit' } });
     const generic = screen.getByRole('heading', { name: 'Runs' }).closest('section')!;
     expect(within(generic).queryByRole('option', { name: /QA_RUN_SUITE/ })).not.toBeInTheDocument();
+  });
+
+  it('labels repository-declared suites and reports an invalid suites file', async () => {
+    tokenStore.set(TOKEN);
+    let invalid = false;
+    fakeApi(taskRoutes({ 'GET /qa/projects/online-shop/suites': () => ({ body: invalid
+      ? catalogFor('main', [], 'invalid', 'invalid suites file: not valid JSON')
+      : catalogFor('main', [definition('smoke', false, 'repository')], 'found') }) }));
+    const { unmount } = renderApp('/tasks/task-1');
+    const form = (await screen.findByRole('heading', { name: 'Run test suite' })).closest('section')!;
+    expect(await within(form).findByRole('option', { name: 'Smoke [repo]' })).toBeInTheDocument();
+    expect(within(form).getByText(/suites from/)).toBeInTheDocument();
+    unmount();
+    invalid = true;
+    renderApp('/tasks/task-1');
+    expect(await screen.findByText(/is invalid at this commit/)).toBeInTheDocument();
+    expect(screen.getByText('invalid suites file: not valid JSON', { exact: false })).toBeInTheDocument();
   });
 
   it('shows the test result and failing tests from summary.json', async () => {
