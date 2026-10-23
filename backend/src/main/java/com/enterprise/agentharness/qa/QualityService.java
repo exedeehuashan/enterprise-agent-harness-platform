@@ -29,7 +29,8 @@ public class QualityService {
     }
 
     public record GatePolicy(List<String> requiredSuites) {}
-    public record SuiteCheck(String suite, String status, UUID runId, String outcome, String category, String reason) {}
+    /** {@code modules} is empty for a full run, or lists the only modules a selective run built and tested. */
+    public record SuiteCheck(String suite, String status, UUID runId, String outcome, String category, String reason, List<String> modules) {}
     /** {@code reasons} explain a FAIL or PENDING verdict; {@code notes} add context such as new or flaky failures. */
     public record Gate(String project, String commit, String verdict, List<SuiteCheck> suites, List<String> reasons, List<String> notes, GatePolicy policy) {}
 
@@ -61,7 +62,7 @@ public class QualityService {
         boolean pending = false, failed = false;
         for (String suite : policy.requiredSuites()) {
             var latest = jdbc.queryForList("""
-                    SELECT i.run_id, i.outcome, i.category FROM qa_run_ingestions i JOIN agent_runs r ON r.id = i.run_id
+                    SELECT i.run_id, i.outcome, i.category, r.arguments::jsonb->'modules' AS modules FROM qa_run_ingestions i JOIN agent_runs r ON r.id = i.run_id
                     WHERE i.project_key=? AND i.suite_key=? AND i.commit_sha=? ORDER BY r.created_at DESC LIMIT 1
                     """, project, suite, commit);
             boolean active = !jdbc.queryForList("""
@@ -71,20 +72,22 @@ public class QualityService {
             if (latest.isEmpty()) {
                 pending = true;
                 String reason = active ? suite + " is running at this commit." : suite + " has not run at this commit.";
-                checks.add(new SuiteCheck(suite, "PENDING", null, null, null, reason));
+                checks.add(new SuiteCheck(suite, "PENDING", null, null, null, reason, List.of()));
                 reasons.add(reason);
                 continue;
             }
             var row = latest.get(0);
             UUID runId = (UUID) row.get("run_id");
             String outcome = (String) row.get("outcome"), category = (String) row.get("category");
+            List<String> modules = modules(row.get("modules"));
+            if (!modules.isEmpty()) notes.add(suite + " ran only the affected modules at this commit: " + String.join(", ", modules) + ".");
             if ("PASSED".equals(outcome)) {
-                checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, null, active ? suite + " passed but is running again." : null));
+                checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, null, active ? suite + " passed but is running again." : null, modules));
                 if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
             } else {
                 failed = true;
                 String reason = suite + " " + (outcome == null ? "did not produce a result" : "failed (" + outcome + (category == null ? "" : ", " + category) + ")") + ".";
-                checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason));
+                checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason, modules));
                 reasons.add(reason);
             }
             for (var f : triage.triage(runId).failures()) {
@@ -204,6 +207,11 @@ public class QualityService {
                     gate(project, head).verdict(), modules, notes));
         }
         return result;
+    }
+
+    private List<String> modules(Object json) {
+        if (json == null) return List.of();
+        try { return List.of(mapper.readValue(json.toString(), String[].class)); } catch (Exception ex) { return List.of(); }
     }
 
     private static String shortSha(String sha) { return sha == null ? "?" : sha.substring(0, Math.min(7, sha.length())); }

@@ -43,6 +43,9 @@ class PullRequestTriggerApiTest {
     static volatile IOException failure;
     static final List<GitHubClient.Repository> polled = new ArrayList<>();
 
+    static volatile List<String> changed;
+    /** The suites file the fake git serves at every commit; null means the repository has none. */
+    static volatile String suitesJson;
     static final java.util.concurrent.atomic.AtomicInteger viewCalls = new java.util.concurrent.atomic.AtomicInteger();
     static volatile boolean repoBroken;
 
@@ -54,7 +57,7 @@ class PullRequestTriggerApiTest {
                 public List<String> changedFiles(String base, String head) throws IOException {
                     viewCalls.incrementAndGet();
                     if (repoBroken) throw new IOException("unreachable");
-                    return List.of("core/src/main/java/Core.java");
+                    return changed;
                 }
                 public List<String> files(String commit) { return List.of("pom.xml", "core/pom.xml", "api/pom.xml", "api/src/test/java/ApiTest.java"); }
                 public java.util.Optional<String> read(String commit, String path) {
@@ -65,6 +68,20 @@ class PullRequestTriggerApiTest {
                                 + "<groupId>g</groupId><artifactId>core</artifactId></dependency></dependencies></project>";
                     });
                 }
+            };
+        }
+
+        /** Fake git for the repository suites file and module poms; nothing else is executed. */
+        @Bean @Primary com.enterprise.agentharness.qa.ProcessRunner fakeGit() {
+            return (argv, logFile, timeout, stop, onStop) -> {
+                String last = argv.get(argv.size() - 1);
+                if (argv.contains("clone")) java.nio.file.Files.createDirectories(java.nio.file.Path.of(last));
+                if (argv.contains("cat-file") && last.contains(":")) {
+                    String content = last.endsWith(":.eahp/qa-suites.json") ? suitesJson : last.endsWith("/pom.xml") ? "<project/>" : null;
+                    if (content == null) return new com.enterprise.agentharness.qa.ProcessRunner.Result(128, false, false);
+                    if (argv.contains("-p")) java.nio.file.Files.writeString(logFile, content);
+                }
+                return new com.enterprise.agentharness.qa.ProcessRunner.Result(0, false, false);
             };
         }
 
@@ -105,6 +122,7 @@ class PullRequestTriggerApiTest {
         // Repository suite files are covered in QaSuiteToolApiTest with a fake git; here the registry suites keep the test offline.
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=FALSE");
         open.clear(); polled.clear(); failure=null; viewCalls.set(0); repoBroken=false;
+        changed=List.of("core/src/main/java/Core.java"); suitesJson=null;
         jdbc.update("DELETE FROM qa_change_impacts");
     }
 
@@ -209,6 +227,50 @@ class PullRequestTriggerApiTest {
         mvc.perform(get("/api/v1/qa/pull-requests/"+row+"/impact").header("Authorization","Bearer "+VIEWER)).andExpect(jsonPath("$.error").value("BASE_UNKNOWN"));
         mvc.perform(get("/api/v1/qa/pull-requests/"+UUID.randomUUID()+"/impact").header("Authorization","Bearer "+VIEWER)).andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/qa/pull-requests/"+row+"/impact")).andExpect(status().isUnauthorized());
+    }
+
+    private static final String SELECTIVE = """
+            {"schemaVersion":1,"suites":[{"key":"backend-unit","name":"Unit","image":"maven:3.9.11-eclipse-temurin-17",
+              "command":["mvn","-B","verify"],"reportDirs":["target/surefire-reports"],"network":"egress","dockerAccess":false,
+              "timeoutSeconds":1200,"selection":"maven-modules"}]}
+            """;
+
+    @Test
+    void selectiveSuitesRunOnlyTheAffectedModulesAndSkipUnaffectedChanges() throws Exception {
+        jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE");
+        suitesJson=SELECTIVE;
+        open.add(pr(47,A,true,"t"));
+        triggers.runOnce();
+        assertThat(rowStatus(A)).isEqualTo("STARTED");
+        var run=runs.get(jdbc.queryForObject("SELECT run_id FROM qa_pr_runs WHERE head_sha=?",UUID.class,A));
+        assertThat(run.arguments().get("modules").toString()).isEqualTo("[\"api\",\"core\"]");
+        assertThat(run.arguments().get("definition").get("selection").asText()).isEqualTo("maven-modules");
+        mvc.perform(get("/api/v1/qa/pull-requests").header("Authorization","Bearer "+VIEWER))
+                .andExpect(jsonPath("$[0].selection").value("MODULES")).andExpect(jsonPath("$[0].selectionReason").value("AFFECTED_MODULES"))
+                .andExpect(jsonPath("$[0].selectedModules[1]").value("core"));
+
+        // Frontend and docs only: no backend module is affected, so the suite does not run at all.
+        changed=List.of("frontend/src/App.tsx","docs/notes.md");
+        open.clear(); open.add(pr(48,B,true,"docs"));
+        triggers.runOnce();
+        assertThat(jdbc.queryForObject("SELECT status||'/'||skip_reason||'/'||selection FROM qa_pr_runs WHERE pr_number=48",String.class))
+                .isEqualTo("SKIPPED/NOT_AFFECTED/NOT_AFFECTED");
+
+        // A change to the build itself runs everything.
+        String c="c".repeat(40);
+        changed=List.of("core/src/main/java/Core.java",".mvn/maven.config");
+        open.clear(); open.add(pr(49,c,true,"build"));
+        triggers.runOnce();
+        assertThat(jdbc.queryForObject("SELECT selection||'/'||selection_reason FROM qa_pr_runs WHERE pr_number=49",String.class)).isEqualTo("FULL/BUILD_CHANGED");
+        assertThat(runs.get(jdbc.queryForObject("SELECT run_id FROM qa_pr_runs WHERE pr_number=49",UUID.class)).arguments().has("modules")).isFalse();
+    }
+
+    @Test
+    void suitesWithoutSelectionAlwaysRunInFull() {
+        open.add(pr(47,A,true,"t"));
+        triggers.runOnce();
+        assertThat(jdbc.queryForObject("SELECT selection||'/'||selection_reason FROM qa_pr_runs WHERE head_sha=?",String.class,A)).isEqualTo("FULL/SUITE_NOT_SELECTIVE");
+        assertThat(viewCalls.get()).isZero();
     }
 
     @Test

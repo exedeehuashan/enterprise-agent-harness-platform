@@ -182,13 +182,18 @@ describe('pull request runs', () => {
           modules: [{ dir: 'api', coordinates: 'g:api', reason: 'DEPENDS_ON_CHANGED', changedFiles: 0, testClasses: 1 },
             { dir: 'core', coordinates: 'g:core', reason: 'CHANGED', changedFiles: 1, testClasses: 0 }] } } }),
       'GET /qa/pull-requests': () => ({ body: [
-        row({ id: 'r1' }),
+        row({ id: 'r1', selection: 'MODULES', selectionReason: 'AFFECTED_MODULES', selectedModules: ['api', 'core'] }),
+        row({ id: 'r3', prNumber: 49, headSha: 'c'.repeat(40), status: 'SKIPPED', skipReason: 'NOT_AFFECTED', selection: 'NOT_AFFECTED', taskId: null, runId: null, runStatus: null }),
+        row({ id: 'r4', prNumber: 50, headSha: 'd'.repeat(40), selection: 'FULL', selectionReason: 'BUILD_CHANGED', runId: 'run-4', runStatus: 'RUNNING' }),
         row({ id: 'r2', prNumber: 48, headSha: 'b'.repeat(40), status: 'SKIPPED', skipReason: 'FORK_NOT_TRUSTED', taskId: null, runId: null, runStatus: null }),
       ] }),
     });
     renderApp('/qa/pull-requests');
     expect(await screen.findByText('2 open pull requests')).toBeInTheDocument();
     expect(screen.getByText('From a fork: not run automatically')).toBeInTheDocument();
+    expect(screen.getByText('2 affected modules only')).toHaveAttribute('title', 'api\ncore');
+    expect(screen.getByText('No backend module affected: not needed')).toBeInTheDocument();
+    expect(screen.getByText('full suite: build files changed')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'online-shop #47' })).toHaveAttribute('rel', 'noopener noreferrer');
     expect(screen.getByRole('link', { name: 'COMPLETED' })).toHaveAttribute('href', '/runs/run-1');
     expect(screen.getByRole('link', { name: 'Pull requests' })).toBeInTheDocument();

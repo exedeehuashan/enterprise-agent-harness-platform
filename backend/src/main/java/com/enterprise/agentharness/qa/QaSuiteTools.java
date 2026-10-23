@@ -72,14 +72,16 @@ public class QaSuiteTools {
         public boolean retryable() { return false; }
 
         /**
-         * {project, suite, ref?} becomes {project, suite, ref, commit, definition}: the exact commit and the resolved suite
-         * (registry or repository file at that commit) are what an approval binds and what the executor runs.
+         * {project, suite, ref?, modules?} becomes {project, suite, ref, commit, definition, modules?}: the exact commit, the
+         * resolved suite (registry or repository file at that commit) and any module selection are what an approval binds
+         * and what the executor runs. {@code modules} narrows a {@code maven-modules} suite to those modules and what they
+         * depend on ({@code -pl ... -am}); each must be a module directory with a pom.xml at the commit.
          */
         @Override
         public JsonNode normalize(JsonNode arguments) {
             if (arguments == null || !arguments.isObject()) throw new IllegalArgumentException("project and suite are required");
             var fields = arguments.fieldNames();
-            while (fields.hasNext()) if (!Set.of("project", "suite", "ref").contains(fields.next())) throw new IllegalArgumentException("unknown argument");
+            while (fields.hasNext()) if (!Set.of("project", "suite", "ref", "modules").contains(fields.next())) throw new IllegalArgumentException("unknown argument");
             for (String field : List.of("project", "suite")) {
                 if (!arguments.path(field).isTextual()) throw new IllegalArgumentException(field + " is required");
             }
@@ -92,7 +94,31 @@ public class QaSuiteTools {
             ObjectNode normalized = JsonNodeFactory.instance.objectNode();
             normalized.put("project", resolved.project().key()).put("suite", resolved.suite().key()).put("ref", resolved.ref()).put("commit", resolved.commit());
             normalized.set("definition", resolved.suite().toJson());
+            if (arguments.has("modules")) normalized.set("modules", modules(arguments.get("modules"), resolved));
             return normalized;
+        }
+
+        private JsonNode modules(JsonNode value, QaSuiteResolver.Resolved resolved) {
+            if (!SuiteDefinition.MAVEN_MODULES.equals(resolved.suite().selection())) throw new IllegalArgumentException("this suite does not support module selection");
+            if (!value.isArray() || value.isEmpty() || value.size() > 50) throw new IllegalArgumentException("modules must list 1..50 module directories");
+            var dirs = new java.util.TreeSet<String>();
+            for (JsonNode m : value) {
+                String dir = m.isTextual() ? m.textValue() : "";
+                if (!dir.matches("[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*") || dir.contains("..") || dir.length() > 200) {
+                    throw new IllegalArgumentException("modules must be relative module directories");
+                }
+                try {
+                    if (git.readFile(resolved.project(), resolved.commit(), dir + "/pom.xml", 1024 * 1024).isEmpty()) {
+                        throw new IllegalArgumentException("module " + dir + " has no pom.xml at " + resolved.commit().substring(0, 12));
+                    }
+                } catch (IOException ex) {
+                    throw new IllegalArgumentException("could not read module " + dir + " at " + resolved.commit().substring(0, 12));
+                }
+                dirs.add(dir);
+            }
+            var array = JsonNodeFactory.instance.arrayNode();
+            dirs.forEach(array::add);
+            return array;
         }
 
         @Override
@@ -194,6 +220,13 @@ public class QaSuiteTools {
             }
             argv.add(suite.image());
             argv.addAll(suite.command());
+            var modules = context.arguments().get("modules");
+            if (modules != null) {
+                // Only the selected modules and what they depend on; tests of those dependencies run too, which keeps it a superset.
+                var dirs = new ArrayList<String>();
+                modules.forEach(m -> dirs.add(m.textValue()));
+                argv.addAll(List.of("-pl", String.join(",", dirs), "-am"));
+            }
             return argv;
         }
 
@@ -229,6 +262,10 @@ public class QaSuiteTools {
             json.put("runnerImage", suite.image());
             json.put("command", suite.command());
             json.put("dockerAccess", suite.dockerAccess());
+            var modules = new ArrayList<String>();
+            if (args.has("modules")) args.get("modules").forEach(m -> modules.add(m.textValue()));
+            json.put("scope", modules.isEmpty() ? "FULL" : "MODULES");
+            json.put("modules", modules);
             json.put("exitCode", result.stopped() || result.timedOut() ? null : result.exitCode());
             json.put("stopped", result.stopped());
             json.put("timedOut", result.timedOut());

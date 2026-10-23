@@ -98,6 +98,8 @@ export interface PullRequestRun {
   id: string; projectKey: string; prNumber: number; headSha: string; suiteKey: string; prTitle: string; prUrl: string; headRef: string;
   status: 'PENDING' | 'STARTED' | 'SUPERSEDED' | 'SKIPPED'; skipReason: string | null; taskId: string | null; runId: string | null;
   runStatus: string | null; runErrorCode: string | null; createdAt: string; startedAt: string | null; baseSha: string | null;
+  /** How much of a selective suite ran: only the affected Maven modules, all of it, or nothing (no module affected). */
+  selection?: 'FULL' | 'MODULES' | 'NOT_AFFECTED' | null; selectionReason?: string | null; selectedModules?: string[];
 }
 
 export interface ChangeImpact {
@@ -125,7 +127,7 @@ export interface Triage {
 
 export interface Gate {
   project: string; commit: string; verdict: 'PASS' | 'FAIL' | 'PENDING' | 'NOT_CONFIGURED';
-  suites: { suite: string; status: string; runId: string | null; outcome: string | null; category: string | null; reason: string | null }[];
+  suites: { suite: string; status: string; runId: string | null; outcome: string | null; category: string | null; reason: string | null; modules?: string[] }[];
   reasons: string[]; notes: string[]; policy: { requiredSuites: string[] } | null;
 }
 
