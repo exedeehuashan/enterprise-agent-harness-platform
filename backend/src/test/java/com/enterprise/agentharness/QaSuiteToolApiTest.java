@@ -62,6 +62,7 @@ class QaSuiteToolApiTest {
     static volatile int dockerExit;
     static volatile int cloneExit;
     static volatile Runnable duringRun;
+    static volatile boolean dockerAvailable;
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
 
     /** Simulates git, tar and docker by argv, so every outcome is deterministic and no container runs. */
@@ -76,6 +77,10 @@ class QaSuiteToolApiTest {
             if (argv.get(0).equals("git") && argv.contains("clone")) { Files.createDirectories(Path.of(argv.get(argv.size()-1))); return new Result(cloneExit,false,false); }
             if (argv.get(0).equals("git") && argv.contains("archive")) { Files.writeString(Path.of(argv.get(argv.indexOf("-o")+1)), "tar"); return new Result(0,false,false); }
             if (argv.get(0).equals("tar")) { Files.writeString(Path.of(argv.get(argv.size()-1)).resolve("pom.xml"), "<project/>"); return new Result(0,false,false); }
+            if (argv.get(0).equals("docker") && argv.get(1).equals("version")) {
+                if (!dockerAvailable) Files.writeString(logFile, "Cannot connect to the Docker daemon\n");
+                return new Result(dockerAvailable ? 0 : 1,false,false);
+            }
             if (argv.get(0).equals("docker") && argv.get(1).equals("run")) {
                 Files.writeString(logFile, "[INFO] BUILD output\n");
                 Path src=Path.of(argv.get(argv.indexOf("-w")+1));
@@ -127,7 +132,7 @@ class QaSuiteToolApiTest {
         repository.deleteAll();
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE");
         jdbc.update("UPDATE qa_projects SET enabled=TRUE");
-        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;calls.clear();
+        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;calls.clear();
     }
 
     private static String auth(String token){return "Bearer "+token;}
@@ -232,13 +237,22 @@ class QaSuiteToolApiTest {
     }
 
     @Test
+    void unreachableDockerDaemonIsReportedBeforeAnyWork() throws Exception {
+        dockerAvailable=false;
+        UUID run=unitRun();worker();
+        assertThat(runs.get(run).errorCode()).isEqualTo("RUNNER_UNAVAILABLE");
+        assertThat(new String(content(artifact(run,"docker-check.log")),StandardCharsets.UTF_8)).contains("Cannot connect");
+        assertThat(calls).noneMatch(c->c.contains("clone")||c.contains("archive")||c.get(1).equals("run"));
+    }
+
+    @Test
     void sourceExportFailureIsReportedWithSetupLog() throws Exception {
         cloneExit=128;
         try (var mirrors=Files.list(WORKDIR)) { for (Path p:mirrors.toList()) if (p.endsWith("mirrors")) deleteTree(p); }
         UUID run=unitRun();worker();
         assertThat(runs.get(run).errorCode()).isEqualTo("SOURCE_UNAVAILABLE");
         assertThat(artifact(run,"setup.log")).isNotNull();
-        assertThat(calls).noneMatch(c->c.get(0).equals("docker"));
+        assertThat(calls).noneMatch(c->c.get(0).equals("docker")&&c.get(1).equals("run"));
     }
 
     @Test

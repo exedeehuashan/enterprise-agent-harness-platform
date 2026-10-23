@@ -114,6 +114,12 @@ public class QaSuiteTools {
                 deleteTree(runDir);
                 Files.createDirectories(runDir);
                 Files.createDirectories(settings.workdir().resolve("cache").resolve(project.key()));
+                Path dockerCheck = runDir.resolve("docker-check.log");
+                if (runner.run(List.of(settings.docker(), "version", "--format", "{{.Server.Version}}"), dockerCheck, Duration.ofSeconds(30)).exitCode() != 0) {
+                    return ToolResult.failure("RUNNER_UNAVAILABLE",
+                            "The Docker daemon is not reachable from EAHP. Enable the QA runner (docker-compose.qa.yml) to run suites.",
+                            tail("docker-check.log", dockerCheck));
+                }
                 try {
                     git.export(project, commit, source, setupLog);
                 } catch (IOException ex) {

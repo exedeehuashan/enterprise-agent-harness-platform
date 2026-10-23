@@ -7,7 +7,9 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27.3-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ENV EAHP_BACKEND_UPSTREAM=http://eahp-backend:8080
+ENV NGINX_ENVSUBST_FILTER=^EAHP_
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
