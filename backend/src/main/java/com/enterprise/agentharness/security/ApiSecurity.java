@@ -34,7 +34,9 @@ public class ApiSecurity {
     SecurityFilterChain apiFilterChain(HttpSecurity http, ObjectMapper mapper,
             @Value("${eahp.security.admin-token:}") String admin,
             @Value("${eahp.security.operator-token:}") String operator,
-            @Value("${eahp.security.viewer-token:}") String viewer, ApiTokens tokens) throws Exception {
+            @Value("${eahp.security.viewer-token:}") String viewer,
+            org.springframework.beans.factory.ObjectProvider<ApiTokens> namedTokens) throws Exception {
+        ApiTokens tokens = namedTokens.getIfAvailable(); // absent in slim security contexts: only deployment tokens apply
         if (!validToken(admin)) throw new IllegalStateException("Configure a random EAHP_SECURITY_ADMIN_TOKEN (32..256 URL-safe characters)");
         var identities = new ArrayList<Identity>();
         identities.add(identity("admin", admin, "VIEWER", "OPERATOR", "APPROVER"));
@@ -64,7 +66,7 @@ public class ApiSecurity {
                             for (Identity candidate : identities) if (MessageDigest.isEqual(actual,candidate.hash())) matched=candidate;
                             if (matched == null) {
                                 // Named tokens issued by approvers (P27); looked up by hash, never by the token itself.
-                                var issued = tokens.authenticate(actual);
+                                var issued = tokens == null ? java.util.Optional.<ApiTokens.Principal>empty() : tokens.authenticate(actual);
                                 if (issued.isEmpty()) { error(mapper,req,res,401); return; }
                                 matched = new Identity(issued.get().name(), actual, issued.get().roles());
                             }

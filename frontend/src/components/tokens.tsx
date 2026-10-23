@@ -36,7 +36,8 @@ export function TokensPanel() {
               <td className="small">{t.roles.join(', ')}</td>
               <td className="small">{t.lastUsedAt ? <Time value={t.lastUsedAt} /> : 'never'}</td>
               <td className="small">{t.revokedAt ? <span className="badge badge-muted">revoked</span> : !t.active ? <span className="badge badge-muted">expired</span> : t.expiresAt ? <Time value={t.expiresAt} /> : 'never'}</td>
-              <td>{t.active && <button className="danger" disabled={action.busy} onClick={() => void revoke(t.id, t.name)}>Revoke</button>}</td>
+              {/* Expired tokens still hold their name until revoked, so they can be revoked too. */}
+              <td>{!t.revokedAt && <button className="danger" disabled={action.busy} onClick={() => void revoke(t.id, t.name)}>Revoke</button>}</td>
             </tr>
           ))}</tbody>
         </table></div>
