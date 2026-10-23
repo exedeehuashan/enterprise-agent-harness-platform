@@ -21,11 +21,12 @@ public class QaController {
     private final QualityService quality;
     private final GitMirror git;
     private final QaReportService reports;
+    private final QaComparison comparison;
     public QaController(QaRegistry registry, PullRequestTriggers pullRequests, QaSuiteResolver resolver, QaTriageService triageService,
             com.enterprise.agentharness.run.RunService runs, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts,
-            QualityService quality, GitMirror git, QaReportService reports) {
+            QualityService quality, GitMirror git, QaReportService reports, QaComparison comparison) {
         this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver; this.triageService = triageService;
-        this.runs = runs; this.impacts = impacts; this.quality = quality; this.git = git; this.reports = reports;
+        this.runs = runs; this.impacts = impacts; this.quality = quality; this.git = git; this.reports = reports; this.comparison = comparison;
     }
 
     @GetMapping("/projects")
@@ -86,6 +87,16 @@ public class QaController {
         try { commit = git.resolve(project, ref); }
         catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
         return reports.report(key, ref, commit);
+    }
+
+    /** Test-level difference between two commits (refs are resolved), per suite with a result at {@code head}. */
+    @GetMapping("/projects/{key}/compare")
+    public List<QaComparison.Diff> compare(@org.springframework.web.bind.annotation.PathVariable String key, @RequestParam String base,
+            @RequestParam String head, @RequestParam(required = false) String suite) {
+        var project = registry.project(key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Project not found: " + key));
+        if (suite != null && !suite.matches("[a-z0-9][a-z0-9-]{1,59}")) throw new RunException(HttpStatus.BAD_REQUEST, "invalid suite key");
+        try { return comparison.compare(key, git.resolve(project, base), git.resolve(project, head), suite); }
+        catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
     }
 
     @GetMapping("/projects/{key}/dashboard")

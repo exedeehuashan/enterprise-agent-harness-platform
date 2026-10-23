@@ -623,9 +623,9 @@ class QaSuiteToolApiTest {
         runAt(task,"r1",a,PASS,0);
         UUID failed=runAt(task,"r2",b,ORDER_FAIL,1);ingestor.runOnce();
         jdbc.update("""
-                INSERT INTO qa_pr_runs(id,project_key,pr_number,head_sha,suite_key,pr_title,pr_url,head_ref,status,run_id,selection,selection_reason,selected_modules)
-                VALUES (gen_random_uuid(),'online-shop',61,?,'backend-unit','Fix @admin [x](http://evil) <b>','https://github.com/exedeehuashan/online-shop/pull/61','f','STARTED',?,'MODULES','AFFECTED_MODULES','["backend/order-api"]'::jsonb)
-                """,b,failed);
+                INSERT INTO qa_pr_runs(id,project_key,pr_number,head_sha,suite_key,pr_title,pr_url,head_ref,status,run_id,selection,selection_reason,selected_modules,base_sha)
+                VALUES (gen_random_uuid(),'online-shop',61,?,'backend-unit','Fix @admin [x](http://evil) <b>','https://github.com/exedeehuashan/online-shop/pull/61','f','STARTED',?,'MODULES','AFFECTED_MODULES','["backend/order-api"]'::jsonb,?)
+                """,b,failed,a);
         try {
             var report=mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref",b).header("Authorization",auth(VIEWER)))
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -638,6 +638,7 @@ class QaSuiteToolApiTest {
                     .contains("- backend-unit `OrderTest#creates` (failed, assertion, new failure): expected: &lt;1&gt; but was: &lt;2&gt;")
                     .contains("### Pull request #61: Fix @\u200Badmin \\[x\\]\\(http://evil\\) &lt;b&gt;")
                     .contains("- backend-unit: affected modules only: `backend/order-api`")
+                    .contains("Compared with base `aaaaaaaaaaaa`:\n- backend-unit: 1 new failure(s), 0 fixed, 0 still failing, 0 added, 0 removed\n  - new failure: `OrderTest#creates`")
                     .doesNotContain("<b>");
             mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref","c".repeat(40)).header("Authorization",auth(VIEWER)))
                     .andExpect(jsonPath("$.verdict").value("PENDING")).andExpect(jsonPath("$.markdown").value(org.hamcrest.Matchers.containsString("No suite has a recorded result at this commit yet.")));
@@ -647,6 +648,29 @@ class QaSuiteToolApiTest {
         } finally {
             jdbc.update("DELETE FROM qa_pr_runs");
         }
+    }
+
+    @Test
+    void comparisonShowsNewFailuresFixesAndAddedOrRemovedTests() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40),c="c".repeat(40);
+        UUID task=task();
+        runAt(task,"c1",a,PASS,0);
+        runAt(task,"c2",b,ORDER_FAIL,1);
+        runAt(task,"c3",c,"<testsuite name=\"OrderTest\" tests=\"2\"><testcase classname=\"OrderTest\" name=\"creates\"/><testcase classname=\"OrderTest\" name=\"cancels\"/></testsuite>",0);
+        ingestor.runOnce();
+        mvc.perform(get("/api/v1/qa/projects/online-shop/compare").param("base",a).param("head",b).header("Authorization",auth(VIEWER))).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].suite").value("backend-unit")).andExpect(jsonPath("$[0].status").value("COMPARED"))
+                .andExpect(jsonPath("$[0].newFailures[0]").value("OrderTest#creates")).andExpect(jsonPath("$[0].fixedCount").value(0))
+                .andExpect(jsonPath("$[0].base.outcome").value("PASSED")).andExpect(jsonPath("$[0].head.outcome").value("TESTS_FAILED"));
+        mvc.perform(get("/api/v1/qa/projects/online-shop/compare").param("base",b).param("head",c).param("suite","backend-unit").header("Authorization",auth(VIEWER)))
+                .andExpect(jsonPath("$[0].fixed[0]").value("OrderTest#creates")).andExpect(jsonPath("$[0].added[0]").value("OrderTest#cancels"))
+                .andExpect(jsonPath("$[0].removed[0]").value("OrderTest#lists")).andExpect(jsonPath("$[0].sameScope").value(true))
+                .andExpect(jsonPath("$[0].newFailureCount").value(0));
+        mvc.perform(get("/api/v1/qa/projects/online-shop/compare").param("base","d".repeat(40)).param("head",c).header("Authorization",auth(VIEWER)))
+                .andExpect(jsonPath("$[0].status").value("NO_BASE_RESULT")).andExpect(jsonPath("$[0].head.tests").value(2));
+        mvc.perform(get("/api/v1/qa/projects/online-shop/compare").param("base",a).param("head",c).param("suite","Bad Suite").header("Authorization",auth(VIEWER)))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/projects/online-shop/compare").param("base",a).param("head",c)).andExpect(status().isUnauthorized());
     }
 
     @Test
