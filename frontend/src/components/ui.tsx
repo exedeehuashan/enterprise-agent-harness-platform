@@ -6,7 +6,7 @@ const TONE: Record<string, string> = {
   RUNNING: 'active', QUEUED: 'active', LAUNCHED: 'active', STARTED: 'active',
   WAITING_APPROVAL: 'warn', PENDING: 'warn', NEEDS_REVIEW: 'warn',
   FAILED: 'bad', TIMED_OUT: 'bad', REJECTED: 'bad', EXPIRED: 'bad', INVALIDATED: 'bad', LOST: 'bad', UNKNOWN: 'bad',
-  CANCELLED: 'muted', SKIPPED: 'muted',
+  CANCELLED: 'muted', SKIPPED: 'muted', SUPERSEDED: 'muted',
 };
 
 export function Status({ value }: { value: string | null | undefined }) {

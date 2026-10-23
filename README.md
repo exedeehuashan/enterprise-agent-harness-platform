@@ -315,6 +315,14 @@ approval. The backend needs `git`, the Docker CLI and access to a Docker daemon
 `EAHP_QA_VOLUME` to share the work directory with test containers through a named
 volume. See [P8 design notes](docs/p8-qa-suite-runner.md).
 
+**Pull request triggers.** With `EAHP_GITHUB_POLL_ENABLED=true`, EAHP polls GitHub
+every 5 minutes for open pull requests of registered projects and runs the
+enabled trigger suites (`qa_pr_triggers`) at each new head commit. A newer push
+cancels the previous commit's run; fork pull requests are recorded but never run.
+`GET /api/v1/qa/pull-requests` and the console's Pull requests page show what
+happened. EAHP only reads from GitHub. See
+[P11 design notes](docs/p11-github-pr-triggers.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

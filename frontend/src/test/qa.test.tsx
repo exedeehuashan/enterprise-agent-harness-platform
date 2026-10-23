@@ -125,3 +125,26 @@ describe('QA console', () => {
     expect(screen.getByRole('link', { name: 'Test projects' })).toBeInTheDocument();
   });
 });
+
+describe('pull request runs', () => {
+  it('shows poll health, trigger outcomes and links to runs', async () => {
+    tokenStore.set(TOKEN);
+    const row = (over: Record<string, unknown>) => ({ id: String(over.id), projectKey: 'online-shop', prNumber: 47, headSha: 'a'.repeat(40), suiteKey: 'backend-unit',
+      prTitle: 'feat(catalog): expand schema', prUrl: 'https://github.com/exedeehuashan/online-shop/pull/47', headRef: 'feat/x', status: 'STARTED',
+      skipReason: null, taskId: 'task-1', runId: 'run-1', runStatus: 'COMPLETED', runErrorCode: null, createdAt: '2026-10-23T00:00:00Z', startedAt: null, ...over });
+    fakeApi({
+      'GET /me': () => ({ body: operator }),
+      'GET /qa/github-polls': () => ({ body: [{ projectKey: 'online-shop', lastPolledAt: '2026-10-23T00:00:00Z', lastSuccessAt: '2026-10-23T00:00:00Z', openPullRequests: 2, lastError: null }] }),
+      'GET /qa/pull-requests': () => ({ body: [
+        row({ id: 'r1' }),
+        row({ id: 'r2', prNumber: 48, headSha: 'b'.repeat(40), status: 'SKIPPED', skipReason: 'FORK_NOT_TRUSTED', taskId: null, runId: null, runStatus: null }),
+      ] }),
+    });
+    renderApp('/qa/pull-requests');
+    expect(await screen.findByText('2 open pull requests')).toBeInTheDocument();
+    expect(screen.getByText('From a fork: not run automatically')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'online-shop #47' })).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByRole('link', { name: 'COMPLETED' })).toHaveAttribute('href', '/runs/run-1');
+    expect(screen.getByRole('link', { name: 'Pull requests' })).toBeInTheDocument();
+  });
+});

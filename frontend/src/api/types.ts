@@ -74,4 +74,12 @@ export interface QaSummary {
   failedTests: { suite: string; name: string; kind: string; message: string }[];
 }
 
+export interface PullRequestRun {
+  id: string; projectKey: string; prNumber: number; headSha: string; suiteKey: string; prTitle: string; prUrl: string; headRef: string;
+  status: 'PENDING' | 'STARTED' | 'SUPERSEDED' | 'SKIPPED'; skipReason: string | null; taskId: string | null; runId: string | null;
+  runStatus: string | null; runErrorCode: string | null; createdAt: string; startedAt: string | null;
+}
+
+export interface GitHubPoll { projectKey: string; lastPolledAt: string; lastSuccessAt: string | null; openPullRequests: number | null; lastError: string | null }
+
 export interface Tool { name: string; version: number; target: string; enabled: boolean; requiresApproval: boolean; retryable: boolean }

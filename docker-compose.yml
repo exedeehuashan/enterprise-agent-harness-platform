@@ -37,6 +37,8 @@ services:
       EAHP_SECURITY_VIEWER_TOKEN: ${EAHP_SECURITY_VIEWER_TOKEN:-}
       EAHP_QA_WORKDIR: /var/lib/eahp-qa
       EAHP_QA_VOLUME: eahp-qa-work
+      EAHP_GITHUB_POLL_ENABLED: ${EAHP_GITHUB_POLL_ENABLED:-false}
+      EAHP_GITHUB_TOKEN: ${EAHP_GITHUB_TOKEN:-}
     ports:
       - "127.0.0.1:${EAHP_BACKEND_PORT:-8080}:8080"
     volumes:
