@@ -192,7 +192,7 @@ describe('pull request runs', () => {
     expect(await screen.findByText('2 open pull requests')).toBeInTheDocument();
     expect(screen.getByText('From a fork: not run automatically')).toBeInTheDocument();
     expect(screen.getByText('2 affected modules only')).toHaveAttribute('title', 'api\ncore');
-    expect(screen.getByText('No backend module affected: not needed')).toBeInTheDocument();
+    expect(screen.getByText('Change does not affect this suite: not needed')).toBeInTheDocument();
     expect(screen.getByText('full suite: build files changed')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'online-shop #47' })).toHaveAttribute('rel', 'noopener noreferrer');
     expect(screen.getByRole('link', { name: 'COMPLETED' })).toHaveAttribute('href', '/runs/run-1');

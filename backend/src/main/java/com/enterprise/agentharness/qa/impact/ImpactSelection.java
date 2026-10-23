@@ -3,7 +3,7 @@ package com.enterprise.agentharness.qa.impact;
 import java.util.List;
 
 /**
- * Decides how much of a Maven build a pull request run needs, from its change impact. Anything uncertain runs the
+ * Decides how much of a suite a pull request run needs, from its change impact. Anything uncertain runs the
  * whole suite: selection may only make a run smaller when the impact is complete and every changed file that can
  * influence the build is attributed to a module.
  */
@@ -31,6 +31,28 @@ public final class ImpactSelection {
         if (modules.isEmpty()) return new Decision(Mode.NOT_AFFECTED, List.of(), "NO_MODULE_CHANGED");
         if (modules.size() > MAX_MODULES) return Decision.full("TOO_MANY_MODULES");
         return new Decision(Mode.MODULES, modules, "AFFECTED_MODULES");
+    }
+
+    /**
+     * For a {@code paths} suite: run in full when a changed file is under one of {@code paths}, skip otherwise. Works for
+     * any build system, since only the changed file list is used. A change to the suites file always runs.
+     */
+    public static Decision decidePaths(ChangeImpactAnalyzer.Impact impact, String suitesFile, List<String> paths) {
+        if (impact == null) return Decision.full("IMPACT_UNAVAILABLE");
+        // Only part of the list may be stored; the unlisted files could match.
+        if (impact.truncated() || impact.changedFileCount() > impact.changedFiles().size()) return Decision.full("TOO_MANY_CHANGES");
+        for (String file : impact.changedFiles()) {
+            if (file.equals(suitesFile) || file.startsWith(".eahp/")) return Decision.full("BUILD_CHANGED");
+        }
+        for (String file : impact.changedFiles()) {
+            if (paths.stream().anyMatch(p -> under(file, p))) return Decision.full("PATHS_CHANGED");
+        }
+        return new Decision(Mode.NOT_AFFECTED, List.of(), "NO_PATH_CHANGED");
+    }
+
+    static boolean under(String file, String path) {
+        String dir = path.endsWith("/") ? path : path + "/";
+        return file.equals(path) || file.startsWith(dir);
     }
 
     /** Files outside the modules that still change how Maven builds or what the suite runs. */

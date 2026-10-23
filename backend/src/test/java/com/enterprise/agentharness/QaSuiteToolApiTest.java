@@ -392,7 +392,14 @@ class QaSuiteToolApiTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("does not support module selection")));
         repoFile=REPO_FILE.replace("\"timeoutSeconds\":600}","\"timeoutSeconds\":600,\"selection\":\"all\"}");
         mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER)))
-                .andExpect(jsonPath("$.repositoryFile").value("invalid")).andExpect(jsonPath("$.repositoryError").value("invalid suites file: smoke: selection must be maven-modules"));
+                .andExpect(jsonPath("$.repositoryFile").value("invalid")).andExpect(jsonPath("$.repositoryError").value("invalid suites file: smoke: selection must be maven-modules or paths"));
+        for (String bad : List.of("\"selection\":\"paths\"}", "\"paths\":[\"frontend/\"]}", "\"selection\":\"paths\",\"paths\":[\"../x\"]}", "\"selection\":\"paths\",\"paths\":[\"/abs\"]}")) {
+            repoFile=REPO_FILE.replace("\"timeoutSeconds\":600}","\"timeoutSeconds\":600,"+bad);
+            mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("invalid"));
+        }
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":600}","\"timeoutSeconds\":600,\"selection\":\"paths\",\"paths\":[\"frontend/order-web/\",\"docs\"]}");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("found"))
+                .andExpect(jsonPath("$.suites[?(@.key=='smoke')].paths[1]").value("docs"));
     }
 
     @Test

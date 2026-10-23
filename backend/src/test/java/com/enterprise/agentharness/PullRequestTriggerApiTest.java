@@ -266,6 +266,24 @@ class PullRequestTriggerApiTest {
     }
 
     @Test
+    void pathSuitesRunOnlyForPullRequestsThatTouchTheirPaths() {
+        jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE");
+        suitesJson=SELECTIVE.replace("\"selection\":\"maven-modules\"","\"selection\":\"paths\",\"paths\":[\"web/\"]");
+        changed=List.of("core/src/main/java/Core.java");
+        open.add(pr(47,A,true,"backend"));
+        triggers.runOnce();
+        assertThat(jdbc.queryForObject("SELECT status||'/'||skip_reason||'/'||selection_reason FROM qa_pr_runs WHERE pr_number=47",String.class))
+                .isEqualTo("SKIPPED/NOT_AFFECTED/NO_PATH_CHANGED");
+        changed=List.of("web/src/App.tsx");
+        open.clear(); open.add(pr(48,B,true,"web"));
+        triggers.runOnce();
+        assertThat(jdbc.queryForObject("SELECT status||'/'||selection||'/'||selection_reason FROM qa_pr_runs WHERE pr_number=48",String.class))
+                .isEqualTo("STARTED/FULL/PATHS_CHANGED");
+        assertThat(runs.get(jdbc.queryForObject("SELECT run_id FROM qa_pr_runs WHERE pr_number=48",UUID.class)).arguments().get("definition").get("paths").get(0).asText())
+                .isEqualTo("web/");
+    }
+
+    @Test
     void suitesWithoutSelectionAlwaysRunInFull() {
         open.add(pr(47,A,true,"t"));
         triggers.runOnce();

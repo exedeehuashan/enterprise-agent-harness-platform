@@ -46,4 +46,21 @@ class ImpactSelectionTest {
         var outside = java.util.stream.IntStream.range(0, ChangeImpactAnalyzer.MAX_LISTED).mapToObj(i -> "docs/" + i + ".md").toList();
         assertThat(ImpactSelection.decide(impact(List.of("lib"), outside), FILE).reason()).isEqualTo("TOO_MANY_CHANGES");
     }
+
+    private static Impact changed(List<String> files, int count) {
+        return new Impact("unknown", count, files, false, false, List.of(), List.of(), List.of(), List.of());
+    }
+
+    @Test
+    void pathSuitesRunOnlyWhenTheirPathsChange() {
+        var paths = List.of("frontend/order-web/", "shared/schema.json");
+        assertThat(ImpactSelection.decidePaths(changed(List.of("frontend/order-web/src/App.tsx", "README.md"), 2), FILE, paths).reason()).isEqualTo("PATHS_CHANGED");
+        assertThat(ImpactSelection.decidePaths(changed(List.of("shared/schema.json"), 1), FILE, paths).mode()).isEqualTo(Mode.FULL);
+        var skip = ImpactSelection.decidePaths(changed(List.of("backend/order-api/src/A.java", "frontend/order-webx/a.ts", "shared/schema.json.bak"), 3), FILE, paths);
+        assertThat(skip.mode()).isEqualTo(Mode.NOT_AFFECTED);
+        assertThat(skip.reason()).isEqualTo("NO_PATH_CHANGED");
+        assertThat(ImpactSelection.decidePaths(changed(List.of("backend/A.java", FILE), 2), FILE, paths).reason()).isEqualTo("BUILD_CHANGED");
+        assertThat(ImpactSelection.decidePaths(changed(List.of("backend/A.java"), 900), FILE, paths).reason()).isEqualTo("TOO_MANY_CHANGES");
+        assertThat(ImpactSelection.decidePaths(null, FILE, paths).reason()).isEqualTo("IMPACT_UNAVAILABLE");
+    }
 }
