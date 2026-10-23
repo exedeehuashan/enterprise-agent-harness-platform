@@ -273,6 +273,25 @@ success. Artifacts carry SHA-256 digests and are always served as downloads. Lon
 tools keep their lease alive through a heartbeat. See
 [P7 design notes](docs/p7-tool-plugins-and-artifacts.md).
 
+### QA test suites (方案 4)
+
+Projects under test and their predefined suites are registered as data
+(`GET /api/v1/qa/projects`; `online-shop` is seeded). Run a suite at a branch, tag
+or commit; the run records the resolved commit and returns `summary.json`,
+`junit-reports.zip` and `console.log` as artifacts:
+
+```sh
+curl -H "@$AUTH_HEADERS" -i -X POST "http://localhost:8080/api/v1/agent-tasks/$TASK_ID/runs" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: qa-001' \
+  -d '{"tool":"QA_RUN_SUITE","timeoutSeconds":1800,"arguments":{"project":"online-shop","suite":"backend-unit"}}'
+```
+
+Suites that need Docker access use `QA_RUN_PRIVILEGED_SUITE`, which requires
+approval. The backend needs `git`, the Docker CLI and access to a Docker daemon
+(`backend/Dockerfile` builds such an image). Settings: `EAHP_QA_WORKDIR`, and
+`EAHP_QA_VOLUME` to share the work directory with test containers through a named
+volume. See [P8 design notes](docs/p8-qa-suite-runner.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

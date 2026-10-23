@@ -124,7 +124,7 @@ class ApprovalSecurityApiTest {
         var run=gated();UUID id=runId(run);
         worker();assertThat(runs.get(id).status()).isEqualTo("WAITING_APPROVAL");assertThat(invocationCount(id)).isZero();
         mvc.perform(get("/api/v1/tools").header("Authorization",bearer(VIEWER))).andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.length()").value(4)); // 2 demo tools + 2 QA suite tools (V8)
         approve(run);worker();
         assertThat(runs.get(id).status()).isEqualTo("COMPLETED");assertThat(invocationCount(id)).isEqualTo(1);
         mvc.perform(get("/api/v1/approvals/"+run.get("approvalId").asText()).header("Authorization",bearer(ADMIN)))

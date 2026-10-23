@@ -79,9 +79,12 @@ public class RunService {
     /** Validated by the tool's own executor and stored as canonical JSON, so replays and digests are stable. */
     private String normalizedArguments(StartRunRequest request) {
         var executor = registry.find(request.tool()).orElseThrow(() -> new RunException(HttpStatus.BAD_REQUEST, "Tool is not allowed"));
-        String text;
-        try { text = CanonicalJson.write(executor.normalize(request.arguments())); }
+        com.fasterxml.jackson.databind.JsonNode normalized;
+        try { normalized = executor.normalize(request.arguments()); }
         catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, "Invalid arguments: " + ex.getMessage()); }
+        try { executor.checkTimeout(normalized, request.timeoutSeconds()); }
+        catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
+        String text = CanonicalJson.write(normalized);
         if (text != null && text.length() > 16384) throw new RunException(HttpStatus.BAD_REQUEST, "Arguments are too large");
         return text;
     }
