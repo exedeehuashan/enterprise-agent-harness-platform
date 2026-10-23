@@ -114,3 +114,7 @@ enables selection (#52), a manual `backend-unit` run with
 
 The GitHub poller then picked up #52 itself. It recorded `FULL / BUILD_CHANGED`,
 because the PR changes `.eahp/qa-suites.json`, and the full suite completed.
+
+After #52 was merged (`ed2442b`), the ON_CHANGE schedule on `main` ran
+`backend-unit` with scope `FULL`. It passed 42 tests in 14 s, and the main gate is
+PASS with no selection note, as designed for the branch that ships.
