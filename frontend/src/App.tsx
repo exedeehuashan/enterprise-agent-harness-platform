@@ -1,3 +1,4 @@
+import { AdminPage } from './pages/AdminPage';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { ApprovalsPage } from './pages/ApprovalsPage';
 import { ExecutionPage } from './pages/ExecutionPage';
@@ -25,6 +26,7 @@ export function App() {
           <NavLink to="/qa/pull-requests">Pull requests</NavLink>
           <NavLink to="/qa/quality">Quality</NavLink>
           {can('APPROVER') && <NavLink to="/approvals">Approvals</NavLink>}
+          {can('APPROVER') && <NavLink to="/admin">Administration</NavLink>}
         </nav>
         <div className="who">
           <span>{identity.name}</span>
@@ -42,6 +44,7 @@ export function App() {
           <Route path="/qa/quality" element={<QualityPage />} />
           <Route path="/executions/:id" element={<ExecutionPage />} />
           <Route path="/approvals" element={can('APPROVER') ? <ApprovalsPage /> : <Navigate to="/" replace />} />
+          <Route path="/admin" element={can('APPROVER') ? <AdminPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

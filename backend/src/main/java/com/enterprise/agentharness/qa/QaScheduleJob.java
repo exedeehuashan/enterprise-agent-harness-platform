@@ -11,8 +11,9 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "eahp.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class QaScheduleJob {
     private final QaSchedules schedules;
-    public QaScheduleJob(QaSchedules schedules) { this.schedules = schedules; }
+    private final com.enterprise.agentharness.module.ModuleRegistry modules;
+    public QaScheduleJob(QaSchedules schedules, com.enterprise.agentharness.module.ModuleRegistry modules) { this.schedules = schedules; this.modules = modules; }
 
     @Scheduled(initialDelayString = "${eahp.qa.schedule-initial-delay-ms:45000}", fixedDelayString = "${eahp.qa.schedule-interval-ms:60000}")
-    public void run() { schedules.runOnce(); }
+    public void run() { if (modules.enabled(QaModule.KEY)) schedules.runOnce(); }
 }

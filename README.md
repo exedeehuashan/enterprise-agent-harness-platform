@@ -402,6 +402,14 @@ records name who acted. Only a SHA-256 hash is stored; the token is shown once, 
 revocation takes effect on the next request. See
 [P27 design notes](docs/p27-named-api-tokens.md).
 
+**Metrics and domain modules.** `/actuator/prometheus` (VIEWER token) exposes JVM
+and HTTP metrics, plus EAHP gauges (runs by status, queue age, pending approvals,
+webhook health, QA outcomes). `/actuator/health` is public. Domain agents are
+`DomainModule`s (core, `qa` = 方案 4) listed at `GET /api/v1/modules`; approvers
+can switch a domain off, which disables its tools and pauses its jobs. Approver
+tools live on the console's Administration page. See
+[P28 design notes](docs/p28-metrics-and-domain-modules.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;
