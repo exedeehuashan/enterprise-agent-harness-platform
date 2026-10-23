@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, Quarantine, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -113,6 +113,7 @@ export const api = {
   gitHubPolls: () => get<GitHubPoll[]>('/qa/github-polls'),
   qualityDashboard: (project: string, days: number) => get<QualityDashboard>(`/qa/projects/${project}/dashboard${query({ days })}`),
   qualityGate: (project: string, ref: string) => get<Gate>(`/qa/projects/${project}/gate${query({ ref })}`),
+  qaReport: (project: string, ref: string) => get<QaReport>(`/qa/projects/${project}/report${query({ ref })}`),
   changeImpact: (prRunId: string) => get<ChangeImpact>(`/qa/pull-requests/${prRunId}/impact`),
 
   startPlan: (taskId: string, key: string) => post<ModelCall>(`/agent-tasks/${taskId}/plans`, {}, idem(key)),

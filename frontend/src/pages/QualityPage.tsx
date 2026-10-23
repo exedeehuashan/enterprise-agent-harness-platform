@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api/client';
-import type { Gate, QualityDashboard } from '../api/types';
+import type { Gate, QaReport, QualityDashboard } from '../api/types';
 import { QuarantinePanel, testLabel as test } from '../components/qaQuarantines';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
@@ -151,11 +151,23 @@ function PassRateTrend({ suite, daily }: { suite: string; daily: QualityDashboar
 function GateCheck({ project, defaultRef }: { project: string; defaultRef: string }) {
   const [ref, setRef] = useState(defaultRef);
   const [gate, setGate] = useState<Gate | null>(null);
+  const [report, setReport] = useState<QaReport | null>(null);
+  const [copied, setCopied] = useState(false);
   const action = useAction();
   const check = async (e: FormEvent) => {
     e.preventDefault();
+    setReport(null);
     const result = await action.run(() => api.qualityGate(project, ref.trim()));
     if (result) setGate(result);
+  };
+  const showReport = async () => {
+    setCopied(false);
+    const result = await action.run(() => api.qaReport(project, gate?.commit ?? ref.trim()));
+    if (result) setReport(result);
+  };
+  const copy = async () => {
+    if (!report) return;
+    try { await navigator.clipboard.writeText(report.markdown); setCopied(true); } catch { setCopied(false); }
   };
   return (
     <Section title="Release gate">
@@ -170,6 +182,11 @@ function GateCheck({ project, defaultRef }: { project: string; defaultRef: strin
             <span className="muted small">{gate.verdict === 'PASS' ? 'All required suites passed at this commit.' : ''}</span></div>
           {gate.reasons.map((r, i) => <p key={i} className="small">{r}</p>)}
           {gate.notes.map((n, i) => <p key={i} className="muted small">{n}</p>)}
+          <div className="row">
+            <button type="button" className="secondary" disabled={action.busy} onClick={() => void showReport()}>QA report</button>
+            {report && <button type="button" className="secondary" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy Markdown'}</button>}
+          </div>
+          {report && <pre className="report" aria-label="QA report Markdown">{report.markdown}</pre>}
         </div>
       )}
     </Section>

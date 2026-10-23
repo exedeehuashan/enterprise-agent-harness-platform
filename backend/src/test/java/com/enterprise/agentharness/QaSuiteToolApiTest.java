@@ -617,6 +617,39 @@ class QaSuiteToolApiTest {
     }
 
     @Test
+    void commitReportSummarizesGateSuitesFailuresAndThePullRequest() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40);
+        UUID task=task();
+        runAt(task,"r1",a,PASS,0);
+        UUID failed=runAt(task,"r2",b,ORDER_FAIL,1);ingestor.runOnce();
+        jdbc.update("""
+                INSERT INTO qa_pr_runs(id,project_key,pr_number,head_sha,suite_key,pr_title,pr_url,head_ref,status,run_id,selection,selection_reason,selected_modules)
+                VALUES (gen_random_uuid(),'online-shop',61,?,'backend-unit','Fix @admin [x](http://evil) <b>','https://github.com/exedeehuashan/online-shop/pull/61','f','STARTED',?,'MODULES','AFFECTED_MODULES','["backend/order-api"]'::jsonb)
+                """,b,failed);
+        try {
+            var report=mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref",b).header("Authorization",auth(VIEWER)))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+            assertThat(report.get("verdict").asText()).isEqualTo("FAIL");
+            assertThat(report.get("commit").asText()).isEqualTo(b);
+            String md=report.get("markdown").asText();
+            assertThat(md).startsWith("## EAHP QA report: online-shop @ `bbbbbbbbbbbb`\n\n**Release gate: FAIL** (required: backend-unit)")
+                    .contains("| backend-unit | TESTS\\_FAILED | 2 | 1 | full | `"+failed.toString().substring(0,8)+"` |")
+                    .contains("- backend-unit failed \\(TESTS\\_FAILED, ASSERTION\\).")
+                    .contains("- backend-unit `OrderTest#creates` (failed, assertion, new failure): expected: &lt;1&gt; but was: &lt;2&gt;")
+                    .contains("### Pull request #61: Fix @\u200Badmin \\[x\\]\\(http://evil\\) &lt;b&gt;")
+                    .contains("- backend-unit: affected modules only: `backend/order-api`")
+                    .doesNotContain("<b>");
+            mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref","c".repeat(40)).header("Authorization",auth(VIEWER)))
+                    .andExpect(jsonPath("$.verdict").value("PENDING")).andExpect(jsonPath("$.markdown").value(org.hamcrest.Matchers.containsString("No suite has a recorded result at this commit yet.")));
+            mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref","../x").header("Authorization",auth(VIEWER))).andExpect(status().isBadRequest());
+            mvc.perform(get("/api/v1/qa/projects/nope/report").param("ref",b).header("Authorization",auth(VIEWER))).andExpect(status().isNotFound());
+            mvc.perform(get("/api/v1/qa/projects/online-shop/report").param("ref",b)).andExpect(status().isUnauthorized());
+        } finally {
+            jdbc.update("DELETE FROM qa_pr_runs");
+        }
+    }
+
+    @Test
     void releaseGateFollowsTheEvidenceAtACommit() throws Exception {
         String a="a".repeat(40),b="b".repeat(40),c="c".repeat(40);
         assertThat(gate(a).get("verdict").asText()).isEqualTo("PENDING");
