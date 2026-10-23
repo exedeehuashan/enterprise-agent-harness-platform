@@ -162,3 +162,12 @@ export interface Quarantine {
 
 /** A commit's QA report: the gate verdict and a Markdown summary of suites, failures and pull request selection. */
 export interface QaReport { project: string; ref: string; commit: string; verdict: string; generatedAt: string; markdown: string }
+
+/** Test-level difference of one suite between two commits. */
+export interface SuiteDiff {
+  suite: string; status: 'COMPARED' | 'NO_BASE_RESULT' | 'NO_HEAD_RESULT';
+  base: { runId: string; outcome: string | null; tests: number; scope: string } | null;
+  head: { runId: string; outcome: string | null; tests: number; scope: string } | null;
+  sameScope: boolean; newFailures: string[]; fixed: string[]; stillFailing: string[]; added: string[]; removed: string[];
+  newFailureCount: number; fixedCount: number; stillFailingCount: number; addedCount: number; removedCount: number;
+}

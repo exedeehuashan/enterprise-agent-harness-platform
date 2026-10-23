@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import type { Gate, QaReport, QualityDashboard } from '../api/types';
+import { CompareCommits } from '../components/qaCompare';
 import { QuarantinePanel, testLabel as test } from '../components/qaQuarantines';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
@@ -48,6 +49,7 @@ export function QualityPage() {
       </Section>
 
       <GateCheck project={project.key} defaultRef={project.defaultRef} />
+      <CompareCommits project={project.key} defaultBase={project.defaultRef} />
 
       {d && (
         <>

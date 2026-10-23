@@ -226,6 +226,13 @@ describe('quality page', () => {
         suites: [], reasons: ['backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).'], notes: ['Already failing in backend-unit: CatalogMigrationTest.'],
         policy: { requiredSuites: ['backend-unit'] } } }),
       'GET /qa/quarantines': () => ({ body: [] }),
+      'GET /qa/projects/online-shop/compare': () => ({ body: [
+        { suite: 'backend-unit', status: 'COMPARED', base: { runId: 'r1', outcome: 'PASSED', tests: 42, scope: 'FULL' }, head: { runId: 'r2', outcome: 'TESTS_FAILED', tests: 43, scope: 'FULL' },
+          sameScope: true, newFailures: ['com.example.OrderTest#creates'], fixed: ['src/cart.test.tsx#totals', 'com.example.A#b'], stillFailing: [], added: ['com.example.OrderTest#cancels'], removed: [],
+          newFailureCount: 1, fixedCount: 2, stillFailingCount: 0, addedCount: 1, removedCount: 0 },
+        { suite: 'frontend-unit', status: 'NO_BASE_RESULT', base: null, head: { runId: 'r3', outcome: 'PASSED', tests: 46, scope: 'FULL' }, sameScope: false,
+          newFailures: [], fixed: [], stillFailing: [], added: [], removed: [], newFailureCount: 0, fixedCount: 0, stillFailingCount: 0, addedCount: 0, removedCount: 0 },
+      ] }),
       'GET /qa/projects/online-shop/report': () => ({ body: { project: 'online-shop', ref: '1ca9ae5'.padEnd(40, '0'), commit: '1ca9ae5'.padEnd(40, '0'), verdict: 'FAIL',
         generatedAt: '2026-10-24T00:00:00Z', markdown: '## EAHP QA report: online-shop @ `1ca9ae500000`\n\n**Release gate: FAIL**\n' } }),
     });
@@ -252,6 +259,14 @@ describe('quality page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Copy Markdown' }));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('## EAHP QA report'));
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Head'), 'feat/x');
+    await userEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(await screen.findByText(/1 new failure, 2 fixed, 0 still failing, 1 added, 0 removed/)).toBeInTheDocument();
+    expect(within(screen.getByText('New failures (1)').parentElement!).getByText('OrderTest#creates')).toBeInTheDocument();
+    expect(screen.getByText('src/cart.test.tsx#totals')).toBeInTheDocument();
+    expect(screen.getByText('No result at the base commit to compare with.')).toBeInTheDocument();
+    expect(calls.find(c => c.path.startsWith('/qa/projects/online-shop/compare'))?.path).toBe('/qa/projects/online-shop/compare?base=main&head=feat%2Fx');
     expect(screen.getByRole('link', { name: 'Quality' })).toBeInTheDocument();
     expect(screen.getByText('No test is quarantined.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Quarantine' })).not.toBeInTheDocument();

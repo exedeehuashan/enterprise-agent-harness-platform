@@ -372,6 +372,12 @@ failures with triage, and pull request selection and impact. Untrusted text is
 escaped so it can be posted as-is. The Quality page shows and copies it. See
 [P22 design notes](docs/p22-commit-qa-report.md).
 
+**Commit comparison.** `GET /api/v1/qa/projects/{key}/compare?base=&head=` lists,
+per suite, the tests that newly fail, were fixed, still fail, or were added or
+removed between two commits. Pull request reports include the comparison with the
+PR's base, and the Quality page has a Compare commits form. See
+[P23 design notes](docs/p23-commit-comparison.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;
