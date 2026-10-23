@@ -41,17 +41,20 @@ public final class ChangeImpactAnalyzer {
         Map<String, Integer> changedPerModule = new LinkedHashMap<>();
         List<String> outside = new ArrayList<>();
         boolean wholeBuild = false;
+        // The root counts as a module of its own only for its own sources (a single-module project); other
+        // root-level files (frontend, CI, docs) are outside the build.
+        boolean rootHasSources = graph.modules().stream().anyMatch(m -> m.dir().isEmpty()) && files.stream().anyMatch(f -> f.startsWith("src/"));
         for (String path : changed) {
             if (path.equals("pom.xml")) { wholeBuild = true; continue; }
             String module = graph.moduleOf(path);
-            if (module == null || module.isEmpty()) outside.add(path);
+            if (module == null || (module.isEmpty() && !(rootHasSources && path.startsWith("src/")))) outside.add(path);
             else changedPerModule.merge(module, 1, Integer::sum);
         }
         Set<String> direct = changedPerModule.keySet();
         Set<String> affected = new TreeSet<>(direct);
         Set<String> dependents = graph.dependentsOf(direct);
         if (wholeBuild) {
-            graph.modules().stream().map(MavenModuleGraph.Module::dir).filter(d -> !d.isEmpty()).forEach(affected::add);
+            graph.modules().stream().map(MavenModuleGraph.Module::dir).filter(d -> !d.isEmpty() || rootHasSources).forEach(affected::add);
             notes.add("The root pom.xml changed, so every module is affected.");
         } else {
             affected.addAll(dependents);
@@ -59,8 +62,8 @@ public final class ChangeImpactAnalyzer {
         Map<String, List<String>> testsPerModule = new LinkedHashMap<>();
         for (String f : files) {
             String module = graph.moduleOf(f);
-            if (module == null || module.isEmpty() || !affected.contains(module)) continue;
-            String prefix = module + "/src/test/java/";
+            if (module == null || !affected.contains(module)) continue;
+            String prefix = (module.isEmpty() ? "" : module + "/") + "src/test/java/";
             if (f.startsWith(prefix) && f.endsWith(".java") && isTestClassName(f)) {
                 testsPerModule.computeIfAbsent(module, k -> new ArrayList<>())
                         .add(f.substring(prefix.length(), f.length() - ".java".length()).replace('/', '.'));

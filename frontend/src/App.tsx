@@ -3,6 +3,7 @@ import { ApprovalsPage } from './pages/ApprovalsPage';
 import { ExecutionPage } from './pages/ExecutionPage';
 import { QaProjectsPage } from './pages/QaProjectsPage';
 import { PullRequestsPage } from './pages/PullRequestsPage';
+import { QualityPage } from './pages/QualityPage';
 import { LoginPage } from './pages/LoginPage';
 import { RunPage } from './pages/RunPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
@@ -22,6 +23,7 @@ export function App() {
           <NavLink to="/" end>Tasks</NavLink>
           <NavLink to="/qa" end>Test projects</NavLink>
           <NavLink to="/qa/pull-requests">Pull requests</NavLink>
+          <NavLink to="/qa/quality">Quality</NavLink>
           {can('APPROVER') && <NavLink to="/approvals">Approvals</NavLink>}
         </nav>
         <div className="who">
@@ -37,6 +39,7 @@ export function App() {
           <Route path="/runs/:id" element={<RunPage />} />
           <Route path="/qa" element={<QaProjectsPage />} />
           <Route path="/qa/pull-requests" element={<PullRequestsPage />} />
+          <Route path="/qa/quality" element={<QualityPage />} />
           <Route path="/executions/:id" element={<ExecutionPage />} />
           <Route path="/approvals" element={can('APPROVER') ? <ApprovalsPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />

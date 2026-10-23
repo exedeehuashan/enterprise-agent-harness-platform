@@ -17,8 +17,9 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 /**
- * Modules of a Maven multi-module build and their internal dependencies, read from the pom.xml files of one commit.
- * Only dependencies on other modules of the same build matter here; external dependencies are ignored. The POMs are
+ * Modules of a Maven build and their internal dependencies, read from the pom.xml files of one commit. Only links
+ * between modules of the same build matter here: dependencies on other modules, and inheritance from an internal
+ * parent POM (a child is affected by its parent's configuration). External dependencies are ignored. The POMs are
  * repository content, so they are parsed without DTDs or external entities.
  */
 public final class MavenModuleGraph {
@@ -43,9 +44,13 @@ public final class MavenModuleGraph {
             Element root = parseXml(e.getValue());
             if (root != null) roots.put(dirOf(e.getKey()), root);
         }
+        Map<String, String> parentCoordinates = new HashMap<>();
         for (var e : roots.entrySet()) {
             Element parent = child(e.getValue(), "parent");
-            if (parent != null) parentGroups.put(e.getKey(), text(parent, "groupId"));
+            if (parent != null) {
+                parentGroups.put(e.getKey(), text(parent, "groupId"));
+                parentCoordinates.put(e.getKey(), text(parent, "groupId") + ":" + text(parent, "artifactId"));
+            }
         }
         Set<String> internal = new HashSet<>();
         Map<String, String> coordinatesByDir = new HashMap<>();
@@ -61,6 +66,8 @@ public final class MavenModuleGraph {
             String coordinates = coordinatesByDir.get(e.getKey());
             if (coordinates == null) continue;
             Set<String> deps = new HashSet<>();
+            String parent = parentCoordinates.get(e.getKey());
+            if (parent != null && internal.contains(parent) && !parent.equals(coordinates)) deps.add(parent);
             Element dependencies = child(e.getValue(), "dependencies");
             if (dependencies != null) {
                 for (Node n = dependencies.getFirstChild(); n != null; n = n.getNextSibling()) {

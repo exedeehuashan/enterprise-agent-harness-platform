@@ -118,4 +118,21 @@ export interface Triage {
   error: string | null;
 }
 
+export interface Gate {
+  project: string; commit: string; verdict: 'PASS' | 'FAIL' | 'PENDING' | 'NOT_CONFIGURED';
+  suites: { suite: string; status: string; runId: string | null; outcome: string | null; category: string | null; reason: string | null }[];
+  reasons: string[]; notes: string[]; policy: { requiredSuites: string[] } | null;
+}
+
+export interface QualityDashboard {
+  project: string; days: number; runs: number; passed: number; passRate: number | null;
+  suites: { suite: string; runs: number; passed: number; passRate: number | null; lastOutcome: string | null; lastCommit: string; lastAt: string;
+    daily: { day: string; runs: number; passed: number }[] }[];
+  failingNow: { suite: string; testClass: string; testName: string; category: string | null; consecutiveFailures: number; failingSince: string | null; failingSinceAt: string | null }[];
+  flaky: { suite: string; testClass: string; testName: string; flakyCommits: number }[];
+  slowest: { suite: string; testClass: string; testName: string; averageMs: number; runs: number }[];
+  pullRequests: { prNumber: number; title: string; url: string; headSha: string; gate: string; affectedModules: number; impactNotes: number }[];
+  gate: { requiredSuites: string[] } | null;
+}
+
 export interface Tool { name: string; version: number; target: string; enabled: boolean; requiresApproval: boolean; retryable: boolean }

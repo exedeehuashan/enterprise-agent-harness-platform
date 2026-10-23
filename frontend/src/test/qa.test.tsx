@@ -199,3 +199,42 @@ describe('pull request runs', () => {
     expect(screen.getByText(/core changed but has no test classes/)).toBeInTheDocument();
   });
 });
+
+describe('quality page', () => {
+  it('shows pass rate, failing and flaky tests, PR gates and checks a commit', async () => {
+    tokenStore.set(TOKEN);
+    const calls = fakeApi({
+      'GET /me': () => ({ body: operator }),
+      'GET /qa/projects': () => ({ body: projects }),
+      'GET /qa/projects/online-shop/dashboard': () => ({ body: {
+        project: 'online-shop', days: 14, runs: 8, passed: 4, passRate: 50, gate: { requiredSuites: ['backend-unit'] },
+        suites: [{ suite: 'backend-unit', runs: 7, passed: 3, passRate: 42.9, lastOutcome: 'TESTS_FAILED', lastCommit: '1b228a0'.padEnd(40, '0'),
+          lastAt: '2026-10-23T11:00:00Z', daily: [{ day: '2026-10-23', runs: 7, passed: 3 }] }],
+        failingNow: [{ suite: 'backend-unit', testClass: 'com.example.CatalogMigrationTest', testName: '', category: 'ENVIRONMENT_DOCKER',
+          consecutiveFailures: 3, failingSince: '4dfe646'.padEnd(40, '0'), failingSinceAt: '2026-10-23T10:00:00Z' }],
+        flaky: [{ suite: 'backend-unit', testClass: 'com.example.OrderTest', testName: 'creates', flakyCommits: 1 }],
+        slowest: [{ suite: 'backend-unit', testClass: 'com.example.ArchitectureTest', testName: 'layers', averageMs: 1002, runs: 4 }],
+        pullRequests: [{ prNumber: 50, title: 'catalog: backfill', url: 'https://github.com/exedeehuashan/online-shop/pull/50', headSha: '1b228a0'.padEnd(40, '0'),
+          gate: 'FAIL', affectedModules: 4, impactNotes: 1 }] } }),
+      'GET /qa/projects/online-shop/gate': () => ({ body: { project: 'online-shop', commit: '1ca9ae5'.padEnd(40, '0'), verdict: 'FAIL',
+        suites: [], reasons: ['backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).'], notes: ['Already failing in backend-unit: CatalogMigrationTest.'],
+        policy: { requiredSuites: ['backend-unit'] } } }),
+    });
+    renderApp('/qa/quality');
+    expect(await screen.findByText('50%')).toBeInTheDocument();
+    expect(screen.getByText('4 of 8 runs')).toBeInTheDocument();
+    expect(screen.getByText('CatalogMigrationTest')).toBeInTheDocument();
+    expect(screen.getByText('environment docker')).toBeInTheDocument();
+    expect(screen.getByText('3 runs')).toBeInTheDocument();
+    expect(screen.getByText('OrderTest#creates')).toBeInTheDocument();
+    expect(screen.getByText('1.00 s')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'backend-unit daily pass rate' })).toBeInTheDocument();
+    expect(screen.getByText('2026-10-23: 3 of 7 runs passed (43%)')).toBeInTheDocument();
+    expect(screen.getAllByText('FAIL').length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', { name: 'Check gate' }));
+    expect(await screen.findByText('backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).')).toBeInTheDocument();
+    expect(screen.getByText('Already failing in backend-unit: CatalogMigrationTest.')).toBeInTheDocument();
+    expect(calls.find(c => c.path.startsWith('/qa/projects/online-shop/gate'))?.path).toBe('/qa/projects/online-shop/gate?ref=main');
+    expect(screen.getByRole('link', { name: 'Quality' })).toBeInTheDocument();
+  });
+});
