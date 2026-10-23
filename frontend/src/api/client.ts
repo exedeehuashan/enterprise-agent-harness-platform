@@ -1,5 +1,6 @@
 import type {
-  Approval, Artifact, AuditEvent, Identity, Invocation, ModelCall, Page, PlanExecution, QaProject, QaSummary, Run, Task, TaskStatus, Tool,
+  Approval, Artifact, AuditEvent, GitHubPoll, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, Task,
+  TaskStatus, Tool,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -87,6 +88,8 @@ export const api = {
   artifactBlob: async (id: string): Promise<Blob> => (await artifactContent(id)).blob(),
   qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
   qaProjects: () => get<QaProject[]>('/qa/projects'),
+  pullRequestRuns: (project?: string) => get<PullRequestRun[]>(`/qa/pull-requests${query({ project, limit: 100 })}`),
+  gitHubPolls: () => get<GitHubPoll[]>('/qa/github-polls'),
 
   startPlan: (taskId: string, key: string) => post<ModelCall>(`/agent-tasks/${taskId}/plans`, {}, idem(key)),
   plans: (taskId: string) => get<Page<ModelCall>>(`/agent-tasks/${taskId}/plans${query({ page: 0, size: 20 })}`),
