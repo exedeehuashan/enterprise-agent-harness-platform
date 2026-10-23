@@ -155,7 +155,7 @@ describe('QA console', () => {
 
   it('lists registered projects and marks Docker-access suites', async () => {
     tokenStore.set(TOKEN);
-    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }) });
+    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
     expect(screen.getByText('Docker · approval')).toBeInTheDocument();
@@ -251,6 +251,7 @@ describe('project administration', () => {
       'GET /qa/admin/events': () => ({ body: [{ id: 1, actor: 'admin', action: 'GATE_SET', projectKey: 'online-shop', subject: null, before: null, after: ['backend-unit'], occurredAt: '2026-10-24T00:00:00Z' }] }),
       'POST /qa/admin/projects': () => ({ status: 201, body: projectAdmin }),
       'PUT /qa/admin/projects/online-shop/triggers/backend-integration': () => ({ body: projectAdmin }),
+      'GET /qa/schedules': () => ({ body: [] }),
     });
     const { unmount } = renderApp('/qa');
     const form = (await screen.findByRole('heading', { name: 'Register a project' })).closest('section')!;
@@ -269,10 +270,32 @@ describe('project administration', () => {
     expect(screen.getByText('gate set')).toBeInTheDocument();
     unmount();
 
-    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }) });
+    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Register a project' })).not.toBeInTheDocument();
     expect(screen.queryByText('Administer Online Shop')).not.toBeInTheDocument();
+  });
+});
+
+describe('schedules', () => {
+  it('shows schedules to everyone and lets approvers pause them', async () => {
+    tokenStore.set(TOKEN);
+    const schedule = { id: 's1', projectKey: 'online-shop', suiteKey: 'backend-unit', ref: 'main', kind: 'ON_CHANGE', cron: null, enabled: true, taskId: 't1',
+      lastCommit: '1ca9ae5'.padEnd(40, '0'), lastRunId: 'run-9', lastRunStatus: 'FAILED', lastCheckedAt: '2026-10-24T00:00:00Z', lastError: null, nextRunAt: null };
+    fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [schedule] }) });
+    const { unmount } = renderApp('/qa');
+    expect(await screen.findByText('when the ref changes')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'FAILED' })).toHaveAttribute('href', '/runs/run-9');
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+    unmount();
+    const admin = { name: 'admin', roles: ['APPROVER', 'OPERATOR', 'VIEWER'] };
+    const calls = fakeApi({ 'GET /me': () => ({ body: admin }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [schedule] }),
+      'GET /qa/admin/projects/online-shop': () => ({ body: { project: projects[0], triggers: [], gateSuites: [] } }), 'GET /qa/admin/events': () => ({ body: [] }),
+      'PUT /qa/admin/schedules/s1/enabled': () => ({ body: { ...schedule, enabled: false } }) });
+    renderApp('/qa');
+    await userEvent.click(await screen.findByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
+    expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ enabled: false });
   });
 });

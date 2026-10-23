@@ -138,4 +138,9 @@ export interface QualityDashboard {
 export interface ProjectAdmin { project: QaProject; triggers: { suite: string; enabled: boolean }[]; gateSuites: string[] }
 export interface AdminEvent { id: number; actor: string; action: string; projectKey: string; subject: string | null; before: unknown; after: unknown; occurredAt: string }
 
+export interface QaSchedule {
+  id: string; projectKey: string; suiteKey: string; ref: string; kind: 'ON_CHANGE' | 'CRON'; cron: string | null; enabled: boolean; taskId: string | null;
+  lastCommit: string | null; lastRunId: string | null; lastRunStatus: string | null; lastCheckedAt: string | null; lastError: string | null; nextRunAt: string | null;
+}
+
 export interface Tool { name: string; version: number; target: string; enabled: boolean; requiresApproval: boolean; retryable: boolean }

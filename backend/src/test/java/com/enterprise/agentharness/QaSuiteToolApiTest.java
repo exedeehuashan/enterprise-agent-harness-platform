@@ -57,6 +57,7 @@ class QaSuiteToolApiTest {
     @Autowired RunService runs;
     @Autowired ToolRegistry registry;
     @Autowired com.enterprise.agentharness.qa.QaResultIngestor ingestor;
+    @Autowired com.enterprise.agentharness.qa.QaSchedules schedules;
 
     /** What the fake "docker run" leaves in the workspace and how it exits. */
     static volatile String reportXml;
@@ -68,6 +69,8 @@ class QaSuiteToolApiTest {
     static volatile String repoFile;
     /** Console output written by the fake "docker run". */
     static volatile String consoleText;
+    /** Commit that "git ls-remote" reports for any branch. */
+    static volatile String remoteSha;
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
 
     /** Simulates git, tar and docker by argv, so every outcome is deterministic and no container runs. */
@@ -76,7 +79,7 @@ class QaSuiteToolApiTest {
             calls.add(List.copyOf(argv));
             if (argv.get(0).equals("git") && argv.contains("ls-remote")) {
                 String ref=argv.get(argv.size()-3).replace("refs/heads/","");
-                Files.writeString(logFile, ref.equals("missing") ? "" : MAIN_SHA+"\trefs/heads/"+ref+"\n");
+                Files.writeString(logFile, ref.equals("missing") ? "" : remoteSha+"\trefs/heads/"+ref+"\n");
                 return new Result(0,false,false);
             }
             if (argv.get(0).equals("git") && argv.contains("clone")) { Files.createDirectories(Path.of(argv.get(argv.size()-1))); return new Result(cloneExit,false,false); }
@@ -142,7 +145,9 @@ class QaSuiteToolApiTest {
         repository.deleteAll();
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE");
         jdbc.update("UPDATE qa_projects SET enabled=TRUE");
-        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";calls.clear();
+        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();
+        jdbc.update("DELETE FROM qa_schedules WHERE id<>'6b8c0f2e-7f3a-4c1e-9a54-3d2f0e5b7a10'");
+        jdbc.update("UPDATE qa_schedules SET enabled=FALSE, last_commit=NULL, last_run_id=NULL, task_id=NULL, last_error=NULL");
         jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE, allow_docker_access=TRUE, allow_network_egress=TRUE, max_timeout_seconds=2400, allowed_images='[\"maven:3.9.11-eclipse-temurin-17\"]'");
     }
@@ -582,6 +587,81 @@ class QaSuiteToolApiTest {
         assertThat(d.get("gate").get("requiredSuites").get(0).asText()).isEqualTo("backend-unit");
         mvc.perform(get("/api/v1/qa/projects/online-shop/dashboard").param("days","0").header("Authorization",auth(VIEWER))).andExpect(status().isBadRequest());
         mvc.perform(get("/api/v1/qa/projects/nope/dashboard").header("Authorization",auth(VIEWER))).andExpect(status().isNotFound());
+    }
+
+    private JsonNode schedule(String id) throws Exception {
+        for (JsonNode s : mapper.readTree(mvc.perform(get("/api/v1/qa/schedules").header("Authorization",auth(VIEWER))).andReturn().getResponse().getContentAsString()))
+            if (s.get("id").asText().equals(id)) return s;
+        return null;
+    }
+
+    @Test
+    void onChangeScheduleRunsOncePerNewCommit() throws Exception {
+        String id="6b8c0f2e-7f3a-4c1e-9a54-3d2f0e5b7a10";
+        jdbc.update("UPDATE qa_schedules SET enabled=TRUE WHERE id=?::uuid",id);
+        schedules.runOnce();
+        var s=schedule(id);
+        assertThat(s.get("lastCommit").asText()).isEqualTo(MAIN_SHA);
+        UUID first=UUID.fromString(s.get("lastRunId").asText());
+        assertThat(runs.get(first).arguments().get("commit").asText()).isEqualTo(MAIN_SHA);
+        assertThat(jdbc.queryForObject("SELECT actor FROM audit_events WHERE run_id=? AND action='RUN_CREATED'",String.class,first)).isEqualTo("scheduler");
+        assertThat(jdbc.queryForObject("SELECT title FROM agent_tasks WHERE id=?",String.class,runs.get(first).taskId())).isEqualTo("On change: backend-unit on online-shop@main");
+        schedules.runOnce();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs",Long.class)).isEqualTo(1);
+
+        remoteSha="d".repeat(40);
+        schedules.runOnce();
+        assertThat(schedule(id).get("lastError").asText()).isEqualTo("PREVIOUS_RUN_ACTIVE");
+        worker();
+        schedules.runOnce();
+        s=schedule(id);
+        assertThat(s.get("lastCommit").asText()).isEqualTo("d".repeat(40));
+        assertThat(s.get("lastError").isNull()).isTrue();
+        assertThat(runs.get(UUID.fromString(s.get("lastRunId").asText())).taskId()).isEqualTo(runs.get(first).taskId());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs",Long.class)).isEqualTo(2);
+    }
+
+    @Test
+    void cronSchedulesRunWhenDueAndApproversManageThem() throws Exception {
+        String body="{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"kind\":\"CRON\",\"cron\":\"0 0 2 * * *\"}";
+        mvc.perform(post("/api/v1/qa/admin/schedules").header("Authorization",auth(OPERATOR)).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        String id=mapper.readTree(mvc.perform(post("/api/v1/qa/admin/schedules").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.ref").value("main")).andReturn().getResponse().getContentAsString()).get("id").asText();
+        mvc.perform(post("/api/v1/qa/admin/schedules").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        schedules.runOnce();
+        assertThat(schedule(id).get("nextRunAt").isNull()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs",Long.class)).isZero();
+        jdbc.update("UPDATE qa_schedules SET next_run_at=clock_timestamp()-interval '1 minute' WHERE id=?::uuid",id);
+        schedules.runOnce();
+        var s=schedule(id);
+        assertThat(s.get("lastRunId").isNull()).isFalse();
+        assertThat(java.time.Instant.parse(s.get("nextRunAt").asText())).isAfter(java.time.Instant.now());
+        schedules.runOnce();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs",Long.class)).isEqualTo(1);
+
+        mvc.perform(put("/api/v1/qa/admin/schedules/"+id+"/enabled").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false));
+        mvc.perform(delete("/api/v1/qa/admin/schedules/"+id).header("Authorization",auth(ADMIN))).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForList("SELECT action FROM qa_admin_events WHERE action LIKE 'SCHEDULE_%' ORDER BY id",String.class))
+                .containsExactly("SCHEDULE_CREATED","SCHEDULE_DISABLED","SCHEDULE_DELETED");
+
+        String[] bad={"{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"kind\":\"CRON\",\"cron\":\"0 * * * * *\"}",
+                "{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"kind\":\"CRON\",\"cron\":\"nightly\"}",
+                "{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"kind\":\"ON_CHANGE\",\"cron\":\"0 0 2 * * *\"}",
+                "{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"kind\":\"WEEKLY\"}",
+                "{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"kind\":\"ON_CHANGE\",\"ref\":\"../x\"}",
+                "{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"kind\":\"ON_CHANGE\",\"shell\":\"x\"}"};
+        for (String b:bad) mvc.perform(post("/api/v1/qa/admin/schedules").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content(b)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/qa/admin/schedules").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"project\":\"nope\",\"suite\":\"backend-unit\",\"kind\":\"ON_CHANGE\"}")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void schedulesForSuitesThatDoNotResolveRecordTheReason() throws Exception {
+        jdbc.update("INSERT INTO qa_schedules(id,project_key,suite_key,ref,kind) VALUES (?,'online-shop','nope','main','ON_CHANGE')",UUID.randomUUID());
+        schedules.runOnce();
+        assertThat(jdbc.queryForObject("SELECT last_error FROM qa_schedules WHERE suite_key='nope'",String.class)).isEqualTo("unknown or disabled suite");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs",Long.class)).isZero();
     }
 
     private static void deleteTree(Path dir) throws IOException {
