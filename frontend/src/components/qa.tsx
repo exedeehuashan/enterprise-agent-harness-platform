@@ -111,7 +111,9 @@ export function ArtifactList({ runId }: { runId: string }) {
             <tr key={a.id}>
               <td>{a.name}</td><td>{formatBytes(a.sizeBytes)}</td><td>{a.attempt}</td>
               <td><code title={a.sha256}>{a.sha256.slice(0, 12)}</code></td>
-              <td><button className="secondary" onClick={() => download(a)} disabled={action.busy}>Download</button></td>
+              <td>{a.expiredAt
+                ? <span className="badge badge-muted" title={`Content removed by retention on ${new Date(a.expiredAt).toLocaleString()}; the SHA-256 still identifies it`}>expired</span>
+                : <button className="secondary" onClick={() => download(a)} disabled={action.busy}>Download</button>}</td>
             </tr>
           ))}</tbody>
         </table></div>

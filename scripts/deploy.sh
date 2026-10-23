@@ -27,6 +27,9 @@ if [ -n "$(compose ps -q postgres 2>/dev/null)" ]; then
   echo "==> Backing up database to $backup"
   compose exec -T postgres pg_dump -U agent_harness -d agent_harness -Fc > "$backup"
   chmod 600 "$backup"
+  keep="${EAHP_BACKUP_KEEP:-10}"
+  # Keep the newest $keep dumps (names sort by UTC timestamp); older ones are removed.
+  ls -1 backups/eahp-*.dump 2>/dev/null | sort | head -n "-$keep" | while read -r old; do rm -f -- "$old"; echo "    removed old backup $old"; done
 fi
 
 echo "==> Building images"

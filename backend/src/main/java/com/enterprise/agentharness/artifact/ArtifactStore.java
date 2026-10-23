@@ -30,8 +30,9 @@ public class ArtifactStore {
     private final JdbcTemplate jdbc;
     public ArtifactStore(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
+    /** {@code expiredAt} is set when retention removed the content; metadata and digest remain as evidence. */
     public record Artifact(UUID id, UUID runId, UUID invocationId, int attempt, String name, String mediaType,
-            int sizeBytes, String sha256, Instant createdAt) {}
+            int sizeBytes, String sha256, Instant createdAt, Instant expiredAt) {}
     public record Content(Artifact artifact, byte[] bytes) {}
 
     /** Returns a bounded failure code when the tool's artifacts break the limits, otherwise null. */
@@ -69,6 +70,7 @@ public class ArtifactStore {
     }
 
     public Content content(UUID id) {
+        if (get(id).expiredAt() != null) throw new RunException(HttpStatus.GONE, "Artifact content expired under the retention policy; its metadata and SHA-256 remain");
         var rows = jdbc.query("SELECT * FROM run_artifacts WHERE id=?", (r, i) -> new Content(map(r, i), r.getBytes("content")), id);
         if (rows.isEmpty()) throw new RunException(HttpStatus.NOT_FOUND, "Artifact not found: " + id);
         return rows.get(0);
@@ -77,7 +79,7 @@ public class ArtifactStore {
     private Artifact map(ResultSet r, int i) throws SQLException {
         return new Artifact(r.getObject("id", UUID.class), r.getObject("run_id", UUID.class), r.getObject("invocation_id", UUID.class),
                 r.getInt("attempt"), r.getString("name"), r.getString("media_type"), r.getInt("size_bytes"), r.getString("sha256"),
-                r.getTimestamp("created_at").toInstant());
+                r.getTimestamp("created_at").toInstant(), r.getTimestamp("expired_at") == null ? null : r.getTimestamp("expired_at").toInstant());
     }
 
     private static String sha256(byte[] bytes) {

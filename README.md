@@ -365,6 +365,13 @@ for example nightly), as the `scheduler` actor, keeping release gates current.
 `GET /api/v1/qa/schedules`; approvers manage them under `/api/v1/qa/admin/schedules`
 or on the Test projects page. See [P17 design notes](docs/p17-scheduled-qa-runs.md).
 
+**Retention.** Artifact content expires after 30 days (`EAHP_RETENTION_ARTIFACT_DAYS`)
+while its name, size and SHA-256 remain (downloads return 410); the latest QA run
+per project, suite and ref keeps its artifacts. Per-test history is kept for 180
+days. Retention runs nightly; approvers see `GET /api/v1/admin/storage` and can run
+`POST /api/v1/admin/retention/run`. The deploy script keeps the newest 10 backups
+(`EAHP_BACKUP_KEEP`). See [P18 design notes](docs/p18-retention-and-storage.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,
