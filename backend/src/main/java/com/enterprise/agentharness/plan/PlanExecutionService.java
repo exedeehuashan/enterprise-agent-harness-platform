@@ -8,6 +8,7 @@ import com.enterprise.agentharness.run.RunException;
 import com.enterprise.agentharness.run.RunService;
 import com.enterprise.agentharness.run.StartRunRequest;
 import com.enterprise.agentharness.task.TaskNotFoundException;
+import com.enterprise.agentharness.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -38,8 +39,9 @@ public class PlanExecutionService {
     private final ToolCatalog catalog;
     private final PlanValidator validator;
     private final AuditService audit;
-    public PlanExecutionService(JdbcTemplate jdbc,RunService runs,ToolCatalog catalog,PlanValidator validator,AuditService audit) {
-        this.jdbc=jdbc;this.runs=runs;this.catalog=catalog;this.validator=validator;this.audit=audit;
+    private final ToolRegistry registry;
+    public PlanExecutionService(JdbcTemplate jdbc,RunService runs,ToolCatalog catalog,PlanValidator validator,AuditService audit,ToolRegistry registry) {
+        this.jdbc=jdbc;this.runs=runs;this.catalog=catalog;this.validator=validator;this.audit=audit;this.registry=registry;
     }
     public record Page(List<PlanExecutionResponse> items,int page,int size,long totalElements,long totalPages) {}
 
@@ -145,6 +147,7 @@ public class PlanExecutionService {
         ToolCatalog.ToolDefinition policy;
         try {policy=catalog.require(tool);} catch(RunException ex) {return "POLICY_CHANGED";}
         if(policy.version()!=version || !policy.target().equals(target)) return "POLICY_CHANGED";
+        if(!registry.acceptsNoArguments(tool)) return "ARGUMENTS_REQUIRED";
         if(jdbc.queryForObject("SELECT count(*) FROM agent_runs WHERE task_id=? AND (status IN ('QUEUED','RUNNING','WAITING_APPROVAL') OR idempotency_key=?)",
                 Long.class,taskId,runKey(executionId,sequence))!=0) return "TASK_BUSY";
         return null;
