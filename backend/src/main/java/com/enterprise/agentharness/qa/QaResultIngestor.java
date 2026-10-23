@@ -65,6 +65,7 @@ public class QaResultIngestor {
         String project = args.get("project").asText(), suite = args.get("suite").asText(), commit = args.get("commit").asText();
         Timestamp created = (Timestamp) run.get("created_at");
         String outcome = null, consoleTail = null;
+        byte[] coverage = null;
         List<JUnitReports.TestCase> cases = new ArrayList<>();
         for (var a : artifacts.list(runId)) {
             if (a.expiredAt() != null) continue; // content removed by retention; nothing left to read
@@ -75,6 +76,7 @@ public class QaResultIngestor {
                 }
                 case "console.log" -> consoleTail = new String(bytes, Math.max(0, bytes.length - 200_000), Math.min(bytes.length, 200_000), StandardCharsets.UTF_8);
                 case "junit-reports.zip" -> cases.addAll(readZip(bytes));
+                case "coverage.json" -> coverage = bytes;
                 default -> { }
             }
         }
@@ -100,6 +102,7 @@ public class QaResultIngestor {
                 INSERT INTO qa_run_ingestions(run_id,project_key,suite_key,commit_sha,run_status,outcome,category,test_count,failed_count)
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """, runId, project, suite, commit, run.get("status"), outcome, runCategory, cases.size(), failed);
+        if (coverage != null) recordCoverage(runId, project, suite, commit, coverage);
         // Makes the result an event like any other (for example for webhooks): code is the outcome.
         jdbc.update("INSERT INTO audit_events(actor,action,run_id,code) VALUES ('qa','QA_RESULT_INGESTED',?,?)", runId, outcome == null ? "NO_RESULT" : outcome);
     }
@@ -111,6 +114,21 @@ public class QaResultIngestor {
                 INSERT INTO qa_run_ingestions(run_id,project_key,suite_key,commit_sha,run_status,error) VALUES (?,?,?,?,?,'INGESTION_FAILED')
                 ON CONFLICT (run_id) DO NOTHING
                 """, runId, args.path("project").asText("?"), args.path("suite").asText("?"), args.path("commit").asText("?"), run.get("status"));
+    }
+
+    /** Stores the run's coverage totals; a malformed coverage.json loses only the coverage, not the test results. */
+    private void recordCoverage(UUID runId, String project, String suite, String commit, byte[] json) {
+        try {
+            var c = mapper.readTree(json);
+            if (c.path("linesCovered").asLong() + c.path("linesMissed").asLong() == 0) return; // no report was found or readable
+            jdbc.update("""
+                    INSERT INTO qa_coverage(run_id,project_key,suite_key,commit_sha,lines_covered,lines_missed,branches_covered,branches_missed,modules)
+                    VALUES (?,?,?,?,?,?,?,?,?::jsonb) ON CONFLICT (run_id) DO NOTHING
+                    """, runId, project, suite, commit, c.path("linesCovered").asLong(), c.path("linesMissed").asLong(),
+                    c.path("branchesCovered").asLong(), c.path("branchesMissed").asLong(), c.path("modules").toString());
+        } catch (java.io.IOException ex) {
+            log.warn("Unreadable coverage.json for run {}", runId);
+        }
     }
 
     /** Reads every XML report in the archive, skipping oversized or unreadable entries. */

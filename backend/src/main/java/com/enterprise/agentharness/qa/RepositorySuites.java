@@ -21,14 +21,15 @@ import java.util.Set;
  * {@code selection} is optional: {@code maven-modules} lets pull request runs build and test only the affected modules;
  * {@code paths} (with a {@code paths} list of directory prefixes such as {@code "frontend/order-web/"}) runs the suite
  * on a pull request only when it changes a file under one of them. {@code results} is {@code junit} (default) or
- * {@code exit-code} for checks that write no JUnit reports (then {@code reportDirs} is empty).
+ * {@code exit-code} for checks that write no JUnit reports (then {@code reportDirs} is empty). {@code coverage} lists
+ * JaCoCo or Cobertura XML report paths (matched as path suffixes, for example {@code target/site/jacoco/jacoco.xml}).
  */
 public final class RepositorySuites {
     public static final int MAX_BYTES = 64 * 1024;
     private static final ObjectMapper STRICT = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final Set<String> FILE_FIELDS = Set.of("schemaVersion", "suites");
-    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection", "paths", "results");
+    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection", "paths", "results", "coverage");
     private RepositorySuites() {}
 
     public static List<SuiteDefinition> parse(String json) {
@@ -72,9 +73,13 @@ public final class RepositorySuites {
             if (results != null && !results.equals("junit") && !results.equals(SuiteDefinition.EXIT_CODE)) throw invalid(key + ": results must be junit or exit-code");
             if (SuiteDefinition.EXIT_CODE.equals(results) && !reportDirs.isEmpty()) throw invalid(key + ": exit-code suites have no reportDirs");
             if (!SuiteDefinition.EXIT_CODE.equals(results) && reportDirs.isEmpty()) throw invalid(key + ": reportDirs must list at least one directory");
+            List<String> coverage = s.has("coverage") ? strings(s.get("coverage"), 10, 200, key + ": coverage") : List.of();
+            for (String c : coverage) {
+                if (c.startsWith("/") || c.contains("..") || c.contains("\\") || !c.matches("[A-Za-z0-9._/-]+\\.xml")) throw invalid(key + ": coverage report '" + c + "' must be a relative .xml path");
+            }
             result.add(new SuiteDefinition(SuiteDefinition.REPOSITORY, key, text(s, "name", 120, true), s.has("description") ? text(s, "description", 1000, false) : null,
                     image, command, reportDirs, network, s.get("dockerAccess").booleanValue(), s.get("timeoutSeconds").intValue(), selection, paths,
-                    SuiteDefinition.EXIT_CODE.equals(results) ? results : null));
+                    SuiteDefinition.EXIT_CODE.equals(results) ? results : null, coverage));
         }
         return result;
     }
