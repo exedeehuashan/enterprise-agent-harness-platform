@@ -35,6 +35,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class QaAiTestGeneration {
     static final int MAX_SPEC_BYTES = 400 * 1024;
+    /** Run arguments are limited to 16,384 characters; the rest is project, environment, commit and service URLs. */
+    static final int MAX_RUNNABLE_CHARS = 14_000;
     private final JdbcTemplate jdbc;
     private final AiService ai;
     private final QaSuiteResolver resolver;
@@ -109,10 +111,21 @@ public class QaAiTestGeneration {
             ObjectNode c = (ObjectNode) raw;
             // The draft always targets the service it was asked for, and its key marks it as AI-generated.
             c.put("service", service);
+            // Cases and steps may override the service; a draft must only ever reach the requested one, so nested overrides are removed.
+            for (JsonNode tc : c.path("cases")) {
+                if (tc instanceof ObjectNode tco) tco.remove("service");
+                for (JsonNode step : tc.path("steps")) if (step instanceof ObjectNode so) so.remove("service");
+            }
             String key = c.path("key").asText("generated").toLowerCase().replaceAll("[^a-z0-9-]", "-").replaceAll("-+", "-").replaceAll("^-|-$", "");
             c.put("key", (key.startsWith("ai-") ? key : "ai-" + key).substring(0, Math.min(60, (key.startsWith("ai-") ? key : "ai-" + key).length())));
             if (c.path("cases").isArray() && c.get("cases").size() > maxCases) throw new IllegalArgumentException("the collection has more than " + maxCases + " cases");
             collection = ApiCollections.parse(mapper.writeValueAsString(mapper.createObjectNode().put("schemaVersion", 1).set("collections", mapper.createArrayNode().add(c)))).get(0);
+            // The collection travels in the run's arguments, which are capped; a draft that cannot fit is not runnable.
+            int size = collection.toString().length();
+            if (size > MAX_RUNNABLE_CHARS) {
+                collection = null;
+                throw new IllegalArgumentException("the collection is too large to run (" + size + " characters; the limit is " + MAX_RUNNABLE_CHARS + "); ask for fewer cases");
+            }
         } catch (IllegalArgumentException ex) {
             error = clip(ex.getMessage(), 500);
         } catch (IOException ex) {
