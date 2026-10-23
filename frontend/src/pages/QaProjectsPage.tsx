@@ -6,6 +6,7 @@ import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
 import { ProjectSchedules } from '../components/qaSchedules';
 import { ProjectEnvironments } from '../components/qaApiTests';
 import { StoragePanel } from '../components/storage';
+import { WebhooksPanel } from '../components/webhooks';
 
 /** Read-only catalog of projects under test and their predefined suites. */
 export function QaProjectsPage() {
@@ -43,6 +44,7 @@ export function QaProjectsPage() {
         </Section>
       ))}
       {can('APPROVER') && <StoragePanel />}
+      {can('APPROVER') && <WebhooksPanel />}
       <p className="muted small">Projects and policies are registered by administrators. Projects can declare further suites in their repository, always within this policy. Use a task's "Run test suite" form to run one.</p>
     </>
   );

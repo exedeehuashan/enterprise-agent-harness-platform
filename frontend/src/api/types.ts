@@ -179,3 +179,9 @@ export interface ApiTestCatalog {
   collections: { key: string; name: string; description: string | null; service: string; cases: number }[];
   environments: QaEnvironment[];
 }
+
+export interface Webhook {
+  id: string; name: string; url: string; events: string[]; enabled: boolean; cursorId: number; consecutiveFailures: number;
+  nextAttemptAt: string | null; lastDeliveryAt: string | null; lastError: string | null; createdBy: string; createdAt: string;
+}
+export interface WebhookCreated { subscription: Webhook; secret: string }

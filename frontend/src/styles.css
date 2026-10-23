@@ -104,3 +104,4 @@ th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
   .meta dt { margin-top: 6px; }
 }
 .report { white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow-y: auto; font-size: 12px; }
+.notice { background: var(--muted-bg); border-radius: 6px; padding: 8px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; word-break: break-all; }
