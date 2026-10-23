@@ -346,6 +346,13 @@ changed modules without tests. It is advisory and does not skip tests:
 `GET /api/v1/qa/pull-requests/{id}/impact`, or the Impact toggle on the console's
 Pull requests page. See [P14 design notes](docs/p14-change-impact-analysis.md).
 
+**Release gate and quality dashboard.** Each project lists the suites that must
+pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
+FAIL or PENDING for a commit with reasons, from recorded evidence only;
+`GET /api/v1/qa/projects/{key}/dashboard` summarizes pass rates, failing, flaky and
+slow tests and pull request gates. The console's Quality page shows both. See
+[P15 design notes](docs/p15-quality-gate-and-dashboard.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

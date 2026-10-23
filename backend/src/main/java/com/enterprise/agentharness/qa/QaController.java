@@ -18,10 +18,13 @@ public class QaController {
     private final QaTriageService triageService;
     private final com.enterprise.agentharness.run.RunService runs;
     private final com.enterprise.agentharness.qa.impact.ChangeImpactService impacts;
+    private final QualityService quality;
+    private final GitMirror git;
     public QaController(QaRegistry registry, PullRequestTriggers pullRequests, QaSuiteResolver resolver, QaTriageService triageService,
-            com.enterprise.agentharness.run.RunService runs, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts) {
+            com.enterprise.agentharness.run.RunService runs, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts,
+            QualityService quality, GitMirror git) {
         this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver; this.triageService = triageService;
-        this.runs = runs; this.impacts = impacts;
+        this.runs = runs; this.impacts = impacts; this.quality = quality; this.git = git;
     }
 
     @GetMapping("/projects")
@@ -62,6 +65,23 @@ public class QaController {
     @GetMapping("/pull-requests/{id}/impact")
     public com.enterprise.agentharness.qa.impact.ChangeImpactService.Result impact(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
         return impacts.forPullRequestRun(id);
+    }
+
+    /** Release gate verdict for a commit (or a branch/tag, resolved to its current commit), from recorded evidence only. */
+    @GetMapping("/projects/{key}/gate")
+    public QualityService.Gate gate(@org.springframework.web.bind.annotation.PathVariable String key, @RequestParam String ref) {
+        var project = registry.project(key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Project not found: " + key));
+        String commit;
+        try { commit = git.resolve(project, ref); }
+        catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
+        return quality.gate(key, commit);
+    }
+
+    @GetMapping("/projects/{key}/dashboard")
+    public QualityService.Dashboard dashboard(@org.springframework.web.bind.annotation.PathVariable String key, @RequestParam(defaultValue = "14") int days) {
+        if (days < 1 || days > 90) throw new RunException(HttpStatus.BAD_REQUEST, "days must be 1..90");
+        registry.project(key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Project not found: " + key));
+        return quality.dashboard(key, days);
     }
 
     @GetMapping("/github-polls")

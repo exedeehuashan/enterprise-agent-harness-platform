@@ -1,5 +1,5 @@
 import type {
-  Approval, Artifact, AuditEvent, ChangeImpact, GitHubPoll, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
+  Approval, Artifact, AuditEvent, ChangeImpact, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -92,6 +92,8 @@ export const api = {
   suiteCatalog: (project: string, ref?: string) => get<SuiteCatalog>(`/qa/projects/${project}/suites${query({ ref })}`),
   pullRequestRuns: (project?: string) => get<PullRequestRun[]>(`/qa/pull-requests${query({ project, limit: 100 })}`),
   gitHubPolls: () => get<GitHubPoll[]>('/qa/github-polls'),
+  qualityDashboard: (project: string, days: number) => get<QualityDashboard>(`/qa/projects/${project}/dashboard${query({ days })}`),
+  qualityGate: (project: string, ref: string) => get<Gate>(`/qa/projects/${project}/gate${query({ ref })}`),
   changeImpact: (prRunId: string) => get<ChangeImpact>(`/qa/pull-requests/${prRunId}/impact`),
 
   startPlan: (taskId: string, key: string) => post<ModelCall>(`/agent-tasks/${taskId}/plans`, {}, idem(key)),

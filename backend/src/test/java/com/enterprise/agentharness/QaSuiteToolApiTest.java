@@ -513,6 +513,77 @@ class QaSuiteToolApiTest {
         assertThat(triage(UUID.fromString(mapper.readTree(waiting).get("id").asText())).get("ingested").asBoolean()).isFalse();
     }
 
+    private JsonNode gate(String ref) throws Exception {
+        return mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/gate").param("ref",ref).header("Authorization",auth(VIEWER)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    @Test
+    void releaseGateFollowsTheEvidenceAtACommit() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40),c="c".repeat(40);
+        assertThat(gate(a).get("verdict").asText()).isEqualTo("PENDING");
+        assertThat(gate(a).get("reasons").get(0).asText()).isEqualTo("backend-unit has not run at this commit.");
+        UUID task=task();
+        runAt(task,"g1",a,PASS,0);ingestor.runOnce();
+        var pass=gate(a);
+        assertThat(pass.get("verdict").asText()).isEqualTo("PASS");
+        assertThat(pass.get("suites").get(0).get("status").asText()).isEqualTo("PASSED");
+        assertThat(pass.get("policy").get("requiredSuites").get(0).asText()).isEqualTo("backend-unit");
+        runAt(task,"g2",b,ORDER_FAIL,1);ingestor.runOnce();
+        var fail=gate(b);
+        assertThat(fail.get("verdict").asText()).isEqualTo("FAIL");
+        assertThat(fail.get("reasons").get(0).asText()).isEqualTo("backend-unit failed (TESTS_FAILED, ASSERTION).");
+        assertThat(fail.get("notes").get(0).asText()).isEqualTo("New failure in backend-unit: OrderTest#creates (last passed at aaaaaaa).");
+        reportXml=PASS;dockerExit=0;
+        start(task(),"g3","{\"tool\":\"QA_RUN_SUITE\",\"timeoutSeconds\":900,\"arguments\":{\"project\":\"online-shop\",\"suite\":\"backend-unit\",\"ref\":\""+c+"\"}}")
+                .andExpect(status().isAccepted());
+        assertThat(gate(c).get("reasons").get(0).asText()).isEqualTo("backend-unit is running at this commit.");
+        jdbc.update("DELETE FROM qa_quality_gates");
+        try {
+            assertThat(gate(a).get("verdict").asText()).isEqualTo("NOT_CONFIGURED");
+        } finally {
+            jdbc.update("INSERT INTO qa_quality_gates VALUES ('online-shop','[\"backend-unit\"]')");
+        }
+        mvc.perform(get("/api/v1/qa/projects/online-shop/gate").param("ref","../x").header("Authorization",auth(VIEWER))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/projects/nope/gate").param("ref",a).header("Authorization",auth(VIEWER))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/qa/projects/online-shop/gate").param("ref",a)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void dashboardSummarizesPassRateFailuresFlakinessAndSpeed() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40);
+        UUID task=task();
+        runAt(task,"d1",a,PASS,0);
+        runAt(task,"d2",b,ORDER_FAIL,1);
+        runAt(task,"d3",b,PASS,0);
+        runAt(task,"d4",b,ORDER_FAIL,1);
+        ingestor.runOnce();
+        var d=mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/dashboard").header("Authorization",auth(VIEWER)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(d.get("runs").asInt()).isEqualTo(4);assertThat(d.get("passed").asInt()).isEqualTo(2);assertThat(d.get("passRate").asDouble()).isEqualTo(50.0);
+        var suite=d.get("suites").get(0);
+        assertThat(suite.get("suite").asText()).isEqualTo("backend-unit");
+        assertThat(suite.get("lastOutcome").asText()).isEqualTo("TESTS_FAILED");
+        assertThat(suite.get("daily").get(0).get("runs").asInt()).isEqualTo(4);
+        var failing=d.get("failingNow").get(0);
+        assertThat(failing.get("testClass").asText()+"#"+failing.get("testName").asText()).isEqualTo("OrderTest#creates");
+        assertThat(failing.get("consecutiveFailures").asInt()).isEqualTo(1);
+        assertThat(failing.get("category").asText()).isEqualTo("ASSERTION");
+        assertThat(d.get("flaky").get(0).get("testName").asText()).isEqualTo("creates");
+        assertThat(d.get("flaky").get(0).get("flakyCommits").asInt()).isEqualTo(1);
+        assertThat(d.get("slowest")).isNotEmpty();
+        // A test that failed earlier but no longer runs in the suite's latest run is not "failing now".
+        runAt(task,"d5",b,DOCKER_ERROR.replace("IdentityPersistenceTest","OrderTest").replace("name=\"\"","name=\"creates\""),1);
+        runAt(task,"d6",b,"<testsuite name=\"X\" tests=\"1\"><testcase classname=\"OtherTest\" name=\"ok\"/></testsuite>",0);
+        ingestor.runOnce();
+        var later=mapper.readTree(mvc.perform(get("/api/v1/qa/projects/online-shop/dashboard").header("Authorization",auth(VIEWER)))
+                .andReturn().getResponse().getContentAsString());
+        assertThat(later.get("failingNow")).isEmpty();
+        assertThat(d.get("gate").get("requiredSuites").get(0).asText()).isEqualTo("backend-unit");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/dashboard").param("days","0").header("Authorization",auth(VIEWER))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/projects/nope/dashboard").header("Authorization",auth(VIEWER))).andExpect(status().isNotFound());
+    }
+
     private static void deleteTree(Path dir) throws IOException {
         try (var paths=Files.walk(dir)) { for (Path p:new ArrayList<>(paths.sorted(java.util.Comparator.reverseOrder()).toList())) Files.deleteIfExists(p); }
     }
