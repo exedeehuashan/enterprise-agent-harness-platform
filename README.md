@@ -396,6 +396,12 @@ image. See [P25 design notes](docs/p25-exit-code-suites-and-more-suite-types.md)
 delivered in order, at least once, signed with HMAC-SHA256 (`X-EAHP-Signature`),
 and retried with backoff. See [P26 design notes](docs/p26-webhooks.md).
 
+**Named API tokens.** Approvers issue a token per person or integration
+(`/api/v1/admin/tokens`, roles VIEWER/OPERATOR/APPROVER, optional expiry), so audit
+records name who acted. Only a SHA-256 hash is stored; the token is shown once, and
+revocation takes effect on the next request. See
+[P27 design notes](docs/p27-named-api-tokens.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

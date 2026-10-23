@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -111,6 +111,9 @@ export const api = {
   },
   environments: (project: string) => get<QaEnvironment[]>(`/qa/environments${query({ project })}`),
   apiTests: (project: string, ref?: string) => get<ApiTestCatalog>(`/qa/projects/${project}/api-tests${query({ ref })}`),
+  tokens: () => get<ApiToken[]>('/admin/tokens'),
+  issueToken: (body: Record<string, unknown>) => post<ApiTokenIssued>('/admin/tokens', body),
+  revokeToken: (id: string) => post<ApiToken>(`/admin/tokens/${id}/revoke`, undefined),
   webhooks: () => get<Webhook[]>('/admin/webhooks'),
   createWebhook: (body: Record<string, unknown>) => post<WebhookCreated>('/admin/webhooks', body),
   webhookEnabled: (id: string, enabled: boolean) => request<Webhook>(`/admin/webhooks/${id}/enabled`, { method: 'PUT', body: { enabled } }).then(r => r.data),
