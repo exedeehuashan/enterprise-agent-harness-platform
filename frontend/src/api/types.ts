@@ -159,3 +159,6 @@ export interface Quarantine {
   id: string; projectKey: string; suiteKey: string; testClass: string; testName: string; reason: string; createdBy: string;
   createdAt: string; expiresAt: string; releasedAt: string | null; releasedBy: string | null; active: boolean;
 }
+
+/** A commit's QA report: the gate verdict and a Markdown summary of suites, failures and pull request selection. */
+export interface QaReport { project: string; ref: string; commit: string; verdict: string; generatedAt: string; markdown: string }

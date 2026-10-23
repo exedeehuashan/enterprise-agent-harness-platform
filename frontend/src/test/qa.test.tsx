@@ -226,6 +226,8 @@ describe('quality page', () => {
         suites: [], reasons: ['backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).'], notes: ['Already failing in backend-unit: CatalogMigrationTest.'],
         policy: { requiredSuites: ['backend-unit'] } } }),
       'GET /qa/quarantines': () => ({ body: [] }),
+      'GET /qa/projects/online-shop/report': () => ({ body: { project: 'online-shop', ref: '1ca9ae5'.padEnd(40, '0'), commit: '1ca9ae5'.padEnd(40, '0'), verdict: 'FAIL',
+        generatedAt: '2026-10-24T00:00:00Z', markdown: '## EAHP QA report: online-shop @ `1ca9ae500000`\n\n**Release gate: FAIL**\n' } }),
     });
     renderApp('/qa/quality');
     expect(await screen.findByText('50%')).toBeInTheDocument();
@@ -242,6 +244,14 @@ describe('quality page', () => {
     expect(await screen.findByText('backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).')).toBeInTheDocument();
     expect(screen.getByText('Already failing in backend-unit: CatalogMigrationTest.')).toBeInTheDocument();
     expect(calls.find(c => c.path.startsWith('/qa/projects/online-shop/gate'))?.path).toBe('/qa/projects/online-shop/gate?ref=main');
+    await userEvent.click(screen.getByRole('button', { name: 'QA report' }));
+    expect((await screen.findByLabelText('QA report Markdown')).textContent).toContain('**Release gate: FAIL**');
+    expect(calls.find(c => c.path.startsWith('/qa/projects/online-shop/report'))?.path).toBe(`/qa/projects/online-shop/report?ref=${'1ca9ae5'.padEnd(40, '0')}`);
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Copy Markdown' }));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('## EAHP QA report'));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Quality' })).toBeInTheDocument();
     expect(screen.getByText('No test is quarantined.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Quarantine' })).not.toBeInTheDocument();

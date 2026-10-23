@@ -103,3 +103,4 @@ th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
   .meta { grid-template-columns: 1fr; }
   .meta dt { margin-top: 6px; }
 }
+.report { white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow-y: auto; font-size: 12px; }

@@ -20,11 +20,12 @@ public class QaController {
     private final com.enterprise.agentharness.qa.impact.ChangeImpactService impacts;
     private final QualityService quality;
     private final GitMirror git;
+    private final QaReportService reports;
     public QaController(QaRegistry registry, PullRequestTriggers pullRequests, QaSuiteResolver resolver, QaTriageService triageService,
             com.enterprise.agentharness.run.RunService runs, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts,
-            QualityService quality, GitMirror git) {
+            QualityService quality, GitMirror git, QaReportService reports) {
         this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver; this.triageService = triageService;
-        this.runs = runs; this.impacts = impacts; this.quality = quality; this.git = git;
+        this.runs = runs; this.impacts = impacts; this.quality = quality; this.git = git; this.reports = reports;
     }
 
     @GetMapping("/projects")
@@ -75,6 +76,16 @@ public class QaController {
         try { commit = git.resolve(project, ref); }
         catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
         return quality.gate(key, commit);
+    }
+
+    /** The commit's QA report in Markdown (gate, suites, failures, pull request selection and impact). */
+    @GetMapping("/projects/{key}/report")
+    public QaReportService.Report report(@org.springframework.web.bind.annotation.PathVariable String key, @RequestParam String ref) {
+        var project = registry.project(key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Project not found: " + key));
+        String commit;
+        try { commit = git.resolve(project, ref); }
+        catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
+        return reports.report(key, ref, commit);
     }
 
     @GetMapping("/projects/{key}/dashboard")

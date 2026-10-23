@@ -366,6 +366,12 @@ quarantined tests passes the gate with a note, provided it ran at least as many
 tests as its last passing run; the tests still run and are recorded. See
 [P21 design notes](docs/p21-test-quarantine.md).
 
+**Commit QA report.** `GET /api/v1/qa/projects/{key}/report?ref=` returns a
+Markdown summary of a commit: gate verdict, each suite's latest run and scope,
+failures with triage, and pull request selection and impact. Untrusted text is
+escaped so it can be posted as-is. The Quality page shows and copies it. See
+[P22 design notes](docs/p22-commit-qa-report.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;
