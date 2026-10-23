@@ -360,6 +360,12 @@ the suites file), for any build system. online-shop's `frontend-unit` (Vitest wi
 JUnit output in a Node image) uses it, alongside `backend-unit`'s module selection.
 See [P20 design notes](docs/p20-path-selection-and-frontend-suite.md).
 
+**Test quarantine.** Approvers quarantine a failing test with a reason for at most
+30 days (`/api/v1/qa/admin/quarantines`, audited). A suite that fails only in
+quarantined tests passes the gate with a note, provided it ran at least as many
+tests as its last passing run; the tests still run and are recorded. See
+[P21 design notes](docs/p21-test-quarantine.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;
