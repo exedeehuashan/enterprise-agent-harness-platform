@@ -51,7 +51,8 @@ public class HttpGitHubClient implements GitHubClient {
             JsonNode headRepo = pr.path("head").path("repo");
             boolean same = !headRepo.isMissingNode() && !headRepo.isNull() && headRepo.path("full_name").asText("").equals(base);
             pulls.add(new PullRequest(pr.path("number").asInt(), pr.path("title").asText(""), pr.path("head").path("sha").asText(""),
-                    pr.path("head").path("ref").asText(""), pr.path("base").path("ref").asText(""), same, pr.path("html_url").asText("")));
+                    pr.path("head").path("ref").asText(""), pr.path("base").path("ref").asText(""), same, pr.path("html_url").asText(""),
+                    pr.path("base").path("sha").asText("")));
         }
         return pulls;
     }

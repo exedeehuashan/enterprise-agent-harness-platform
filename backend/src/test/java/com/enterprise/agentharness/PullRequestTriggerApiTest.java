@@ -43,8 +43,31 @@ class PullRequestTriggerApiTest {
     static volatile IOException failure;
     static final List<GitHubClient.Repository> polled = new ArrayList<>();
 
+    static final java.util.concurrent.atomic.AtomicInteger viewCalls = new java.util.concurrent.atomic.AtomicInteger();
+    static volatile boolean repoBroken;
+
     @TestConfiguration
     static class FakeGitHub {
+        /** A small two-module Maven repository; counts how often the analysis reads it. */
+        @Bean @Primary com.enterprise.agentharness.qa.impact.RepositoryViews fakeRepositories() {
+            return project -> new com.enterprise.agentharness.qa.impact.RepositoryView() {
+                public List<String> changedFiles(String base, String head) throws IOException {
+                    viewCalls.incrementAndGet();
+                    if (repoBroken) throw new IOException("unreachable");
+                    return List.of("core/src/main/java/Core.java");
+                }
+                public List<String> files(String commit) { return List.of("pom.xml", "core/pom.xml", "api/pom.xml", "api/src/test/java/ApiTest.java"); }
+                public java.util.Optional<String> read(String commit, String path) {
+                    return java.util.Optional.of(switch (path) {
+                        case "pom.xml" -> "<project><groupId>g</groupId><artifactId>root</artifactId></project>";
+                        case "core/pom.xml" -> "<project><parent><groupId>g</groupId></parent><artifactId>core</artifactId></project>";
+                        default -> "<project><parent><groupId>g</groupId></parent><artifactId>api</artifactId><dependencies><dependency>"
+                                + "<groupId>g</groupId><artifactId>core</artifactId></dependency></dependencies></project>";
+                    });
+                }
+            };
+        }
+
         @Bean @Primary GitHubClient fakeGitHub() {
             return repository -> {
                 polled.add(repository);
@@ -81,11 +104,12 @@ class PullRequestTriggerApiTest {
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE"); jdbc.update("UPDATE tool_definitions SET enabled=TRUE");
         // Repository suite files are covered in QaSuiteToolApiTest with a fake git; here the registry suites keep the test offline.
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=FALSE");
-        open.clear(); polled.clear(); failure=null;
+        open.clear(); polled.clear(); failure=null; viewCalls.set(0); repoBroken=false;
+        jdbc.update("DELETE FROM qa_change_impacts");
     }
 
     private static GitHubClient.PullRequest pr(int number,String sha,boolean same,String title) {
-        return new GitHubClient.PullRequest(number,title,sha,"feat/x","main",same,"https://github.com/exedeehuashan/online-shop/pull/"+number);
+        return new GitHubClient.PullRequest(number,title,sha,"feat/x","main",same,"https://github.com/exedeehuashan/online-shop/pull/"+number,"f".repeat(40));
     }
     private long count(String sql,Object... args){return jdbc.queryForObject(sql,Long.class,args);}
     private String rowStatus(String sha){return jdbc.queryForObject("SELECT status FROM qa_pr_runs WHERE head_sha=? AND suite_key='backend-unit'",String.class,sha);}
@@ -154,6 +178,37 @@ class PullRequestTriggerApiTest {
         } finally {
             jdbc.update("DELETE FROM qa_pr_triggers WHERE suite_key='smoke'");
         }
+    }
+
+    @Autowired com.enterprise.agentharness.qa.impact.ChangeImpactService impacts;
+
+    @Test
+    void changeImpactIsComputedFromTheBaseCommitAndCached() throws Exception {
+        open.add(pr(47,A,true,"t"));
+        triggers.runOnce();
+        UUID row=jdbc.queryForObject("SELECT id FROM qa_pr_runs WHERE head_sha=?",UUID.class,A);
+        assertThat(jdbc.queryForObject("SELECT base_sha FROM qa_pr_runs WHERE id=?",String.class,row)).isEqualTo("f".repeat(40));
+        impacts.precompute(5);
+        assertThat(viewCalls.get()).isEqualTo(1);
+        mvc.perform(get("/api/v1/qa/pull-requests/"+row+"/impact").header("Authorization","Bearer "+VIEWER)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.prNumber").value(47)).andExpect(jsonPath("$.baseSha").value("f".repeat(40)))
+                .andExpect(jsonPath("$.impact.buildSystem").value("maven"))
+                .andExpect(jsonPath("$.impact.modules[0].dir").value("api")).andExpect(jsonPath("$.impact.modules[0].reason").value("DEPENDS_ON_CHANGED"))
+                .andExpect(jsonPath("$.impact.modules[1].dir").value("core")).andExpect(jsonPath("$.impact.modules[1].reason").value("CHANGED"))
+                .andExpect(jsonPath("$.impact.testClasses[0]").value("ApiTest"))
+                .andExpect(jsonPath("$.impact.notes[0]").value(org.hamcrest.Matchers.startsWith("core changed but has no test classes")));
+        assertThat(viewCalls.get()).isEqualTo(1);
+
+        jdbc.update("DELETE FROM qa_change_impacts");repoBroken=true;
+        mvc.perform(get("/api/v1/qa/pull-requests/"+row+"/impact").header("Authorization","Bearer "+VIEWER))
+                .andExpect(jsonPath("$.error").value("REPOSITORY_UNAVAILABLE")).andExpect(jsonPath("$.impact").isEmpty());
+        mvc.perform(get("/api/v1/qa/pull-requests/"+row+"/impact").header("Authorization","Bearer "+VIEWER)).andExpect(jsonPath("$.error").value("REPOSITORY_UNAVAILABLE"));
+        assertThat(viewCalls.get()).isEqualTo(2);
+
+        jdbc.update("UPDATE qa_pr_runs SET base_sha=NULL WHERE id=?",row);
+        mvc.perform(get("/api/v1/qa/pull-requests/"+row+"/impact").header("Authorization","Bearer "+VIEWER)).andExpect(jsonPath("$.error").value("BASE_UNKNOWN"));
+        mvc.perform(get("/api/v1/qa/pull-requests/"+UUID.randomUUID()+"/impact").header("Authorization","Bearer "+VIEWER)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/qa/pull-requests/"+row+"/impact")).andExpect(status().isUnauthorized());
     }
 
     @Test

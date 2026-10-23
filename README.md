@@ -339,6 +339,13 @@ history label (`FIRST_SEEN`, `NEW_FAILURE`, `PERSISTENT`, `FLAKY`), shown on the
 page and via `GET /api/v1/qa/runs/{runId}/triage` and `GET /api/v1/qa/tests/history`.
 See [P13 design notes](docs/p13-test-history-and-triage.md).
 
+**Change impact.** For each pull request commit EAHP diffs against the PR's merge
+base and reports the changed files, the affected Maven modules (including modules
+that depend on changed ones), the test classes in scope and warnings such as
+changed modules without tests. It is advisory and does not skip tests:
+`GET /api/v1/qa/pull-requests/{id}/impact`, or the Impact toggle on the console's
+Pull requests page. See [P14 design notes](docs/p14-change-impact-analysis.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

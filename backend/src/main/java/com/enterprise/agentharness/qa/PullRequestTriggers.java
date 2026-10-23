@@ -39,7 +39,7 @@ public class PullRequestTriggers {
 
     public record PullRequestRun(UUID id, String projectKey, int prNumber, String headSha, String suiteKey, String prTitle, String prUrl,
             String headRef, String status, String skipReason, UUID taskId, UUID runId, String runStatus, String runErrorCode,
-            Instant createdAt, Instant startedAt) {}
+            Instant createdAt, Instant startedAt, String baseSha) {}
     public record Poll(String projectKey, Instant lastPolledAt, Instant lastSuccessAt, Integer openPullRequests, String lastError) {}
 
     /** One polling cycle: record new PR head commits, then start whatever can start now. */
@@ -95,6 +95,10 @@ public class PullRequestTriggers {
                 VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT (project_key,pr_number,head_sha,suite_key) DO NOTHING
                 """, UUID.randomUUID(), project, pr.number(), pr.headSha(), suite, clean(pr.title(), 255), clean(pr.url(), 300),
                 clean(pr.headRef(), 255), status, pr.sameRepository() ? null : "FORK_NOT_TRUSTED");
+        if (pr.baseSha() != null && pr.baseSha().matches("[0-9a-f]{40}")) {
+            // The base moves as the target branch advances; the latest one seen is what the PR currently changes against.
+            jdbc.update("UPDATE qa_pr_runs SET base_sha=? WHERE project_key=? AND pr_number=? AND head_sha=?", pr.baseSha(), project, pr.number(), pr.headSha());
+        }
         if (inserted == 1) {
             jdbc.update("UPDATE qa_pr_runs SET status='SUPERSEDED' WHERE project_key=? AND pr_number=? AND suite_key=? AND head_sha<>? AND status='PENDING'",
                     project, pr.number(), suite, pr.headSha());
@@ -168,7 +172,7 @@ public class PullRequestTriggers {
         return new PullRequestRun(r.getObject("id", UUID.class), r.getString("project_key"), r.getInt("pr_number"), r.getString("head_sha"),
                 r.getString("suite_key"), r.getString("pr_title"), r.getString("pr_url"), r.getString("head_ref"), r.getString("status"),
                 r.getString("skip_reason"), r.getObject("task_id", UUID.class), r.getObject("run_id", UUID.class), r.getString("run_status"),
-                r.getString("run_error"), instant(r, "created_at"), instant(r, "started_at"));
+                r.getString("run_error"), instant(r, "created_at"), instant(r, "started_at"), r.getString("base_sha"));
     }
     private static Instant instant(ResultSet r, String key) throws SQLException { var t = r.getTimestamp(key); return t == null ? null : t.toInstant(); }
 }

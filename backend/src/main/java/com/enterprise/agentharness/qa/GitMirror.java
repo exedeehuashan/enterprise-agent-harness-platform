@@ -82,6 +82,36 @@ public class GitMirror {
         }
     }
 
+    /** Paths changed from the merge base of {@code base} and {@code head} to {@code head}, as a pull request diff shows them. */
+    public List<String> changedFiles(QaRegistry.Project project, String base, String head) throws IOException {
+        return lines(project, List.of("diff", "--name-only", "--no-renames", base + "..." + head), base, head);
+    }
+
+    /** All file paths at {@code commit}. */
+    public List<String> listFiles(QaRegistry.Project project, String commit) throws IOException {
+        return lines(project, List.of("ls-tree", "-r", "--name-only", commit), commit);
+    }
+
+    private List<String> lines(QaRegistry.Project project, List<String> gitArgs, String... commits) throws IOException {
+        Path log = Files.createTempFile("eahp-git", ".log");
+        Path out = Files.createTempFile("eahp-git", ".out");
+        try {
+            Path mirror = null;
+            for (String commit : commits) mirror = ensureCommit(project, commit, log);
+            var argv = new java.util.ArrayList<>(List.of(settings.git(), "-C", mirror.toString()));
+            argv.addAll(gitArgs);
+            check(runner.run(argv, out, LOCAL), gitArgs.get(0));
+            if (Files.size(out) > 16L * 1024 * 1024) throw new IOException("git output too large");
+            return Files.readAllLines(out, StandardCharsets.UTF_8).stream().filter(l -> !l.isBlank()).toList();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted", ex);
+        } finally {
+            Files.deleteIfExists(log);
+            Files.deleteIfExists(out);
+        }
+    }
+
     /** Clones the mirror on first use and fetches only when {@code commit} is missing. */
     private Path ensureCommit(QaRegistry.Project project, String commit, Path log) throws IOException, InterruptedException {
         Path mirror = settings.workdir().resolve("mirrors").resolve(project.key() + ".git");

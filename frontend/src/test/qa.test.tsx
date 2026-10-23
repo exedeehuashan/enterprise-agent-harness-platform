@@ -174,6 +174,12 @@ describe('pull request runs', () => {
     fakeApi({
       'GET /me': () => ({ body: operator }),
       'GET /qa/github-polls': () => ({ body: [{ projectKey: 'online-shop', lastPolledAt: '2026-10-23T00:00:00Z', lastSuccessAt: '2026-10-23T00:00:00Z', openPullRequests: 2, lastError: null }] }),
+      'GET /qa/pull-requests/r1/impact': () => ({ body: { projectKey: 'online-shop', prNumber: 47, baseSha: 'f'.repeat(40), headSha: 'a'.repeat(40),
+        computedAt: '2026-10-23T00:00:00Z', error: null, impact: { buildSystem: 'maven', changedFileCount: 2, changedFiles: ['core/A.java', 'api/B.java'],
+          truncated: false, wholeBuild: false, testClasses: ['ApiTest'], filesOutsideModules: [],
+          notes: ['core changed but has no test classes of its own; it is only covered through dependent modules, if at all.'],
+          modules: [{ dir: 'api', coordinates: 'g:api', reason: 'DEPENDS_ON_CHANGED', changedFiles: 0, testClasses: 1 },
+            { dir: 'core', coordinates: 'g:core', reason: 'CHANGED', changedFiles: 1, testClasses: 0 }] } } }),
       'GET /qa/pull-requests': () => ({ body: [
         row({ id: 'r1' }),
         row({ id: 'r2', prNumber: 48, headSha: 'b'.repeat(40), status: 'SKIPPED', skipReason: 'FORK_NOT_TRUSTED', taskId: null, runId: null, runStatus: null }),
@@ -185,5 +191,11 @@ describe('pull request runs', () => {
     expect(screen.getByRole('link', { name: 'online-shop #47' })).toHaveAttribute('rel', 'noopener noreferrer');
     expect(screen.getByRole('link', { name: 'COMPLETED' })).toHaveAttribute('href', '/runs/run-1');
     expect(screen.getByRole('link', { name: 'Pull requests' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Impact' })[0]);
+    expect(await screen.findByText(/2 changed files; 2 affected modules; 1 test classes in scope/)).toBeInTheDocument();
+    expect(screen.getByText('depends on a change')).toBeInTheDocument();
+    expect(screen.getByText('none')).toBeInTheDocument();
+    expect(screen.getByText(/core changed but has no test classes/)).toBeInTheDocument();
   });
 });

@@ -92,7 +92,16 @@ export interface QaSummary {
 export interface PullRequestRun {
   id: string; projectKey: string; prNumber: number; headSha: string; suiteKey: string; prTitle: string; prUrl: string; headRef: string;
   status: 'PENDING' | 'STARTED' | 'SUPERSEDED' | 'SKIPPED'; skipReason: string | null; taskId: string | null; runId: string | null;
-  runStatus: string | null; runErrorCode: string | null; createdAt: string; startedAt: string | null;
+  runStatus: string | null; runErrorCode: string | null; createdAt: string; startedAt: string | null; baseSha: string | null;
+}
+
+export interface ChangeImpact {
+  projectKey: string; prNumber: number; baseSha: string | null; headSha: string; computedAt: string | null; error: string | null;
+  impact: {
+    buildSystem: string; changedFileCount: number; changedFiles: string[]; truncated: boolean; wholeBuild: boolean;
+    modules: { dir: string; coordinates: string; reason: 'CHANGED' | 'DEPENDS_ON_CHANGED' | 'BUILD_CHANGED'; changedFiles: number; testClasses: number }[];
+    testClasses: string[]; filesOutsideModules: string[]; notes: string[];
+  } | null;
 }
 
 export interface GitHubPoll { projectKey: string; lastPolledAt: string; lastSuccessAt: string | null; openPullRequests: number | null; lastError: string | null }

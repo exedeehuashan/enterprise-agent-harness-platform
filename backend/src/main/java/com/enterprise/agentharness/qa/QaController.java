@@ -17,9 +17,11 @@ public class QaController {
     private final QaSuiteResolver resolver;
     private final QaTriageService triageService;
     private final com.enterprise.agentharness.run.RunService runs;
+    private final com.enterprise.agentharness.qa.impact.ChangeImpactService impacts;
     public QaController(QaRegistry registry, PullRequestTriggers pullRequests, QaSuiteResolver resolver, QaTriageService triageService,
-            com.enterprise.agentharness.run.RunService runs) {
-        this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver; this.triageService = triageService; this.runs = runs;
+            com.enterprise.agentharness.run.RunService runs, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts) {
+        this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver; this.triageService = triageService;
+        this.runs = runs; this.impacts = impacts;
     }
 
     @GetMapping("/projects")
@@ -54,6 +56,12 @@ public class QaController {
         if (limit < 1 || limit > 200) throw new RunException(HttpStatus.BAD_REQUEST, "limit must be 1..200");
         if (testClass.isBlank() || testClass.length() > 300 || testName.length() > 300) throw new RunException(HttpStatus.BAD_REQUEST, "Invalid test");
         return triageService.history(project, suite, testClass, testName, limit);
+    }
+
+    /** What a pull request's head commit changes, which modules that affects and which test classes are in scope. */
+    @GetMapping("/pull-requests/{id}/impact")
+    public com.enterprise.agentharness.qa.impact.ChangeImpactService.Result impact(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
+        return impacts.forPullRequestRun(id);
     }
 
     @GetMapping("/github-polls")
