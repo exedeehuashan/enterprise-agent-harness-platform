@@ -255,6 +255,24 @@ may be RUNNING per task. Cancel is idempotent: it stops the execution immediatel
 and cancels the current run through the usual cooperative path. Advancement runs
 in the Worker (`EAHP_WORKER_ENABLED`). See [P5 design notes](docs/p5-plan-execution.md).
 
+### Tool plug-ins and artifacts
+
+Tools are code-owned `ToolExecutor` beans; a database definition can disable a tool
+but must match its executor's version, target, approval and retry policy exactly.
+Runs may pass tool-specific `arguments` (a JSON object validated by the tool, stored
+as canonical JSON, and included in idempotency and approval digests):
+
+```sh
+curl -H "@$AUTH_HEADERS" "http://localhost:8080/api/v1/agent-runs/$RUN_ID/artifacts"
+curl -H "@$AUTH_HEADERS" -OJ "http://localhost:8080/api/v1/artifacts/$ARTIFACT_ID/content"
+```
+
+A tool reports success or failure with an output summary and artifacts (reports,
+logs). Failures end the run FAILED with their evidence kept; they are never shown as
+success. Artifacts carry SHA-256 digests and are always served as downloads. Long
+tools keep their lease alive through a heartbeat. See
+[P7 design notes](docs/p7-tool-plugins-and-artifacts.md).
+
 ### Create and retrieve behavior
 
 POST returns `201 Created`, a relative `Location` header, and JSON with `id`,

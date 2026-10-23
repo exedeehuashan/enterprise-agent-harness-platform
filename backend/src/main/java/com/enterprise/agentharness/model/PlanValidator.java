@@ -11,7 +11,9 @@ import org.springframework.stereotype.Component;
 public class PlanValidator {
     private final ObjectMapper strict;
     private final ToolCatalog tools;
-    public PlanValidator(ObjectMapper mapper,ToolCatalog tools) {
+    private final com.enterprise.agentharness.tool.ToolRegistry registry;
+    public PlanValidator(ObjectMapper mapper,ToolCatalog tools,com.enterprise.agentharness.tool.ToolRegistry registry) {
+        this.registry=registry;
         this.strict=mapper.copy().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.tools=tools;
     }
@@ -29,6 +31,7 @@ public class PlanValidator {
                 fields(step,Set.of("tool","toolVersion","target","timeoutSeconds"));
                 if(!step.get("tool").isTextual() || !step.get("target").isTextual()) throw invalid();
                 var policy=tools.require(step.get("tool").textValue());
+                if(!registry.acceptsNoArguments(step.get("tool").textValue())) throw invalid();
                 if(!step.get("toolVersion").isIntegralNumber() || !step.get("toolVersion").canConvertToInt()
                         || step.get("toolVersion").intValue()!=policy.version() || !step.get("target").textValue().equals(policy.target())) throw invalid();
                 var timeout=step.get("timeoutSeconds");

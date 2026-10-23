@@ -1,6 +1,7 @@
 package com.enterprise.agentharness.run;
 
 import com.enterprise.agentharness.task.TaskListQuery;
+import com.enterprise.agentharness.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
 import java.util.UUID;
@@ -13,12 +14,13 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1")
 public class RunController {
     private final RunService service;
-    public RunController(RunService service) { this.service = service; }
+    private final ToolRegistry tools;
+    public RunController(RunService service, ToolRegistry tools) { this.service = service; this.tools = tools; }
 
     @PostMapping("/agent-tasks/{taskId}/runs")
     public ResponseEntity<RunResponse> start(@PathVariable UUID taskId,
             @RequestHeader(value="Idempotency-Key", required=false) String key, @RequestBody JsonNode body) {
-        RunResponse run = service.start(taskId, key, StartRunRequest.parse(body));
+        RunResponse run = service.start(taskId, key, StartRunRequest.parse(body, tools.names()));
         return ResponseEntity.accepted().location(URI.create("/api/v1/agent-runs/" + run.id())).body(run);
     }
 
