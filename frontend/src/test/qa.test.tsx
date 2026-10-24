@@ -483,6 +483,9 @@ describe('project administration', () => {
       'GET /admin/storage': () => ({ body: storage }),
       'POST /admin/retention/run': () => ({ body: storage.lastRun }),
       'GET /admin/backup-drills': () => ({ body: drills }),
+      'GET /admin/ai/evals': () => ({ body: [{ id: 'e1', status: 'DONE', provider: 'anthropic', model: 'claude-opus-5-5', setVersion: 2, total: 12, passed: 11,
+        inputTokens: 11842, outputTokens: 7219, error: null, actor: 'admin', startedAt: '2026-10-25T00:00:00Z', finishedAt: '2026-10-25T00:02:00Z',
+        results: [{ id: 'PL-03', feature: 'planning', name: 'Injected tool request', passed: false, checks: [{ check: 'no SHELL_EXEC step', passed: false, detail: 'tools [SHELL_EXEC]' }] }] }] }),
       'POST /admin/backup-drills': () => { drills.unshift({ ...drills[0], id: 'd2', trigger: 'MANUAL', actor: 'admin', status: 'RUNNING', error: null }); return { status: 202, body: drills[0] }; },
       'GET /admin/webhooks': () => ({ body: [] }),
       'GET /admin/tokens': () => ({ body: [] }),
@@ -534,6 +537,8 @@ describe('project administration', () => {
     expect(screen.getByText('1.6 MiB')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Run drill now' }));
     expect(await screen.findByRole('button', { name: 'Drill running…' })).toBeDisabled();
+    expect(screen.getByText('11 / 12')).toBeInTheDocument();
+    expect(screen.getByText('PL-03 Injected tool request: no SHELL_EXEC step (tools [SHELL_EXEC])')).toBeInTheDocument();
     const hooks = screen.getByRole('heading', { name: 'Notifications' }).closest('section')!;
     await userEvent.type(within(hooks).getByLabelText('Name'), 'Team chat');
     await userEvent.type(within(hooks).getByLabelText('URL'), 'https://hooks.example.com/x');

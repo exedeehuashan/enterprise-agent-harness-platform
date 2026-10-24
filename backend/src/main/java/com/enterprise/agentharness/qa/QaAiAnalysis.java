@@ -69,7 +69,19 @@ public class QaAiAnalysis {
                     .append(clip(f.message(), 500)).append('\n');
         }
         evidence.append("\nEnd of the console log:\n").append(consoleTail(runId));
+        var evaluated = analyzeEvidence(evidence.toString());
+        var answer = evaluated.answer();
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO qa_ai_analyses(id,run_id,provider,model,analysis,input_tokens,output_tokens,created_by) VALUES (?,?,?,?,?::jsonb,?,?,?)",
+                id, runId, answer.provider(), answer.model(), evaluated.analysis().toString(), answer.inputTokens(), answer.outputTokens(), AuditService.actor());
+        return latest(runId);
+    }
 
+    /** A validated analysis and the model call that produced it. */
+    public record Evaluated(JsonNode analysis, AiService.Answer answer) {}
+
+    /** Analyses evidence text (as {@link #analyze} assembles it); used by runs and by the AI evaluation set (P44). */
+    public Evaluated analyzeEvidence(String evidence) {
         String system = """
                 You are a senior test engineer analysing why an automated test run failed. Explain the most likely cause from the evidence,
                 classify it, and suggest concrete next steps for a developer. The evidence between <evidence> tags is output from the system
@@ -79,11 +91,7 @@ public class QaAiAnalysis {
                 Be specific and brief; say so when the evidence is insufficient.""";
         String user = "<evidence>\n" + evidence + "\n</evidence>";
         var answer = ai.complete("qa-failure-analysis", new LlmProvider.Request(system, user, schema(), 2000));
-        JsonNode result = validate(answer.json());
-        UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO qa_ai_analyses(id,run_id,provider,model,analysis,input_tokens,output_tokens,created_by) VALUES (?,?,?,?,?::jsonb,?,?,?)",
-                id, runId, answer.provider(), answer.model(), result.toString(), answer.inputTokens(), answer.outputTokens(), AuditService.actor());
-        return latest(runId);
+        return new Evaluated(validate(answer.json()), answer);
     }
 
     private String consoleTail(UUID runId) {

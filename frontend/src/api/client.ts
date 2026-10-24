@@ -1,6 +1,6 @@
 import type {
   AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
-  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, BackupDrill, AutoFix, CoveragePoint, NewCodeCoverage,
+  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, BackupDrill, AutoFix, AiEvalRun, CoveragePoint, NewCodeCoverage,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -93,6 +93,8 @@ export const api = {
   requestAutoFix: (runId: string) => post<AutoFix>(`/qa/runs/${runId}/auto-fix`, undefined),
   autoFixSettings: (project: string) => get<{ enabled: boolean }>(`/qa/projects/${project}/auto-fix`),
   setAutoFix: (project: string, enabled: boolean) => request<{ enabled: boolean }>(`/qa/admin/projects/${project}/auto-fix`, { method: 'PUT', body: { enabled } }).then(r => r.data),
+  aiEvals: () => get<AiEvalRun[]>('/admin/ai/evals'),
+  runAiEvals: () => post<AiEvalRun>('/admin/ai/evals', {}),
   backupDrills: () => get<BackupDrill[]>('/admin/backup-drills'),
   runBackupDrill: () => post<BackupDrill>('/admin/backup-drills'),
   runRetention: () => post<StorageReport['lastRun']>('/admin/retention/run'),
