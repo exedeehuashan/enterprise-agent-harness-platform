@@ -172,6 +172,11 @@ export interface AutoFix {
   verifyRunId: string | null; result: { outcome: string; fixed?: number; stillFailing?: number; newFailures?: number } | null; error: string | null;
   createdBy: string; createdAt: string; updatedAt: string;
 }
+export interface AiEvalRun {
+  id: string; status: 'RUNNING' | 'DONE' | 'FAILED'; provider: string; model: string; setVersion: number; total: number; passed: number;
+  inputTokens: number; outputTokens: number; error: string | null; actor: string; startedAt: string; finishedAt: string | null;
+  results: { id: string; feature: string; name: string; passed: boolean; error?: string; millis?: number; checks?: { check: string; passed: boolean; detail?: string }[] }[] | null;
+}
 export interface PerformanceLimit { maxP95Ms?: number | null; maxErrorRate?: number | null; maxP95IncreasePercent?: number | null }
 export interface PerformancePoint {
   runId: string; suite: string; commit: string; outcome: string | null; at: string; requests: number; requestsPerSecond: number;

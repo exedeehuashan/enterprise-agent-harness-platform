@@ -507,6 +507,12 @@ fixes the code and opens a draft PR. EAHP then runs the same suite on the PR's
 commit and reports FIXED, PARTLY_FIXED or NOT_FIXED as a PR comment. See
 [P43 design notes](docs/p43-auto-fix-failing-tests.md).
 
+**AI evaluation set.** 12 fixed cases cover failure analysis, API test generation
+and planning, including prompt-injection cases. They run through the production
+code paths against the configured model and are graded by deterministic checks.
+Start a run under Administration → AI evaluation (`POST /api/v1/admin/ai/evals`).
+claude-opus-5-5 scores 12/12. See [P44 design notes](docs/p44-ai-evaluation-set.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

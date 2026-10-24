@@ -78,7 +78,24 @@ public class QaAiTestGeneration {
         } catch (IOException ex) {
             throw bad("could not read " + specPath + " (it must be at most " + MAX_SPEC_BYTES / 1024 + " KiB)");
         }
+        var generated = generateFrom(service, specPath, spec, instructions, maxCases);
+        var answer = generated.answer();
+        JsonNode collection = generated.collection();
+        String error = generated.error(), notes = generated.notes();
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO qa_ai_test_drafts(id,project_key,commit_sha,spec_path,service,instructions,collection,valid,error,notes,provider,model,input_tokens,output_tokens,created_by)
+                VALUES (?,?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?,?)
+                """, id, project.key(), commit, specPath, service, instructions, collection == null ? null : collection.toString(), collection != null, error,
+                notes == null ? null : clip(notes, 2000), answer.provider(), answer.model(), answer.inputTokens(), answer.outputTokens(), AuditService.actor());
+        return get(project.key(), id);
+    }
 
+    /** A validated draft (or why it is invalid) and the model call that produced it. */
+    public record Generated(JsonNode collection, String error, String notes, AiService.Answer answer) {}
+
+    /** Drafts a collection from an OpenAPI document; used by {@link #generate} and by the AI evaluation set (P44). */
+    public Generated generateFrom(String service, String specPath, String spec, String instructions, int maxCases) {
         String system = """
                 You write API tests for the Enterprise Agent Harness Platform. Read the OpenAPI document and write one test collection that exercises
                 the API's main behaviour: successful calls with realistic synthetic data, validation errors, not-found cases, and any idempotency,
@@ -131,13 +148,7 @@ public class QaAiTestGeneration {
         } catch (IOException ex) {
             error = "the collection is not valid JSON";
         }
-        UUID id = UUID.randomUUID();
-        jdbc.update("""
-                INSERT INTO qa_ai_test_drafts(id,project_key,commit_sha,spec_path,service,instructions,collection,valid,error,notes,provider,model,input_tokens,output_tokens,created_by)
-                VALUES (?,?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?,?)
-                """, id, project.key(), commit, specPath, service, instructions, collection == null ? null : collection.toString(), collection != null, error,
-                notes == null ? null : clip(notes, 2000), answer.provider(), answer.model(), answer.inputTokens(), answer.outputTokens(), AuditService.actor());
-        return get(project.key(), id);
+        return new Generated(collection, error, notes, answer);
     }
 
     public List<Draft> list(String project) {
