@@ -183,7 +183,16 @@ public class CodeAgentTool implements ToolExecutor {
             if (changed) {
                 artifacts.add(text("changes.txt", stat));
                 artifacts.add(new ToolResult.Artifact("diff.patch", "text/plain", bounded(patch)));
-                if (args.path("push").asBoolean(false) && !writeToken.isBlank()) pr = pushAndOpen(repo, args, src, runDir, setupLog, agent, context);
+                if (args.path("push").asBoolean(false) && !writeToken.isBlank()) {
+                    try {
+                        pr = pushAndOpen(repo, args, src, runDir, setupLog, agent, context);
+                    } catch (IOException ex) {
+                        // The change is still evidence: keep the diff and the git output (the token is never in it).
+                        artifacts.add(text("setup.log", setupLog));
+                        return ToolResult.failure("PUSH_FAILED", "The change was recorded but could not be pushed or opened as a pull request: " + ex.getMessage(),
+                                artifacts.toArray(ToolResult.Artifact[]::new));
+                    }
+                }
             }
             var summary = new LinkedHashMap<String, Object>();
             summary.put("repository", repo.key()); summary.put("ref", args.get("ref").asText()); summary.put("commit", commit);

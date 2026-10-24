@@ -50,7 +50,8 @@ public class RunWorker {
             Thread.currentThread().interrupt();
             result = ToolResult.failure("TOOL_FAILED", null);
         } catch (Exception ex) {
-            log.warn("Tool {} failed for run {}", run.tool(), run.id());
+            // Server log only: the run itself records just TOOL_FAILED, never internal details.
+            log.warn("Tool {} failed for run {}", run.tool(), run.id(), ex);
             result = ToolResult.failure("TOOL_FAILED", null);
         } finally {
             heartbeat.cancel(false);
