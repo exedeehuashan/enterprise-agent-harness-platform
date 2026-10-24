@@ -64,6 +64,10 @@ feature work.
   - `SOURCE_UNAVAILABLE`;
   - `CODE_AGENT_FAILED`: Claude Code reported an error or no result;
   - `CODE_AGENT_TIMEOUT`;
+  - `PUSH_FAILED`: the change was recorded, but the branch could not be pushed or
+    the pull request could not be opened. The diff, `changes.txt`, the agent result,
+    `egress.log` and `setup.log` (git's output, which never contains the token) are
+    kept, so the change can still be applied by hand;
   - `STOPPED`.
 - **Image.** `code-agent/Dockerfile` contains Maven 3.9 / JDK 17, Node 22, git,
   ripgrep and `@anthropic-ai/claude-code` 2.1.310. Build it with

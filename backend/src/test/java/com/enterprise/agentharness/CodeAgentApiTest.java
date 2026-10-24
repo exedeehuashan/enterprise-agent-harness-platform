@@ -51,6 +51,7 @@ class CodeAgentApiTest {
     static final List<String> pulls = new CopyOnWriteArrayList<>();
     static volatile boolean agentChanges = true, agentError = false;
     static volatile String mavenSettings;
+    static volatile int pushExit = 0;
     private static final HttpServer GITHUB = startGitHub();
 
     @Autowired MockMvc mvc;
@@ -80,6 +81,7 @@ class CodeAgentApiTest {
                 }
                 if (argv.contains("diff") && argv.contains("--stat") && agentChanges) Files.writeString(logFile, " OrderTotals.java | 1 +\n");
                 if (argv.contains("diff") && argv.contains("--no-ext-diff") && agentChanges) Files.writeString(logFile, "+++ b/OrderTotals.java\n+class OrderTotals {}\n");
+                if (argv.contains("push")) { Files.writeString(logFile, "remote: Permission to exedeehuashan/online-shop.git denied.\n"); return new ProcessRunner.Result(pushExit, false, false); }
                 return new ProcessRunner.Result(0, false, false);
             };
         }
@@ -126,7 +128,21 @@ class CodeAgentApiTest {
     @AfterAll static void stop() throws IOException { GITHUB.stop(0); POSTGRES.close(); }
 
     @BeforeEach
-    void reset() { tasks.deleteAll(); jdbc.update("DELETE FROM code_repositories"); calls.clear(); pulls.clear(); agentChanges = true; agentError = false; mavenSettings = null; }
+    void reset() { tasks.deleteAll(); jdbc.update("DELETE FROM code_repositories"); calls.clear(); pulls.clear(); agentChanges = true; agentError = false; mavenSettings = null; pushExit = 0; }
+
+    @Test
+    void aFailedPushKeepsTheDiffAndTheGitOutputAsEvidence() throws Exception {
+        putRepo(ADMIN, REPO).andExpect(status().isOk());
+        pushExit = 128;
+        var run = start("{\"repository\":\"online-shop\",\"instructions\":\"Fix the rounding of order totals in OrderTotals.\"}");
+        approve(run);
+        var done = runs.get(UUID.fromString(run.get("id").asText()));
+        assertThat(done.errorCode()).isEqualTo("PUSH_FAILED");
+        var names = mapper.readTree(mvc.perform(get("/api/v1/agent-runs/" + done.id() + "/artifacts").header("Authorization", "Bearer " + VIEWER))
+                .andReturn().getResponse().getContentAsString()).findValuesAsText("name");
+        assertThat(names).contains("diff.patch", "changes.txt", "setup.log", "agent-result.json", "egress.log");
+        assertThat(pulls).isEmpty();
+    }
 
     private ResultActions putRepo(String token, String body) throws Exception {
         return mvc.perform(put("/api/v1/admin/code-repositories/online-shop").header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON).content(body));
