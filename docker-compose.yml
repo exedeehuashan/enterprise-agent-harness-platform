@@ -57,6 +57,10 @@ services:
       # Code agent (P35): Claude Code runs in this image (scripts/build-code-agent.sh) with ANTHROPIC_API_KEY above.
       EAHP_CODE_AGENT_IMAGE: ${EAHP_CODE_AGENT_IMAGE:-eahp-code-agent:local}
       EAHP_CODE_AGENT_MODEL: ${EAHP_CODE_AGENT_MODEL:-}
+      # Code agent egress (P37): "proxy" (default) allows only EAHP_CODE_AGENT_EGRESS_ALLOW through EAHP's proxy; "open" is unrestricted.
+      EAHP_EGRESS_ENABLED: "true"
+      EAHP_CODE_AGENT_NETWORK: ${EAHP_CODE_AGENT_NETWORK:-proxy}
+      EAHP_CODE_AGENT_EGRESS_ALLOW: ${EAHP_CODE_AGENT_EGRESS_ALLOW:-api.anthropic.com,repo.maven.apache.org,repo1.maven.org,registry.npmjs.org}
     ports:
       - "127.0.0.1:${EAHP_BACKEND_PORT:-8080}:8080"
     # API tests (P24) reach systems under test published on the host, for example a local UAT stack.

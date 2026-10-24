@@ -461,6 +461,12 @@ no published ports, no host environment). A pull request trigger whose key is a
 template key (`env-pr`) runs it for every new head commit. See
 [P36 design notes](docs/p36-ephemeral-environments.md).
 
+**Code agent egress allowlist.** Each code agent run gets its own internal Docker
+network with no route out. Its only exit is EAHP's built-in proxy, which tunnels
+`CONNECT` to port 443 of allowlisted hosts only (`EAHP_CODE_AGENT_EGRESS_ALLOW`,
+default the Anthropic API and the Maven and npm registries) and records every
+attempt in `egress.log`. See [P37 design notes](docs/p37-code-agent-egress.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

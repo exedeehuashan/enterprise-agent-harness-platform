@@ -1,5 +1,6 @@
 package com.enterprise.agentharness.code;
 
+import com.enterprise.agentharness.egress.EgressProxy;
 import com.enterprise.agentharness.qa.ProcessRunner;
 import com.enterprise.agentharness.qa.QaSettings;
 import com.enterprise.agentharness.tool.ToolContext;
@@ -24,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -45,6 +47,9 @@ import org.springframework.stereotype.Component;
  *   <li>After the agent finishes, EAHP itself computes the diff, stores it as evidence, and - only where the
  *       repository allows pushing and a write token is configured - pushes a new branch and opens a draft pull
  *       request. Nothing is merged.</li>
+ *   <li>Network egress (P37): by default the container sits on its own internal Docker network with no route out,
+ *       and reaches only allowlisted hosts (the Anthropic API and the Maven and npm registries) through EAHP's
+ *       {@link EgressProxy}. Every connection attempt is recorded in {@code egress.log}.</li>
  * </ul>
  */
 @Component
@@ -53,12 +58,17 @@ public class CodeAgentTool implements ToolExecutor {
     static final long MAX_DIFF_BYTES = 2L * 1024 * 1024;
     static final String DEFAULT_TOOLS = "Read,Edit,Write,Glob,Grep,Bash(git status *),Bash(git diff *),Bash(git log *),"
             + "Bash(mvn *),Bash(./mvnw *),Bash(npm *),Bash(npx *),Bash(node *),Bash(ls *),Bash(cat *)";
+    static final String DEFAULT_EGRESS = "api.anthropic.com,repo.maven.apache.org,repo1.maven.org,registry.npmjs.org";
     private final CodeRepositories repositories;
     private final ProcessRunner runner;
     private final QaSettings settings;
     private final ObjectMapper mapper;
     private final String image, model, allowedTools, apiBase, writeToken;
     private final Supplier<String> anthropicKey;
+    private final EgressProxy egress;
+    private final boolean proxied;
+    private final List<String> egressAllow;
+    private final String selfContainer;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build();
 
     @Autowired
@@ -66,15 +76,16 @@ public class CodeAgentTool implements ToolExecutor {
             @Value("${eahp.code-agent.image:eahp-code-agent:local}") String image, @Value("${eahp.code-agent.model:}") String model,
             @Value("${eahp.code-agent.allowed-tools:" + DEFAULT_TOOLS + "}") String allowedTools,
             @Value("${eahp.github.api:https://api.github.com}") String apiBase, @Value("${eahp.github.write-token:}") String writeToken,
-            @Value("${eahp.ai.anthropic.api-key:}") String anthropicKey) {
+            @Value("${eahp.ai.anthropic.api-key:}") String anthropicKey, EgressProxy egress,
+            @Value("${eahp.code-agent.network:proxy}") String network, @Value("${eahp.code-agent.egress-allow:" + DEFAULT_EGRESS + "}") String egressAllow,
+            @Value("${eahp.qa.self-container:}") String selfContainer) {
         // Only checked for presence: the container inherits ANTHROPIC_API_KEY from this process's environment.
-        this(repositories, runner, settings, mapper, image, model, allowedTools, apiBase, writeToken, () -> anthropicKey);
-    }
-
-    CodeAgentTool(CodeRepositories repositories, ProcessRunner runner, QaSettings settings, ObjectMapper mapper, String image, String model,
-            String allowedTools, String apiBase, String writeToken, Supplier<String> anthropicKey) {
         this.repositories = repositories; this.runner = runner; this.settings = settings; this.mapper = mapper; this.image = image;
-        this.model = model; this.allowedTools = allowedTools; this.apiBase = apiBase; this.writeToken = writeToken; this.anthropicKey = anthropicKey;
+        this.model = model; this.allowedTools = allowedTools; this.apiBase = apiBase; this.writeToken = writeToken; this.anthropicKey = () -> anthropicKey;
+        if (!network.equals("proxy") && !network.equals("open")) throw new IllegalStateException("eahp.code-agent.network must be proxy or open");
+        this.egress = egress; this.proxied = network.equals("proxy"); this.selfContainer = selfContainer;
+        this.egressAllow = java.util.Arrays.stream(egressAllow.split(",")).map(String::strip).filter(h -> !h.isEmpty()).toList();
+        for (String h : this.egressAllow) if (!h.matches("(\\*\\.)?[A-Za-z0-9.-]{1,253}")) throw new IllegalStateException("invalid egress host: " + h);
     }
 
     public String name() { return "CODE_AGENT_RUN"; }
@@ -134,15 +145,28 @@ public class CodeAgentTool implements ToolExecutor {
             Duration remaining = Duration.between(Instant.now(), context.deadline());
             if (remaining.isNegative() || remaining.isZero() || context.stopRequested()) return ToolResult.failure("STOPPED", "The run was stopped before the agent started.");
             String container = "eahp-code-" + context.run().id() + "-" + context.run().attemptCount();
-            var outcome = runner.run(dockerArgs(container, context, src, home, task, result, args.get("maxTurns").asInt()), consoleLog, remaining,
-                    context::stopRequested, () -> kill(container));
-            if (outcome.stopped()) return ToolResult.failure("STOPPED", "The run was stopped.", text("console.log", consoleLog));
-            if (outcome.timedOut()) return ToolResult.failure("CODE_AGENT_TIMEOUT", "The agent did not finish before the deadline.", text("console.log", consoleLog));
+            Sandbox sandbox;
+            try { sandbox = sandbox(context, home, setupLog); }
+            catch (IOException ex) {
+                return ToolResult.failure("CODE_AGENT_EGRESS_UNAVAILABLE", "The egress proxy network could not be set up: " + ex.getMessage(), text("setup.log", setupLog));
+            }
+            ProcessRunner.Result outcome;
+            try {
+                outcome = runner.run(dockerArgs(container, context, src, home, task, result, args.get("maxTurns").asInt(), sandbox), consoleLog, remaining,
+                        context::stopRequested, () -> kill(container));
+            } finally {
+                sandbox.close();
+            }
+            Files.writeString(runDir.resolve("egress.log"), sandbox.log());
+            if (outcome.stopped()) return ToolResult.failure("STOPPED", "The run was stopped.", text("console.log", consoleLog), text("egress.log", runDir.resolve("egress.log")));
+            if (outcome.timedOut()) return ToolResult.failure("CODE_AGENT_TIMEOUT", "The agent did not finish before the deadline.", text("console.log", consoleLog),
+                    text("egress.log", runDir.resolve("egress.log")));
 
             JsonNode agent = null;
             try { if (Files.exists(result) && Files.size(result) > 0) agent = mapper.readTree(result.toFile()); } catch (IOException ex) { agent = null; }
             var artifacts = new ArrayList<ToolResult.Artifact>();
             artifacts.add(text("console.log", consoleLog));
+            artifacts.add(text("egress.log", runDir.resolve("egress.log")));
             if (agent != null) artifacts.add(new ToolResult.Artifact("agent-result.json", "application/json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(agent)));
             if (agent == null || agent.path("is_error").asBoolean(false) || outcome.exitCode() != 0) {
                 String reason = agent == null ? "no result (exit " + outcome.exitCode() + ")" : clip(agent.path("result").asText(""), 300);
@@ -167,6 +191,7 @@ public class CodeAgentTool implements ToolExecutor {
             summary.put("turns", agent.path("num_turns").isMissingNode() ? null : agent.get("num_turns").asInt());
             summary.put("costUsd", agent.path("total_cost_usd").isMissingNode() ? null : agent.get("total_cost_usd").asDouble());
             summary.put("durationSeconds", Duration.between(started, Instant.now()).toSeconds());
+            summary.put("egress", proxied ? Map.of("mode", "proxy", "allow", egressAllow, "allowed", sandbox.allowed(), "denied", sandbox.denied()) : Map.of("mode", "open"));
             summary.put("pushAllowed", args.path("push").asBoolean(false)); summary.put("writeTokenConfigured", !writeToken.isBlank());
             artifacts.add(0, new ToolResult.Artifact("summary.json", "application/json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(summary)));
             String text = repo.key() + " @ " + commit.substring(0, 12) + ": " + (changed ? "changes recorded" : "no changes")
@@ -187,16 +212,85 @@ public class CodeAgentTool implements ToolExecutor {
                 + "- Finish with a short summary of what you changed and why.\n";
     }
 
-    List<String> dockerArgs(String container, ToolContext context, Path src, Path home, Path task, Path result, int maxTurns) {
+    /**
+     * The network a run's container uses. With the proxy, it is a new internal network (no route out) that EAHP's own
+     * container joins; the proxy session for EAHP's address on it carries the allowlist. Maven reads the proxy from
+     * settings.xml, Claude Code and npm from HTTPS_PROXY.
+     */
+    private Sandbox sandbox(ToolContext context, Path home, Path log) throws IOException, InterruptedException {
+        if (!proxied) return new Sandbox("bridge", null, null);
+        if (selfContainer.isBlank()) throw new IOException("EAHP_QA_SELF_CONTAINER is not set");
+        String net = "eahp-agent-" + context.run().id().toString().substring(0, 8) + "-" + context.run().attemptCount();
+        if (runner.run(List.of(settings.docker(), "network", "create", "--internal", "--label", "eahp.run=" + context.run().id(), net), log, Duration.ofMinutes(1)).exitCode() != 0) {
+            throw new IOException("docker network create failed");
+        }
+        var sandbox = new Sandbox(net, null, null);
+        try {
+            if (runner.run(List.of(settings.docker(), "network", "connect", net, selfContainer), log, Duration.ofMinutes(1)).exitCode() != 0) throw new IOException("EAHP could not join " + net);
+            Path out = Files.createTempFile("eahp-inspect", ".out");
+            String ip;
+            try {
+                runner.run(List.of(settings.docker(), "inspect", "-f", "{{(index .NetworkSettings.Networks \"" + net + "\").IPAddress}}", selfContainer), out, Duration.ofMinutes(1));
+                ip = Files.readString(out).strip();
+            } finally {
+                Files.deleteIfExists(out);
+            }
+            if (!ip.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) throw new IOException("EAHP has no address on " + net);
+            var session = egress.open(ip, egressAllow);
+            String proxy = "http://" + ip + ":" + egress.port();
+            Files.createDirectories(home.resolve(".m2"));
+            Files.writeString(home.resolve(".m2").resolve("settings.xml"), "<settings><proxies>"
+                    + "<proxy><id>eahp-https</id><active>true</active><protocol>https</protocol><host>" + ip + "</host><port>" + egress.port() + "</port></proxy>"
+                    + "<proxy><id>eahp-http</id><active>true</active><protocol>http</protocol><host>" + ip + "</host><port>" + egress.port() + "</port></proxy>"
+                    + "</proxies></settings>\n");
+            return new Sandbox(net, proxy, session);
+        } catch (IOException | RuntimeException ex) {
+            sandbox.close();
+            throw ex;
+        }
+    }
+
+    /** A run's network and, with the proxy, its egress session; closing removes both. */
+    final class Sandbox implements AutoCloseable {
+        final String network, proxy;
+        final EgressProxy.Session session;
+        Sandbox(String network, String proxy, EgressProxy.Session session) { this.network = network; this.proxy = proxy; this.session = session; }
+        String log() { return session == null ? (proxied ? "" : "egress not restricted (eahp.code-agent.network=open)\n") : session.log(); }
+        long allowed() { return session == null ? 0 : session.decisions().stream().filter(EgressProxy.Decision::allowed).count(); }
+        long denied() { return session == null ? 0 : session.decisions().stream().filter(d -> !d.allowed()).count(); }
+        @Override public void close() {
+            if (session != null) session.close();
+            if (network.equals("bridge")) return;
+            try {
+                Path log = Files.createTempFile("eahp-net", ".log");
+                try {
+                    runner.run(List.of(settings.docker(), "network", "disconnect", "--force", network, selfContainer), log, Duration.ofMinutes(1));
+                    runner.run(List.of(settings.docker(), "network", "rm", network), log, Duration.ofMinutes(1));
+                } finally {
+                    Files.deleteIfExists(log);
+                }
+            } catch (IOException ex) {
+                log.warn("Could not remove network {}", network);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    List<String> dockerArgs(String container, ToolContext context, Path src, Path home, Path task, Path result, int maxTurns, Sandbox sandbox) {
         var argv = new ArrayList<>(List.of(settings.docker(), "run", "--rm", "--name", container,
                 "--label", "eahp.run=" + context.run().id(), "--label", "eahp.tool=code-agent",
                 "--cpus", settings.cpus(), "--memory", settings.memory(), "--pids-limit", "2048",
-                "--security-opt", "no-new-privileges", "--cap-drop", "ALL", "--network", "bridge", "--user", user(),
+                "--security-opt", "no-new-privileges", "--cap-drop", "ALL", "--network", sandbox.network, "--user", user(),
                 "-e", "HOME=" + home, "-e", "CI=true", "-e", "DISABLE_AUTOUPDATER=1", "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
                 // Inherited from EAHP's own environment: the key never appears in this command line.
                 "-e", "ANTHROPIC_API_KEY",
                 "-e", "EAHP_TASK=" + task, "-e", "EAHP_RESULT=" + result, "-e", "EAHP_TOOLS=" + allowedTools, "-e", "EAHP_MAX_TURNS=" + maxTurns));
         if (!model.isBlank()) argv.addAll(List.of("-e", "ANTHROPIC_MODEL=" + model));
+        if (sandbox.proxy != null) {
+            for (String v : List.of("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")) argv.addAll(List.of("-e", v + "=" + sandbox.proxy));
+            argv.addAll(List.of("-e", "NO_PROXY=localhost,127.0.0.1", "-e", "MAVEN_OPTS=-Duser.home=" + home));
+        }
         argv.addAll(List.of("-v", settings.workdirMountSource() + ":" + settings.workdir(), "-w", src.toString(), image, "sh", "-c",
                 "claude --bare -p --output-format json --permission-mode acceptEdits --permission-prompts none "
                         + "--max-turns \"$EAHP_MAX_TURNS\" --allowedTools \"$EAHP_TOOLS\" < \"$EAHP_TASK\" > \"$EAHP_RESULT\""));
