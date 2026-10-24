@@ -147,3 +147,24 @@ removes everything, including volumes and built images.
 - `ApprovalSecurityApiTest` counts 9 tools; `OpsModulesApiTest` counts 6 QA tools.
 - Frontend: 24 tests, including running tests on a fresh environment and stopping
   a temporary environment.
+
+## Observed local results
+
+- Deployed with `scripts/deploy.sh` (V30). The backend image now uses the
+  `docker:28.5.1-cli` binaries (Compose v2.40.3). The first attempt with Compose
+  v2.31 failed safely with `ENVIRONMENT_INVALID` (`unknown flag:
+  --no-env-resolution`), and nothing started.
+- online-shop `.eahp/environments.json` (`env-pr`, exedeehuashan/online-shop#59) at
+  `ba973a71`:
+  - **Environment tests:** the run was approved, then postgres, order-api,
+    catalog-api and web were built and became healthy. `catalog-api-smoke` and
+    `order-api-smoke` ran against them: 8 tests passed in 70 s. Afterwards no
+    `eahp-env-*` container, network, volume or image was left, and the temporary
+    environment was `STOPPED`.
+  - **Start mode:** `eph-74de8acc` ran with no published ports
+    (`8080/tcp`/`5432/tcp` only). Its services were
+    `http://eahp-env-74de8acc-order-api-1:8080` and
+    `http://eahp-env-74de8acc-catalog-api-1:8080`.
+  - **k6 against the temporary environment:** the `performance` suite ran on
+    `eahp-env-74de8acc_app` and passed: 57,574 requests, p95 2.19 ms, 0% failed.
+  - **Stop:** `POST …/stop` removed everything, and only `uat` remained registered.
