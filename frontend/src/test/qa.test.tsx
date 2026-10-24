@@ -457,6 +457,8 @@ describe('project administration', () => {
   it('lets approvers register projects and toggle triggers, and hides it from operators', async () => {
     tokenStore.set(TOKEN);
     const admin = { name: 'admin', roles: ['APPROVER', 'OPERATOR', 'VIEWER'] };
+    const drills: Record<string, unknown>[] = [{ id: 'd1', trigger: 'SCHEDULE', actor: 'scheduler', status: 'FAILED', startedAt: '2026-10-24T04:15:00Z', finishedAt: '2026-10-24T04:15:09Z',
+      schemaVersion: 35, expectedRows: { audit_events: 398 }, restoredRows: { audit_events: 12 }, dumpBytes: 1661578, error: 'audit_events has 12 rows, expected at least 398' }];
     const projectAdmin = { project: projects[0], triggers: [{ suite: 'backend-unit', enabled: true }, { suite: 'backend-integration', enabled: false }], gateSuites: ['backend-unit'] };
     const calls = fakeApi({
       'GET /me': () => ({ body: admin }),
@@ -469,6 +471,8 @@ describe('project administration', () => {
       'GET /qa/schedules': () => ({ body: [] }),
       'GET /admin/storage': () => ({ body: storage }),
       'POST /admin/retention/run': () => ({ body: storage.lastRun }),
+      'GET /admin/backup-drills': () => ({ body: drills }),
+      'POST /admin/backup-drills': () => { drills.unshift({ ...drills[0], id: 'd2', trigger: 'MANUAL', actor: 'admin', status: 'RUNNING', error: null }); return { status: 202, body: drills[0] }; },
       'GET /admin/webhooks': () => ({ body: [] }),
       'GET /admin/tokens': () => ({ body: [] }),
       'GET /code-repositories': () => ({ body: [] }),
@@ -515,6 +519,10 @@ describe('project administration', () => {
     await waitFor(() => expect(calls.some(c => c.method === 'PUT' && c.path === '/admin/modules/qa/enabled')).toBe(true));
     await userEvent.click(screen.getByRole('button', { name: 'Apply retention now' }));
     await waitFor(() => expect(calls.some(c => c.method === 'POST' && c.path === '/admin/retention/run')).toBe(true));
+    expect(screen.getByText('audit_events has 12 rows, expected at least 398')).toBeInTheDocument();
+    expect(screen.getByText('1.6 MiB')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Run drill now' }));
+    expect(await screen.findByRole('button', { name: 'Drill running…' })).toBeDisabled();
     const hooks = screen.getByRole('heading', { name: 'Notifications' }).closest('section')!;
     await userEvent.type(within(hooks).getByLabelText('Name'), 'Team chat');
     await userEvent.type(within(hooks).getByLabelText('URL'), 'https://hooks.example.com/x');

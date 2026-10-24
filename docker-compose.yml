@@ -64,6 +64,10 @@ services:
       EAHP_SMTP_PASSWORD: ${EAHP_SMTP_PASSWORD:-}
       EAHP_SMTP_FROM: ${EAHP_SMTP_FROM:-}
       EAHP_SMTP_STARTTLS: ${EAHP_SMTP_STARTTLS:-true}
+      # Backup-restore drills (P42): nightly through the QA runner's Docker access, on this stack's network.
+      EAHP_BACKUP_DRILL_ENABLED: ${EAHP_BACKUP_DRILL_ENABLED:-true}
+      EAHP_BACKUP_DRILL_NETWORK: enterprise-agent-harness-platform_default
+      EAHP_BACKUP_DRILL_IMAGE: postgres:16
       # Code agent egress (P37): "proxy" (default) allows only EAHP_CODE_AGENT_EGRESS_ALLOW through EAHP's proxy; "open" is unrestricted.
       EAHP_EGRESS_ENABLED: "true"
       EAHP_CODE_AGENT_NETWORK: ${EAHP_CODE_AGENT_NETWORK:-proxy}
