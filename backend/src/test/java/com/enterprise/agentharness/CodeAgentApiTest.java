@@ -50,6 +50,7 @@ class CodeAgentApiTest {
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
     static final List<String> pulls = new CopyOnWriteArrayList<>();
     static volatile boolean agentChanges = true, agentError = false;
+    static volatile String mavenSettings;
     private static final HttpServer GITHUB = startGitHub();
 
     @Autowired MockMvc mvc;
@@ -66,8 +67,12 @@ class CodeAgentApiTest {
                 calls.add(List.copyOf(argv));
                 if (argv.contains("ls-remote")) Files.writeString(logFile, SHA + "\trefs/heads/main\n");
                 if (argv.contains("clone")) Files.createDirectories(Path.of(argv.get(argv.size() - 1)));
+                if (argv.get(0).equals("docker") && argv.get(1).equals("inspect")) Files.writeString(logFile, "172.30.9.7\n");
                 if (argv.get(0).equals("docker") && argv.get(1).equals("run")) {
                     Path src = Path.of(argv.get(argv.indexOf("-w") + 1));
+                    String home = argv.stream().filter(a -> a.startsWith("HOME=")).findFirst().orElseThrow().substring(5);
+                    Path settings = Path.of(home, ".m2", "settings.xml");
+                    mavenSettings = Files.exists(settings) ? Files.readString(settings) : null;
                     String result = argv.stream().filter(a -> a.startsWith("EAHP_RESULT=")).findFirst().orElseThrow().substring(12);
                     Files.writeString(Path.of(result), "{\"type\":\"result\",\"is_error\":" + agentError + ",\"result\":\"Fixed the rounding in OrderTotals.\",\"num_turns\":6,\"total_cost_usd\":0.42}");
                     if (agentChanges) Files.writeString(src.resolve("OrderTotals.java"), "class OrderTotals {}");
@@ -114,11 +119,14 @@ class CodeAgentApiTest {
         registry.add("eahp.ai.anthropic.api-key", () -> "sk-ant-test-only");
         registry.add("eahp.github.write-token", () -> "ghp_test_write");
         registry.add("eahp.github.api", () -> "http://127.0.0.1:" + GITHUB.getAddress().getPort());
+        registry.add("eahp.qa.self-container", () -> "eahp-backend");
+        registry.add("eahp.egress.enabled", () -> "true");
+        registry.add("eahp.egress.port", () -> "0");
     }
     @AfterAll static void stop() throws IOException { GITHUB.stop(0); POSTGRES.close(); }
 
     @BeforeEach
-    void reset() { tasks.deleteAll(); jdbc.update("DELETE FROM code_repositories"); calls.clear(); pulls.clear(); agentChanges = true; agentError = false; }
+    void reset() { tasks.deleteAll(); jdbc.update("DELETE FROM code_repositories"); calls.clear(); pulls.clear(); agentChanges = true; agentError = false; mavenSettings = null; }
 
     private ResultActions putRepo(String token, String body) throws Exception {
         return mvc.perform(put("/api/v1/admin/code-repositories/online-shop").header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON).content(body));
@@ -167,6 +175,15 @@ class CodeAgentApiTest {
         assertThat(docker).contains("--cap-drop", "ALL", "no-new-privileges", "ANTHROPIC_API_KEY", "EAHP_MAX_TURNS=25")
                 .noneMatch(a -> a.contains("sk-ant-test-only")).noneMatch(a -> a.contains("ghp_test_write"));
         assertThat(docker.get(docker.size() - 1)).contains("claude --bare -p --output-format json --permission-mode acceptEdits --permission-prompts none");
+        // Egress: an internal network of its own, joined by EAHP, and only the allowlisting proxy on EAHP's address as a way out.
+        String net = "eahp-agent-" + run.get("id").asText().substring(0, 8) + "-1";
+        assertThat(calls).anyMatch(c -> c.equals(List.of("docker", "network", "create", "--internal", "--label", "eahp.run=" + run.get("id").asText(), net)));
+        assertThat(calls).anyMatch(c -> c.equals(List.of("docker", "network", "connect", net, "eahp-backend")));
+        assertThat(docker.get(docker.indexOf("--network") + 1)).isEqualTo(net);
+        assertThat(docker).anyMatch(a -> a.matches("HTTPS_PROXY=http://172\\.30\\.9\\.7:\\d+")).anyMatch(a -> a.startsWith("MAVEN_OPTS=-Duser.home="));
+        assertThat(mavenSettings).contains("<host>172.30.9.7</host>").contains("<protocol>https</protocol>");
+        assertThat(calls).anyMatch(c -> c.equals(List.of("docker", "network", "rm", net)));
+        assertThat(calls.indexOf(calls.stream().filter(c -> c.contains("rm") && c.contains(net)).findFirst().orElseThrow())).isGreaterThan(calls.indexOf(docker));
         // The push uses an askpass helper: no token in any command line.
         var push = calls.stream().filter(c -> c.contains("push")).findFirst().orElseThrow();
         assertThat(push).contains("HEAD:refs/heads/eahp/code-agent/" + run.get("id").asText().substring(0, 8)).noneMatch(a -> a.contains("ghp_test_write"));
@@ -176,7 +193,12 @@ class CodeAgentApiTest {
 
         var artifacts = mapper.readTree(mvc.perform(get("/api/v1/agent-runs/" + done.id() + "/artifacts").header("Authorization", "Bearer " + VIEWER))
                 .andReturn().getResponse().getContentAsString());
-        assertThat(artifacts.findValuesAsText("name")).contains("summary.json", "diff.patch", "changes.txt", "agent-result.json", "console.log");
+        assertThat(artifacts.findValuesAsText("name")).contains("summary.json", "diff.patch", "changes.txt", "agent-result.json", "console.log", "egress.log");
+        String summaryId = null;
+        for (JsonNode a : artifacts) if (a.get("name").asText().equals("summary.json")) summaryId = a.get("id").asText();
+        var summary = mapper.readTree(mvc.perform(get("/api/v1/artifacts/" + summaryId + "/content").header("Authorization", "Bearer " + VIEWER)).andReturn().getResponse().getContentAsString());
+        assertThat(summary.at("/egress/mode").asText()).isEqualTo("proxy");
+        assertThat(summary.at("/egress/allow").toString()).contains("api.anthropic.com").contains("registry.npmjs.org");
         assertThat(Files.list(WORKDIR.resolve("code-runs")).count()).isZero(); // the workspace is removed
     }
 
