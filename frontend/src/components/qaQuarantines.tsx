@@ -15,7 +15,9 @@ export const testLabel = (cls: string, test: string) => `${cls.includes('/') ? c
 export function QuarantinePanel({ project, failing }: { project: string; failing: FailingTest[] }) {
   const { can } = useSession();
   const quarantines = usePolling(() => api.quarantines(project), [project], 30000);
+  const suggestions = usePolling(() => api.quarantineSuggestions(project), [project], 30000);
   const action = useAction();
+  const decide = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) { void suggestions.reload(); void quarantines.reload(); } };
   const candidates = failing.filter(f => !(quarantines.data ?? []).some(q => q.suiteKey === f.suite && q.testClass === f.testClass && q.testName === f.testName));
   const [form, setForm] = useState({ test: '', reason: '', days: 7 });
   const change = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) { setForm({ test: '', reason: '', days: 7 }); void quarantines.reload(); } };
@@ -28,7 +30,30 @@ export function QuarantinePanel({ project, failing }: { project: string; failing
   return (
     <Section title="Quarantined tests">
       <p className="muted small">A quarantined test still runs and is recorded, but a suite that fails only in quarantined tests does not block the gate, as long as it ran at least as many tests as its last passing run. Quarantines expire after at most 30 days.</p>
-      <ErrorBanner error={quarantines.error ?? action.error} />
+      <ErrorBanner error={quarantines.error ?? suggestions.error ?? action.error} />
+      {(suggestions.data?.length ?? 0) > 0 && (
+        <div className="stack-tight">
+          <h3 className="subhead">Suggested by EAHP</h3>
+          {suggestions.data!.map(s => (
+            <article key={s.id} className="item small">
+              <div className="row spread">
+                <div><code title={`${s.testClass}#${s.testName}`}>{testLabel(s.testClass, s.testName)}</code> <span className="muted">in {s.suiteKey}</span>
+                  <div>Passed and failed at the same commit on {s.flakyCommits} commit{s.flakyCommits === 1 ? '' : 's'} in {s.evidence.windowDays} days:{' '}
+                    {s.evidence.commits.map(c => <code key={c.commit} title={`${c.passed} passed, ${c.failed} failed`}>{c.commit.slice(0, 7)} </code>)}</div>
+                  {s.evidence.lastFailure && <div className="muted wrap">Last failure: {s.evidence.lastFailure}</div>}
+                </div>
+                {can('APPROVER') && <div className="row">
+                  <button className="secondary" disabled={action.busy} onClick={() => void decide(() => api.admin.acceptSuggestion(s.id))}>Quarantine 14 days</button>
+                  <button className="secondary" disabled={action.busy} onClick={() => {
+                    const note = window.prompt('Why is this not flaky? (optional)');
+                    if (note !== null) void decide(() => api.admin.dismissSuggestion(s.id, note.trim()));
+                  }}>Dismiss</button>
+                </div>}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
       {quarantines.data?.length === 0 && <Empty>No test is quarantined.</Empty>}
       {quarantines.data && quarantines.data.length > 0 && (
         <div className="table-wrap"><table>

@@ -419,6 +419,35 @@ describe('quality page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Release' }));
     expect(await screen.findByText('No test is quarantined.')).toBeInTheDocument();
   });
+
+  it('shows flaky-test suggestions with their evidence and lets approvers confirm or dismiss them', async () => {
+    tokenStore.set(TOKEN);
+    const suggestion = (id: string, cls: string) => ({ id, projectKey: 'online-shop', suiteKey: 'backend-unit', testClass: cls, testName: 'creates', flakyCommits: 2,
+      evidence: { windowDays: 14, commits: [{ commit: 'a'.repeat(40), passed: 1, failed: 1, lastAt: '2026-10-24T00:00:00Z' }, { commit: 'b'.repeat(40), passed: 2, failed: 1, lastAt: '2026-10-23T00:00:00Z' }],
+        lastFailure: 'expected 201 but was 500' }, status: 'PENDING', createdAt: '2026-10-24T00:00:00Z', decidedBy: null, decidedAt: null, decisionNote: null, quarantineId: null });
+    let pending = [suggestion('s1', 'com.example.OrderTest'), suggestion('s2', 'com.example.StockTest')];
+    const calls = fakeApi({
+      'GET /me': () => ({ body: { name: 'admin', roles: ['APPROVER', 'OPERATOR', 'VIEWER'] } }),
+      'GET /qa/projects': () => ({ body: projects }),
+      'GET /qa/projects/online-shop/dashboard': () => ({ body: { project: 'online-shop', days: 14, runs: 1, passed: 0, passRate: 0, gate: null,
+        suites: [], failingNow: [], flaky: [], slowest: [], pullRequests: [] } }),
+      'GET /qa/quarantines': () => ({ body: [] }),
+      'GET /qa/quarantine-suggestions': () => ({ body: pending }),
+      'POST /qa/admin/quarantine-suggestions/s1/accept': () => { pending = pending.filter(p => p.id !== 's1'); return { body: {} }; },
+      'POST /qa/admin/quarantine-suggestions/s2/dismiss': () => { pending = []; return { body: {} }; },
+    });
+    renderApp('/qa/quality');
+    expect(await screen.findByText('OrderTest#creates')).toBeInTheDocument();
+    expect(screen.getAllByText(/Passed and failed at the same commit on 2 commits in 14 days/)).toHaveLength(2);
+    expect(screen.getAllByText('Last failure: expected 201 but was 500')).toHaveLength(2);
+    await userEvent.click(screen.getAllByRole('button', { name: 'Quarantine 14 days' })[0]);
+    await waitFor(() => expect(screen.queryByText('OrderTest#creates')).not.toBeInTheDocument());
+    vi.spyOn(window, 'prompt').mockReturnValue('Real race, fixing in #61');
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(screen.queryByText('Suggested by EAHP')).not.toBeInTheDocument());
+    expect(calls.find(c => c.path.endsWith('/s2/dismiss'))!.body).toEqual({ note: 'Real race, fixing in #61' });
+    expect(calls.find(c => c.path.startsWith('/qa/quarantine-suggestions'))!.path).toBe('/qa/quarantine-suggestions?project=online-shop&status=PENDING');
+  });
 });
 
 const storage = { tableBytes: { run_artifacts: 581632 }, liveArtifacts: 12, liveArtifactBytes: 43008, expiredArtifacts: 3, artifactDays: 30, testResultDays: 180,

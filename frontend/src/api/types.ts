@@ -155,6 +155,12 @@ export interface NewCodeCoverage {
   changedFiles: number; covered: number; missed: number; percent: number | null;
   files: { path: string; covered: number; missed: number; uncoveredLines: number[] }[];
 }
+export interface QuarantineSuggestion {
+  id: string; projectKey: string; suiteKey: string; testClass: string; testName: string; flakyCommits: number;
+  evidence: { windowDays: number; commits: { commit: string; passed: number; failed: number; lastAt: string }[]; lastFailure: string | null };
+  status: 'PENDING' | 'ACCEPTED' | 'DISMISSED' | 'RESOLVED'; createdAt: string; decidedBy: string | null; decidedAt: string | null;
+  decisionNote: string | null; quarantineId: string | null;
+}
 export interface PerformanceLimit { maxP95Ms?: number | null; maxErrorRate?: number | null; maxP95IncreasePercent?: number | null }
 export interface PerformancePoint {
   runId: string; suite: string; commit: string; outcome: string | null; at: string; requests: number; requestsPerSecond: number;

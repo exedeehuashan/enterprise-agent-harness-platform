@@ -1,6 +1,6 @@
 import type {
   AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
-  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, CoveragePoint, NewCodeCoverage,
+  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, CoveragePoint, NewCodeCoverage,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -110,6 +110,8 @@ export const api = {
     deleteEnvironment: (project: string, key: string) => request<null>(`/qa/admin/projects/${project}/environments/${key}`, { method: 'DELETE' }).then(r => r.data),
     quarantine: (body: Record<string, unknown>) => post<Quarantine>('/qa/admin/quarantines', body),
     releaseQuarantine: (id: string) => post<Quarantine>(`/qa/admin/quarantines/${id}/release`, undefined),
+    acceptSuggestion: (id: string) => post<QuarantineSuggestion>(`/qa/admin/quarantine-suggestions/${id}/accept`, {}),
+    dismissSuggestion: (id: string, note: string) => post<QuarantineSuggestion>(`/qa/admin/quarantine-suggestions/${id}/dismiss`, note ? { note } : {}),
   },
   environments: (project: string) => get<QaEnvironment[]>(`/qa/environments${query({ project })}`),
   apiTests: (project: string, ref?: string) => get<ApiTestCatalog>(`/qa/projects/${project}/api-tests${query({ ref })}`),
@@ -144,6 +146,7 @@ export const api = {
   webhookEnabled: (id: string, enabled: boolean) => request<Webhook>(`/admin/webhooks/${id}/enabled`, { method: 'PUT', body: { enabled } }).then(r => r.data),
   deleteWebhook: (id: string) => request<null>(`/admin/webhooks/${id}`, { method: 'DELETE' }).then(r => r.data),
   quarantines: (project: string) => get<Quarantine[]>(`/qa/quarantines${query({ project })}`),
+  quarantineSuggestions: (project: string) => get<QuarantineSuggestion[]>(`/qa/quarantine-suggestions${query({ project, status: 'PENDING' })}`),
   qaTriage: (runId: string) => get<Triage>(`/qa/runs/${runId}/triage`),
   suiteCatalog: (project: string, ref?: string) => get<SuiteCatalog>(`/qa/projects/${project}/suites${query({ ref })}`),
   pullRequestRuns: (project?: string) => get<PullRequestRun[]>(`/qa/pull-requests${query({ project, limit: 100 })}`),
