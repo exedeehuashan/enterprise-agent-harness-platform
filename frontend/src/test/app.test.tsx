@@ -125,3 +125,60 @@ describe('languages', () => {
     expect(seen).toBe('仅 3 个受影响模块 | Not in the dictionary');
   });
 });
+
+describe('single sign-on', () => {
+  const IDP = 'http://127.0.0.1:8180/realms/eahp';
+  const discovery = { issuer: IDP, authorization_endpoint: `${IDP}/protocol/openid-connect/auth`, token_endpoint: `${IDP}/protocol/openid-connect/token` };
+
+  it('starts the authorization code flow with PKCE from the login page', async () => {
+    const { navigation } = await import('../sso');
+    const assign = vi.fn();
+    navigation.assign = assign;
+    fakeApi({
+      'GET /auth/config': () => ({ body: { oidc: { issuer: IDP, clientId: 'eahp-console', scope: 'openid profile' } } }),
+      [`GET ${IDP}/.well-known/openid-configuration`]: () => ({ body: discovery }),
+    });
+    renderApp('/');
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign in with SSO' }));
+    await waitFor(() => expect(assign).toHaveBeenCalled());
+    const url = new URL(assign.mock.calls[0][0] as string);
+    expect(url.origin + url.pathname).toBe(discovery.authorization_endpoint);
+    expect(url.searchParams.get('client_id')).toBe('eahp-console');
+    expect(url.searchParams.get('response_type')).toBe('code');
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(url.searchParams.get('redirect_uri')).toBe(`${window.location.origin}/auth/callback`);
+    const pending = JSON.parse(sessionStorage.getItem('eahp.sso.pending')!);
+    expect(url.searchParams.get('state')).toBe(pending.state);
+  });
+
+  it('exchanges the code on the callback page and signs in with the access token', async () => {
+    sessionStorage.setItem('eahp.sso.pending', JSON.stringify({ verifier: 'v'.repeat(64), state: 'st4te', tokenEndpoint: discovery.token_endpoint, clientId: 'eahp-console' }));
+    window.history.pushState(null, '', '/auth/callback?code=abc123&state=st4te');
+    const calls = fakeApi({
+      [`POST ${discovery.token_endpoint}`]: () => ({ body: { access_token: 'header.payload.signature', token_type: 'Bearer' } }),
+      'GET /me': c => (c.headers.Authorization === 'Bearer header.payload.signature'
+        ? { body: { name: 'sso:alice', roles: ['VIEWER', 'OPERATOR', 'APPROVER'] } } : { status: 401, body: {} }),
+      'GET /agent-tasks': () => ({ body: { items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 } }),
+    });
+    renderApp('/');
+    expect(await screen.findByText('sso:alice')).toBeInTheDocument();
+    const exchange = calls.find(c => c.path === discovery.token_endpoint)!;
+    expect(exchange.method).toBe('POST');
+    const form = new URLSearchParams(exchange.body as string);
+    expect(form.get('grant_type')).toBe('authorization_code');
+    expect(form.get('code')).toBe('abc123');
+    expect(form.get('code_verifier')).toBe('v'.repeat(64));
+    expect(window.location.pathname).toBe('/');
+    expect(sessionStorage.getItem('eahp.sso.pending')).toBeNull();
+  });
+
+  it('rejects a callback whose state does not match', async () => {
+    sessionStorage.setItem('eahp.sso.pending', JSON.stringify({ verifier: 'v', state: 'expected', tokenEndpoint: discovery.token_endpoint, clientId: 'eahp-console' }));
+    window.history.pushState(null, '', '/auth/callback?code=abc&state=forged');
+    fakeApi({});
+    renderApp('/');
+    expect(await screen.findByText(/did not match the request/)).toBeInTheDocument();
+    window.history.pushState(null, '', '/');
+  });
+});

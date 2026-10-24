@@ -1,0 +1,43 @@
+{
+  "realm": "eahp",
+  "displayName": "EAHP (local development)",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 3600,
+  "roles": {
+    "realm": [
+      {"name": "eahp-viewer", "description": "EAHP: read"},
+      {"name": "eahp-operator", "description": "EAHP: read, create and run"},
+      {"name": "eahp-approver", "description": "EAHP: everything, including approvals and administration"}
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "eahp-console",
+      "name": "EAHP Console",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": ["http://127.0.0.1:8088/auth/callback", "http://localhost:8088/auth/callback"],
+      "webOrigins": ["http://127.0.0.1:8088", "http://localhost:8088"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "protocolMappers": [
+        {
+          "name": "eahp-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {"included.custom.audience": "eahp", "access.token.claim": "true", "id.token.claim": "false"}
+        }
+      ]
+    }
+  ],
+  "users": [
+    {"username": "alice", "enabled": true, "email": "alice@example.test", "emailVerified": true, "firstName": "Alice", "lastName": "Approver",
+     "credentials": [{"type": "password", "value": "__ALICE_PASSWORD__", "temporary": false}], "realmRoles": ["eahp-approver"]},
+    {"username": "bob", "enabled": true, "email": "bob@example.test", "emailVerified": true, "firstName": "Bob", "lastName": "Operator",
+     "credentials": [{"type": "password", "value": "__BOB_PASSWORD__", "temporary": false}], "realmRoles": ["eahp-operator"]},
+    {"username": "carol", "enabled": true, "email": "carol@example.test", "emailVerified": true, "firstName": "Carol", "lastName": "Viewer",
+     "credentials": [{"type": "password", "value": "__CAROL_PASSWORD__", "temporary": false}], "realmRoles": ["eahp-viewer"]}
+  ]
+}

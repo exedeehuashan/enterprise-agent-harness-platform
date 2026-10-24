@@ -521,6 +521,13 @@ repository. Suites can declare `gradle-projects`, `npm-workspaces` or
 `pnpm-workspaces` selection to test only the affected projects or packages. See
 [P45 design notes](docs/p45-gradle-and-workspace-impact.md).
 
+**Single sign-on.** The console can sign in through the organisation's OIDC
+provider (Authorization Code with PKCE). The backend verifies the access tokens
+and maps provider roles (`eahp-viewer`, `eahp-operator`, `eahp-approver`) to EAHP
+roles; API tokens keep working. For a local Keycloak with test users, run
+`scripts/sso-dev.sh`, then `EAHP_SSO=on scripts/deploy.sh`. See
+[P46 design notes](docs/p46-single-sign-on.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

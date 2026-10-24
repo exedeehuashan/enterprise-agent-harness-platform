@@ -4,3 +4,4 @@ backups/
 *.log
 .idea/
 *.iml
+sso/generated/

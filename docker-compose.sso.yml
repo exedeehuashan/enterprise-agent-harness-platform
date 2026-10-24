@@ -1,0 +1,35 @@
+# Opt-in: a local Keycloak for single sign-on development (P46). Prepare it once with scripts/sso-dev.sh.
+# Usage: EAHP_SSO=on scripts/deploy.sh   (or add -f docker-compose.sso.yml to docker compose commands)
+# For a real identity provider, set EAHP_SSO_ISSUER / EAHP_SSO_JWKS_URI / EAHP_SSO_ORIGIN in .env instead.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    restart: unless-stopped
+    env_file: [sso/generated/keycloak.env]
+    environment:
+      # The issuer browsers and EAHP agree on; EAHP fetches keys over the internal network.
+      KC_HOSTNAME: http://127.0.0.1:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./sso/generated/import:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:8180:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+  backend:
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      EAHP_SECURITY_OIDC_ISSUER: http://127.0.0.1:8180/realms/eahp
+      EAHP_SECURITY_OIDC_JWKS_URI: http://keycloak:8080/realms/eahp/protocol/openid-connect/certs
+  console:
+    environment:
+      EAHP_CSP_CONNECT_EXTRA: http://127.0.0.1:8180

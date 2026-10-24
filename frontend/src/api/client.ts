@@ -87,6 +87,11 @@ export const api = {
   artifacts: (runId: string) => get<Artifact[]>(`/agent-runs/${runId}/artifacts`),
   artifactBlob: async (id: string): Promise<Blob> => (await artifactContent(id)).blob(),
   qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
+  /** Public sign-in settings (no token needed): whether single sign-on is available. */
+  authConfig: async (): Promise<{ oidc: { issuer: string; clientId: string; scope: string } | null }> => {
+    const res = await fetch('/api/v1/auth/config', { headers: { Accept: 'application/json' } });
+    return res.ok ? res.json() : { oidc: null };
+  },
   qaProjects: () => get<QaProject[]>('/qa/projects'),
   storage: () => get<StorageReport>('/admin/storage'),
   autoFixes: (project: string) => get<AutoFix[]>(`/qa/auto-fixes${query({ project })}`),
