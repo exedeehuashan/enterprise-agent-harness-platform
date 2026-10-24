@@ -8,8 +8,10 @@ import { RunCodeAgentForm } from '../components/codeAgent';
 import { Empty, ErrorBanner, Section, ShortId, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
+import { useT } from '../i18n';
 
 export function TaskDetailPage() {
+  const tr = useT();
   const { id = '' } = useParams();
   const task = usePolling(() => api.getTask(id), [id]);
   const executions = usePolling(() => api.executions(id), [id]);
@@ -17,7 +19,7 @@ export function TaskDetailPage() {
   if (!task.data) return <ErrorBanner error={task.error} />;
   return (
     <>
-      <p><Link to="/">← Tasks</Link></p>
+      <p><Link to="/">{tr('← Tasks')}</Link></p>
       <TaskHeader task={task.data.task} etag={task.data.etag} onSaved={task.reload} />
       <Runs taskId={id} />
       <Plans taskId={id} executions={executions} />
@@ -27,6 +29,7 @@ export function TaskDetailPage() {
 }
 
 function TaskHeader({ task, etag, onSaved }: { task: Task; etag: string; onSaved: () => void }) {
+  const tr = useT();
   const { can } = useSession();
   const [editing, setEditing] = useState<{ title: string; description: string; etag: string } | null>(null);
   const action = useAction();
@@ -45,29 +48,29 @@ function TaskHeader({ task, etag, onSaved }: { task: Task; etag: string; onSaved
       <>
         <Status value={task.status} />
         {can('OPERATOR') && !editing && (
-          <button className="secondary" onClick={() => setEditing({ title: task.title, description: task.description ?? '', etag })}>Edit</button>
+          <button className="secondary" onClick={() => setEditing({ title: task.title, description: task.description ?? '', etag })}>{tr('Edit')}</button>
         )}
       </>
     }>
       {editing ? (
         <form className="stack" onSubmit={save}>
-          <label>Title<input value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} maxLength={255} required /></label>
-          <label>Description<textarea value={editing.description} rows={3} maxLength={10000}
+          <label>{tr('Title')}<input value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} maxLength={255} required /></label>
+          <label>{tr('Description')}<textarea value={editing.description} rows={3} maxLength={10000}
             onChange={e => setEditing({ ...editing, description: e.target.value })} /></label>
           <ErrorBanner error={action.error} />
           <div className="row">
-            <button type="submit" disabled={action.busy || !editing.title.trim()}>Save</button>
-            <button type="button" className="secondary" onClick={() => { setEditing(null); action.clear(); }}>Cancel</button>
+            <button type="submit" disabled={action.busy || !editing.title.trim()}>{tr('Save')}</button>
+            <button type="button" className="secondary" onClick={() => { setEditing(null); action.clear(); }}>{tr('Cancel')}</button>
           </div>
         </form>
       ) : (
         <>
-          <p className="pre">{task.description ?? <span className="muted">No description</span>}</p>
+          <p className="pre">{task.description ?? <span className="muted">{tr('No description')}</span>}</p>
           <dl className="meta">
             <dt>ID</dt><dd><code>{task.id}</code></dd>
-            <dt>Version</dt><dd>{task.version}</dd>
-            <dt>Created</dt><dd><Time value={task.createdAt} /></dd>
-            <dt>Updated</dt><dd><Time value={task.updatedAt} /></dd>
+            <dt>{tr('Version')}</dt><dd>{task.version}</dd>
+            <dt>{tr('Created')}</dt><dd><Time value={task.createdAt} /></dd>
+            <dt>{tr('Updated')}</dt><dd><Time value={task.updatedAt} /></dd>
           </dl>
         </>
       )}
@@ -76,6 +79,7 @@ function TaskHeader({ task, etag, onSaved }: { task: Task; etag: string; onSaved
 }
 
 function Runs({ taskId }: { taskId: string }) {
+  const tr = useT();
   const { can } = useSession();
   const runs = usePolling(() => api.runs(taskId), [taskId]);
   const tools = usePolling(() => api.tools(), [], 0);
@@ -91,42 +95,42 @@ function Runs({ taskId }: { taskId: string }) {
   return (
     <>
     {can('OPERATOR') && (
-      <Section title="Run test suite">
+      <Section title={tr('Run test suite')}>
         <RunSuiteForm taskId={taskId} onStarted={() => void runs.reload()} />
       </Section>
     )}
     {can('OPERATOR') && (
-      <Section title="Code agent">
+      <Section title={tr('Code agent')}>
         <RunCodeAgentForm taskId={taskId} onStarted={() => void runs.reload()} />
       </Section>
     )}
     {can('OPERATOR') && (
-      <Section title="Run API tests">
+      <Section title={tr('Run API tests')}>
         <RunApiTestsForm taskId={taskId} onStarted={() => void runs.reload()} />
       </Section>
     )}
-    <Section title="Runs">
+    <Section title={tr('Runs')}>
       {can('OPERATOR') && (
         <form className="row" onSubmit={start}>
-          <label className="inline">Tool
+          <label className="inline">{tr('Tool')}
             <select value={tool} onChange={e => setTool(e.target.value)}>
               {(tools.data ?? []).filter(t => t.enabled && !isQaTool(t.name) && t.name !== 'CODE_AGENT_RUN').map(t => (
-                <option key={t.name} value={t.name}>{t.name}{t.requiresApproval ? ' (needs approval)' : ''}</option>
+                <option key={t.name} value={t.name}>{t.name}{t.requiresApproval ? tr(' (needs approval)') : ''}</option>
               ))}
             </select>
           </label>
-          <label className="inline">Timeout (s)
+          <label className="inline">{tr('Timeout (s)')}
             <input type="number" min={1} max={300} value={timeout} onChange={e => setTimeoutSeconds(Number(e.target.value))} />
           </label>
-          <button type="submit" disabled={action.busy}>Start run</button>
+          <button type="submit" disabled={action.busy}>{tr('Start run')}</button>
         </form>
       )}
       <ErrorBanner error={action.error ?? runs.error} />
-      {runs.data && runs.data.items.length === 0 && <Empty>No runs yet.</Empty>}
+      {runs.data && runs.data.items.length === 0 && <Empty>{tr('No runs yet.')}</Empty>}
       {runs.data && runs.data.items.length > 0 && (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Run</th><th>What</th><th>Status</th><th>Created</th><th>Error</th></tr></thead>
+            <thead><tr><th>{tr('Run')}</th><th>{tr('What')}</th><th>{tr('Status')}</th><th>{tr('Created')}</th><th>{tr('Error')}</th></tr></thead>
             <tbody>
               {runs.data.items.map(r => (
                 <tr key={r.id}>
@@ -149,6 +153,7 @@ function Runs({ taskId }: { taskId: string }) {
 type ExecutionsState = ReturnType<typeof usePolling<Page<PlanExecution>>>;
 
 function Plans({ taskId, executions }: { taskId: string; executions: ExecutionsState }) {
+  const tr = useT();
   const { can } = useSession();
   const plans = usePolling(() => api.plans(taskId), [taskId]);
   const action = useAction();
@@ -160,10 +165,10 @@ function Plans({ taskId, executions }: { taskId: string; executions: ExecutionsS
   };
 
   return (
-    <Section title="Plans" actions={can('OPERATOR') && <button onClick={plan} disabled={action.busy}>Request plan</button>}>
+    <Section title={tr('Plans')} actions={can('OPERATOR') && <button onClick={plan} disabled={action.busy}>{tr('Request plan')}</button>}>
       <p className="muted small">Plans come from the configured model provider. A validated plan is a proposal only; executing it runs each step through the normal run and approval path.</p>
       <ErrorBanner error={action.error ?? plans.error} />
-      {plans.data && plans.data.items.length === 0 && <Empty>No plans yet.</Empty>}
+      {plans.data && plans.data.items.length === 0 && <Empty>{tr('No plans yet.')}</Empty>}
       {plans.data?.items.map(call => (
         <article key={call.id} className="item">
           <div className="row spread">
@@ -171,7 +176,7 @@ function Plans({ taskId, executions }: { taskId: string; executions: ExecutionsS
             <div className="row">
               {call.errorCode && <span className="muted small">{call.errorCode}</span>}
               {can('OPERATOR') && call.status === 'VALIDATED' && !executed.has(call.id) && (
-                <button onClick={() => execute(call)} disabled={action.busy}>Execute plan</button>
+                <button onClick={() => execute(call)} disabled={action.busy}>{tr('Execute plan')}</button>
               )}
             </div>
           </div>
@@ -190,10 +195,11 @@ function Plans({ taskId, executions }: { taskId: string; executions: ExecutionsS
 }
 
 function Executions({ executions }: { executions: ExecutionsState }) {
+  const tr = useT();
   return (
-    <Section title="Plan executions">
+    <Section title={tr('Plan executions')}>
       <ErrorBanner error={executions.error} />
-      {executions.data && executions.data.items.length === 0 && <Empty>No plan executions yet.</Empty>}
+      {executions.data && executions.data.items.length === 0 && <Empty>{tr('No plan executions yet.')}</Empty>}
       {executions.data?.items.map((e: PlanExecution) => (
         <article key={e.id} className="item">
           <div className="row spread">

@@ -5,6 +5,7 @@ import type { QaProject } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
 import { ErrorBanner, Time } from './ui';
+import { useT } from '../i18n';
 
 const STATUS_BADGE: Record<string, string> = { STARTING: 'badge-warn', RUNNING: 'badge-ok', STOPPED: 'badge-muted', FAILED: 'badge-bad' };
 
@@ -13,6 +14,7 @@ const STATUS_BADGE: Record<string, string> = { STARTING: 'badge-warn', RUNNING: 
  * stack (approval required), and the temporary environments with their expiry.
  */
 export function TemporaryEnvironmentsPanel({ project }: { project: QaProject }) {
+  const tr = useT();
   const { can } = useSession();
   const templates = usePolling(() => api.environmentTemplates(project.key), [project.key], 0);
   const live = usePolling(() => api.temporaryEnvironments(project.key), [project.key], 15000);
@@ -26,12 +28,12 @@ export function TemporaryEnvironmentsPanel({ project }: { project: QaProject }) 
   const t = templates.data;
   return (
     <>
-      <h3 className="subhead">Per-commit environments</h3>
+      <h3 className="subhead">{tr('Per-commit environments')}</h3>
       <ErrorBanner error={templates.error ?? live.error ?? action.error} />
       {t && t.file !== 'found' && (
         <p className="muted small">
-          {t.file === 'absent' && <>No <code>.eahp/environments.json</code> at {t.ref}.</>}
-          {t.file === 'disabled' && 'This project does not allow repository-declared environments.'}
+          {t.file === 'absent' && <>{tr('No')} <code>.eahp/environments.json</code> at {t.ref}.</>}
+          {t.file === 'disabled' && tr('This project does not allow repository-declared environments.')}
           {t.file === 'invalid' && <span className="error">{t.error}</span>}
         </p>
       )}
@@ -41,23 +43,23 @@ export function TemporaryEnvironmentsPanel({ project }: { project: QaProject }) 
             <div className="muted small">{tpl.compose.join(', ')} · services {tpl.services.map(s => s.name).join(', ')} · tests {tpl.apiTests.join(', ') || 'none'} · lives {tpl.ttlMinutes} min</div>
           </div>
           {can('OPERATOR') && <div className="row">
-            <button className="secondary" disabled={action.busy || tpl.apiTests.length === 0} onClick={() => void start(tpl.key, 'test')}>Run tests on a fresh environment</button>
-            <button className="secondary" disabled={action.busy} onClick={() => void start(tpl.key, 'start')}>Start environment</button>
+            <button className="secondary" disabled={action.busy || tpl.apiTests.length === 0} onClick={() => void start(tpl.key, 'test')}>{tr('Run tests on a fresh environment')}</button>
+            <button className="secondary" disabled={action.busy} onClick={() => void start(tpl.key, 'start')}>{tr('Start environment')}</button>
           </div>}
         </div>
       ))}
-      {started && <p className="small">Started <Link to={`/runs/${started}`}>a run</Link>; it waits for an approver.</p>}
+      {started && <p className="small">{tr('Started')} <Link to={`/runs/${started}`}>{tr('a run')}</Link>; it waits for an approver.</p>}
       {(live.data?.length ?? 0) > 0 && (
         <div className="table-wrap"><table>
-          <thead><tr><th>Environment</th><th>Commit</th><th>Status</th><th>Expires / stopped</th><th /></tr></thead>
+          <thead><tr><th>{tr('Environment')}</th><th>{tr('Commit')}</th><th>{tr('Status')}</th><th>{tr('Expires / stopped')}</th><th /></tr></thead>
           <tbody>{live.data!.map(e => (
             <tr key={e.id}>
-              <td><code>{e.environmentKey}</code><div className="muted small">{e.template}{e.runId && <> · <Link to={`/runs/${e.runId}`}>run</Link></>}</div></td>
+              <td><code>{e.environmentKey}</code><div className="muted small">{e.template}{e.runId && <> · <Link to={`/runs/${e.runId}`}>{tr('run')}</Link></>}</div></td>
               <td><code>{e.commit.slice(0, 7)}</code></td>
               <td><span className={`badge ${STATUS_BADGE[e.status]}`}>{e.status.toLowerCase()}</span>{e.error && <div className="error small">{e.error}</div>}</td>
               <td className="small"><Time value={e.stoppedAt ?? e.expiresAt} /></td>
               <td>{can('OPERATOR') && (e.status === 'RUNNING' || e.status === 'STARTING') &&
-                <button className="danger" disabled={action.busy} onClick={() => window.confirm(`Stop and remove ${e.environmentKey}?`) && void stop(e.id)}>Stop</button>}</td>
+                <button className="danger" disabled={action.busy} onClick={() => window.confirm(`Stop and remove ${e.environmentKey}?`) && void stop(e.id)}>{tr('Stop')}</button>}</td>
             </tr>
           ))}</tbody>
         </table></div>

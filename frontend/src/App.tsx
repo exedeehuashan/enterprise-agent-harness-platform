@@ -10,28 +10,31 @@ import { RunPage } from './pages/RunPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { TasksPage } from './pages/TasksPage';
 import { useSession } from './session';
+import { LanguageSwitch, useT } from './i18n';
 
 export function App() {
+  const tr = useT();
   const { identity, loading, signOut, can } = useSession();
-  if (loading) return <main className="login"><p className="muted">Loading…</p></main>;
+  if (loading) return <main className="login"><p className="muted">{tr('Loading…')}</p></main>;
   if (!identity) return <LoginPage />;
 
   return (
     <>
       <header className="topbar">
-        <strong className="brand">EAHP Console</strong>
+        <strong className="brand">{tr('EAHP Console')}</strong>
         <nav>
-          <NavLink to="/" end>Tasks</NavLink>
-          <NavLink to="/qa" end>Test projects</NavLink>
-          <NavLink to="/qa/pull-requests">Pull requests</NavLink>
-          <NavLink to="/qa/quality">Quality</NavLink>
-          {can('APPROVER') && <NavLink to="/approvals">Approvals</NavLink>}
-          {can('APPROVER') && <NavLink to="/admin">Administration</NavLink>}
+          <NavLink to="/" end>{tr('Tasks')}</NavLink>
+          <NavLink to="/qa" end>{tr('Test projects')}</NavLink>
+          <NavLink to="/qa/pull-requests">{tr('Pull requests')}</NavLink>
+          <NavLink to="/qa/quality">{tr('Quality')}</NavLink>
+          {can('APPROVER') && <NavLink to="/approvals">{tr('Approvals')}</NavLink>}
+          {can('APPROVER') && <NavLink to="/admin">{tr('Administration')}</NavLink>}
         </nav>
         <div className="who">
           <span>{identity.name}</span>
           <span className="muted small">{identity.roles.join(' · ')}</span>
-          <button className="secondary" onClick={signOut}>Sign out</button>
+          <LanguageSwitch />
+          <button className="secondary" onClick={signOut}>{tr('Sign out')}</button>
         </div>
       </header>
       <main className="content">

@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { usePolling } from '../hooks';
 import type { PullRequestRun } from '../api/types';
+import { useT } from '../i18n';
 
 const REASONS: Record<string, string> = {
   FORK_NOT_TRUSTED: 'From a fork: not run automatically',
@@ -18,55 +19,57 @@ const FULL_REASONS: Record<string, string> = {
 };
 
 function Scope({ row }: { row: PullRequestRun }) {
+  const tr = useT();
   if (row.selection === 'MODULES' && row.selectedModules?.length) {
     const n = row.selectedModules.length;
-    return <div className="muted small" title={row.selectedModules.join('\n')}>{n} affected module{n === 1 ? '' : 's'} only</div>;
+    return <div className="muted small" title={row.selectedModules.join('\n')}>{tr(n === 1 ? '{n} affected module only' : '{n} affected modules only', { n })}</div>;
   }
   if (row.selection === 'FULL' && row.selectionReason && FULL_REASONS[row.selectionReason]) {
-    return <div className="muted small">full suite: {FULL_REASONS[row.selectionReason]}</div>;
+    return <div className="muted small">{tr('full suite: {reason}', { reason: tr(FULL_REASONS[row.selectionReason]) })}</div>;
   }
   return null;
 }
 
 /** What the GitHub poller saw for each pull request head commit, and what EAHP did about it. */
 export function PullRequestsPage() {
+  const tr = useT();
   const polls = usePolling(() => api.gitHubPolls(), [], 15000);
   const rows = usePolling(() => api.pullRequestRuns(), [], 5000);
   const [open, setOpen] = useState<string | null>(null);
 
   return (
     <>
-      <Section title="GitHub polling">
+      <Section title={tr('GitHub polling')}>
         <ErrorBanner error={polls.error} />
-        {polls.data?.length === 0 && <Empty>No project has been polled yet. Polling is enabled with EAHP_GITHUB_POLL_ENABLED.</Empty>}
+        {polls.data?.length === 0 && <Empty>{tr('No project has been polled yet. Polling is enabled with EAHP_GITHUB_POLL_ENABLED.')}</Empty>}
         {polls.data?.map(p => (
           <div key={p.projectKey} className="row spread item">
             <div className="row"><strong>{p.projectKey}</strong>
-              {p.lastError ? <span className="badge badge-bad">error</span> : <span className="badge badge-ok">ok</span>}
+              {p.lastError ? <span className="badge badge-bad">{tr('error')}</span> : <span className="badge badge-ok">{tr('ok')}</span>}
               {p.openPullRequests !== null && <span className="muted small">{p.openPullRequests} open pull requests</span>}</div>
-            <span className="muted small">last poll <Time value={p.lastPolledAt} />{p.lastError ? ` · ${p.lastError}` : ''}</span>
+            <span className="muted small">{tr('last poll')} <Time value={p.lastPolledAt} />{p.lastError ? ` · ${p.lastError}` : ''}</span>
           </div>
         ))}
       </Section>
-      <Section title="Pull request runs">
-        <p className="muted small">Each new head commit of a same-repository pull request runs the project's enabled trigger suites. A newer push supersedes the previous commit's run. Suites that declare <code>maven-modules</code> selection run only the affected modules; <code>paths</code> suites run only when their files change. Results are not posted back to GitHub.</p>
+      <Section title={tr('Pull request runs')}>
+        <p className="muted small">{tr('Each new head commit of a same-repository pull request runs the project\'s enabled trigger suites. A newer push supersedes the previous commit\'s run. Suites that declare')} <code>{tr('maven-modules')}</code> selection run only the affected modules; <code>{tr('paths')}</code> {tr('suites run only when their files change. Results are not posted back to GitHub.')}</p>
         <ErrorBanner error={rows.error} />
-        {rows.data?.length === 0 && <Empty>No pull requests have been seen yet.</Empty>}
+        {rows.data?.length === 0 && <Empty>{tr('No pull requests have been seen yet.')}</Empty>}
         {rows.data && rows.data.length > 0 && (
           <div className="table-wrap"><table>
-            <thead><tr><th>Pull request</th><th>Commit</th><th>Suite</th><th>Trigger</th><th>Run</th><th>Seen</th><th /></tr></thead>
+            <thead><tr><th>{tr('Pull request')}</th><th>{tr('Commit')}</th><th>{tr('Suite')}</th><th>{tr('Trigger')}</th><th>{tr('Run')}</th><th>{tr('Seen')}</th><th /></tr></thead>
             <tbody>{rows.data.map(r => (
               <Fragment key={r.id}>
               <tr>
                 <td className="wrap-cell"><a href={r.prUrl} target="_blank" rel="noopener noreferrer">{r.projectKey} #{r.prNumber}</a> {r.prTitle}</td>
                 <td><code title={r.headSha}>{r.headSha.slice(0, 7)}</code></td>
                 <td>{r.suiteKey}</td>
-                <td><Status value={r.status} />{r.skipReason && <div className="muted small">{REASONS[r.skipReason] ?? r.skipReason}</div>}<Scope row={r} /></td>
+                <td><Status value={r.status} />{r.skipReason && <div className="muted small">{REASONS[r.skipReason] ? tr(REASONS[r.skipReason]) : r.skipReason}</div>}<Scope row={r} /></td>
                 <td>{r.runId ? <Link to={`/runs/${r.runId}`}><Status value={r.runStatus} /></Link> : <span className="muted">—</span>}
                   {r.runErrorCode && <div className="muted small">{r.runErrorCode}</div>}</td>
                 <td><Time value={r.createdAt} /></td>
                 <td><button className="secondary" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>
-                  {open === r.id ? 'Hide impact' : 'Impact'}</button></td>
+                  {open === r.id ? tr('Hide impact') : tr('Impact')}</button></td>
               </tr>
               {open === r.id && <tr><td colSpan={7}><ImpactView row={r} /></td></tr>}
               </Fragment>
@@ -87,27 +90,28 @@ const ERRORS: Record<string, string> = {
 
 /** What the pull request changes and which modules and tests that puts in scope. Advisory: it does not skip any tests. */
 function ImpactView({ row }: { row: PullRequestRun }) {
+  const tr = useT();
   const impact = usePolling(() => api.changeImpact(row.id), [row.id], 0);
   if (impact.error) return <ErrorBanner error={impact.error} />;
-  if (!impact.data) return <p className="muted small">Analysing the change…</p>;
+  if (!impact.data) return <p className="muted small">{tr('Analysing the change…')}</p>;
   const d = impact.data;
-  if (!d.impact) return <p className="muted">{ERRORS[d.error ?? ''] ?? d.error}</p>;
+  if (!d.impact) return <p className="muted">{ERRORS[d.error ?? ''] ? tr(ERRORS[d.error ?? '']) : d.error}</p>;
   const i = d.impact;
   return (
     <div className="stack-tight wrap-cell">
-      <p className="small"><code>{(d.baseSha ?? '').slice(0, 7)}…{d.headSha.slice(0, 7)}</code>: {i.changedFileCount} changed file{i.changedFileCount === 1 ? '' : 's'}
-        {i.truncated ? ' (list truncated)' : ''}; {i.modules.length} affected module{i.modules.length === 1 ? '' : 's'}; {i.testClasses.length} test classes in scope.</p>
+      <p className="small"><code>{(d.baseSha ?? '').slice(0, 7)}…{d.headSha.slice(0, 7)}</code>: {tr(i.changedFileCount === 1 ? '{n} changed file' : '{n} changed files', { n: i.changedFileCount })}
+        {i.truncated ? tr(' (list truncated)') : ''}; {tr(i.modules.length === 1 ? '{n} affected module' : '{n} affected modules', { n: i.modules.length })}; {tr('{n} test classes in scope.', { n: i.testClasses.length })}</p>
       {i.modules.length > 0 && (
         <table>
-          <thead><tr><th>Module</th><th>Why</th><th>Changed files</th><th>Test classes</th></tr></thead>
+          <thead><tr><th>{tr('Module')}</th><th>{tr('Why')}</th><th>{tr('Changed files')}</th><th>{tr('Test classes')}</th></tr></thead>
           <tbody>{i.modules.map(m => (
-            <tr key={m.dir}><td><code>{m.dir}</code></td><td>{REASON[m.reason] ?? m.reason}</td><td>{m.changedFiles}</td>
-              <td>{m.testClasses === 0 ? <span className="badge badge-warn">none</span> : m.testClasses}</td></tr>
+            <tr key={m.dir}><td><code>{m.dir}</code></td><td>{REASON[m.reason] ? tr(REASON[m.reason]) : m.reason}</td><td>{m.changedFiles}</td>
+              <td>{m.testClasses === 0 ? <span className="badge badge-warn">{tr('none')}</span> : m.testClasses}</td></tr>
           ))}</tbody>
         </table>
       )}
       {i.notes.map((n, k) => <p key={k} className="muted small">⚠ {n}</p>)}
-      <details><summary className="small">Changed files</summary><ul className="small">{i.changedFiles.map(f => <li key={f}><code>{f}</code></li>)}</ul></details>
+      <details><summary className="small">{tr('Changed files')}</summary><ul className="small">{i.changedFiles.map(f => <li key={f}><code>{f}</code></li>)}</ul></details>
     </div>
   );
 }
