@@ -57,6 +57,13 @@ services:
       # Code agent (P35): Claude Code runs in this image (scripts/build-code-agent.sh) with ANTHROPIC_API_KEY above.
       EAHP_CODE_AGENT_IMAGE: ${EAHP_CODE_AGENT_IMAGE:-eahp-code-agent:local}
       EAHP_CODE_AGENT_MODEL: ${EAHP_CODE_AGENT_MODEL:-}
+      # Email notifications (P41): an SMTP server for email subscriptions (chat robots need no configuration here).
+      EAHP_SMTP_HOST: ${EAHP_SMTP_HOST:-}
+      EAHP_SMTP_PORT: ${EAHP_SMTP_PORT:-587}
+      EAHP_SMTP_USERNAME: ${EAHP_SMTP_USERNAME:-}
+      EAHP_SMTP_PASSWORD: ${EAHP_SMTP_PASSWORD:-}
+      EAHP_SMTP_FROM: ${EAHP_SMTP_FROM:-}
+      EAHP_SMTP_STARTTLS: ${EAHP_SMTP_STARTTLS:-true}
       # Code agent egress (P37): "proxy" (default) allows only EAHP_CODE_AGENT_EGRESS_ALLOW through EAHP's proxy; "open" is unrestricted.
       EAHP_EGRESS_ENABLED: "true"
       EAHP_CODE_AGENT_NETWORK: ${EAHP_CODE_AGENT_NETWORK:-proxy}

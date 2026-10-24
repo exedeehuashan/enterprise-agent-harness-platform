@@ -487,6 +487,12 @@ event. Approvers confirm (a 14-day, audited quarantine) or dismiss (snoozed) wit
 one click on the Quality page. See
 [P40 design notes](docs/p40-flaky-quarantine-suggestions.md).
 
+**Notifications.** Webhook subscriptions have a format. They can post events as
+signed JSON, or as short messages to DingTalk (钉钉), WeCom (企业微信), Feishu
+(飞书) or Slack group robots, with platform signing and error checks, or by email
+(`EAHP_SMTP_*`). Add them under Administration → Notifications and use
+"Send test". See [P41 design notes](docs/p41-notification-integrations.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

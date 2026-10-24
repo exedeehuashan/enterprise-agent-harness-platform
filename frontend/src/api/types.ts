@@ -215,10 +215,12 @@ export interface ApiTestCatalog {
 }
 
 export interface Webhook {
-  id: string; name: string; url: string; events: string[]; enabled: boolean; cursorId: number; consecutiveFailures: number;
+  id: string; name: string; format?: WebhookFormat; url: string; events: string[]; enabled: boolean; cursorId: number; consecutiveFailures: number;
   nextAttemptAt: string | null; lastDeliveryAt: string | null; lastError: string | null; createdBy: string; createdAt: string;
 }
-export interface WebhookCreated { subscription: Webhook; secret: string }
+export type WebhookFormat = 'generic' | 'slack' | 'dingtalk' | 'wecom' | 'feishu' | 'email';
+export interface WebhookCreated { subscription: Webhook; secret: string | null }
+export interface WebhookDelivery { id: number; auditEventId: number; action: string; statusCode: number | null; error: string | null; durationMs: number | null; attemptedAt: string }
 
 export interface ApiToken {
   id: string; name: string; description: string | null; roles: string[]; createdBy: string; createdAt: string; expiresAt: string | null;

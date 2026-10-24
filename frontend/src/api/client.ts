@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, CoveragePoint, NewCodeCoverage,
 } from './types';
 
@@ -144,6 +144,7 @@ export const api = {
   webhooks: () => get<Webhook[]>('/admin/webhooks'),
   createWebhook: (body: Record<string, unknown>) => post<WebhookCreated>('/admin/webhooks', body),
   webhookEnabled: (id: string, enabled: boolean) => request<Webhook>(`/admin/webhooks/${id}/enabled`, { method: 'PUT', body: { enabled } }).then(r => r.data),
+  testWebhook: (id: string) => post<WebhookDelivery>(`/admin/webhooks/${id}/test`, undefined),
   deleteWebhook: (id: string) => request<null>(`/admin/webhooks/${id}`, { method: 'DELETE' }).then(r => r.data),
   quarantines: (project: string) => get<Quarantine[]>(`/qa/quarantines${query({ project })}`),
   quarantineSuggestions: (project: string) => get<QuarantineSuggestion[]>(`/qa/quarantine-suggestions${query({ project, status: 'PENDING' })}`),
