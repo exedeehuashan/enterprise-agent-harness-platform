@@ -10,12 +10,18 @@ if [ ! -f .env ]; then
   exit 1
 fi
 requested_qa_runner="${EAHP_QA_RUNNER:-}"
+requested_sso="${EAHP_SSO:-}"
 set -a; . ./.env; set +a
 # A value given on the command line wins over .env.
 EAHP_QA_RUNNER="${requested_qa_runner:-${EAHP_QA_RUNNER:-off}}"
+EAHP_SSO="${requested_sso:-${EAHP_SSO:-off}}"
 
 files=(-f docker-compose.yml)
 if [ "${EAHP_QA_RUNNER:-off}" = "on" ]; then files+=(-f docker-compose.qa.yml); fi
+if [ "${EAHP_SSO:-off}" = "on" ]; then
+  [ -f sso/generated/keycloak.env ] || { echo "Run scripts/sso-dev.sh first to prepare the local Keycloak." >&2; exit 1; }
+  files+=(-f docker-compose.sso.yml)
+fi
 compose() { docker compose "${files[@]}" "$@"; }
 
 echo "==> Validating configuration"
@@ -47,4 +53,4 @@ if [ "$anonymous" != "401" ] || ! grep -q '"name":"admin"' <<<"$identity"; then
   echo "Smoke test failed (anonymous=$anonymous)" >&2
   exit 1
 fi
-echo "OK: console $console, API $console/api/v1, QA runner ${EAHP_QA_RUNNER:-off}"
+echo "OK: console $console, API $console/api/v1, QA runner ${EAHP_QA_RUNNER:-off}, SSO ${EAHP_SSO:-off}"

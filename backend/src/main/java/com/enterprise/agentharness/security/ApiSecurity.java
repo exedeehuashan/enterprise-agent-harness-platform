@@ -35,8 +35,10 @@ public class ApiSecurity {
             @Value("${eahp.security.admin-token:}") String admin,
             @Value("${eahp.security.operator-token:}") String operator,
             @Value("${eahp.security.viewer-token:}") String viewer,
-            org.springframework.beans.factory.ObjectProvider<ApiTokens> namedTokens) throws Exception {
+            org.springframework.beans.factory.ObjectProvider<ApiTokens> namedTokens,
+            org.springframework.beans.factory.ObjectProvider<OidcVerifier> oidcVerifier) throws Exception {
         ApiTokens tokens = namedTokens.getIfAvailable(); // absent in slim security contexts: only deployment tokens apply
+        OidcVerifier oidc = oidcVerifier.getIfAvailable();
         if (!validToken(admin)) throw new IllegalStateException("Configure a random EAHP_SECURITY_ADMIN_TOKEN (32..256 URL-safe characters)");
         var identities = new ArrayList<Identity>();
         identities.add(identity("admin", admin, "VIEWER", "OPERATOR", "APPROVER"));
@@ -52,6 +54,7 @@ public class ApiSecurity {
                         .accessDeniedHandler((req,res,ex) -> error(mapper,req,res,403)))
                 .authorizeHttpRequests(c -> c.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.GET,"/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/v1/auth/config").permitAll()
                         .requestMatchers(HttpMethod.GET,"/actuator/prometheus").hasRole("VIEWER")
                         .requestMatchers("/api/v1/approvals/**","/api/v1/audit-events","/api/v1/model-budget","/api/v1/qa/admin/**","/api/v1/admin/**").hasRole("APPROVER")
                         .requestMatchers(HttpMethod.GET,"/api/v1/**").hasRole("VIEWER")
@@ -61,6 +64,17 @@ public class ApiSecurity {
                     @Override protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
                             throws IOException, ServletException {
                         String header = req.getHeader("Authorization");
+                        if (header != null && oidc != null && oidc.enabled() && header.regionMatches(true,0,"Bearer ",0,7) && isJwt(header.substring(7))) {
+                            // Single sign-on (P46): an access token from the configured identity provider.
+                            if (java.util.Collections.list(req.getHeaders("Authorization")).size()!=1) { error(mapper,req,res,401); return; }
+                            var principal = oidc.verify(header.substring(7));
+                            if (principal.isEmpty()) { error(mapper,req,res,401); return; }
+                            var auth = new UsernamePasswordAuthenticationToken(principal.get().name(),null,
+                                    principal.get().roles().stream().map(r -> new SimpleGrantedAuthority("ROLE_"+r)).toList());
+                            var context = SecurityContextHolder.createEmptyContext();context.setAuthentication(auth);SecurityContextHolder.setContext(context);
+                            chain.doFilter(req,res);
+                            return;
+                        }
                         if (header != null) {
                             if (java.util.Collections.list(req.getHeaders("Authorization")).size()!=1 || !header.regionMatches(true,0,"Bearer ",0,7) || !validToken(header.substring(7))) { error(mapper,req,res,401); return; }
                             byte[] actual = hash(header.substring(7));
@@ -87,6 +101,8 @@ public class ApiSecurity {
     }
     private static Identity identity(String name,String token,String... roles) { return new Identity(name,hash(token),List.of(roles)); }
     private static boolean validToken(String token) { return token.matches("[A-Za-z0-9_-]{32,256}"); }
+    /** Three base64url segments: header.payload.signature. API tokens never contain a dot. */
+    private static boolean isJwt(String token) { return token.length() <= 16_384 && token.matches("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"); }
     static byte[] hash(String value) {
         try { return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)); }
         catch (NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }

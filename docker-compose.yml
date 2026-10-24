@@ -39,6 +39,9 @@ services:
       EAHP_QA_VOLUME: eahp-qa-work
       # Per-commit environments (P36): this container joins each environment's network to reach it.
       EAHP_QA_SELF_CONTAINER: eahp-backend
+      # Single sign-on (P46): an OIDC provider's issuer, and where EAHP fetches its keys (optional; docker-compose.sso.yml sets both for a local Keycloak).
+      EAHP_SECURITY_OIDC_ISSUER: ${EAHP_SSO_ISSUER:-}
+      EAHP_SECURITY_OIDC_JWKS_URI: ${EAHP_SSO_JWKS_URI:-}
       EAHP_GITHUB_POLL_ENABLED: ${EAHP_GITHUB_POLL_ENABLED:-false}
       EAHP_GITHUB_TOKEN: ${EAHP_GITHUB_TOKEN:-}
       # Optional: a token that may write commit statuses and pull request comments (QA write-back, P30).
@@ -93,6 +96,8 @@ services:
     restart: unless-stopped
     environment:
       EAHP_BACKEND_UPSTREAM: http://eahp-backend:8080
+      # Single sign-on (P46): the identity provider's origin, which the console's login calls.
+      EAHP_CSP_CONNECT_EXTRA: ${EAHP_SSO_ORIGIN:-}
     ports:
       - "127.0.0.1:${EAHP_CONSOLE_PORT:-8088}:8080"
     healthcheck:

@@ -5,7 +5,7 @@ import { ExecutionPage } from './pages/ExecutionPage';
 import { QaProjectsPage } from './pages/QaProjectsPage';
 import { PullRequestsPage } from './pages/PullRequestsPage';
 import { QualityPage } from './pages/QualityPage';
-import { LoginPage } from './pages/LoginPage';
+import { LoginPage, SsoCallback } from './pages/LoginPage';
 import { RunPage } from './pages/RunPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { TasksPage } from './pages/TasksPage';
@@ -16,7 +16,7 @@ export function App() {
   const tr = useT();
   const { identity, loading, signOut, can } = useSession();
   if (loading) return <main className="login"><p className="muted">{tr('Loading…')}</p></main>;
-  if (!identity) return <LoginPage />;
+  if (!identity) return window.location.pathname === '/auth/callback' ? <SsoCallback /> : <LoginPage />;
 
   return (
     <>
