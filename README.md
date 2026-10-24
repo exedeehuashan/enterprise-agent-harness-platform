@@ -501,6 +501,12 @@ must match the live schema version and row counts. Results appear under
 Administration → Backup drills, in metrics and in notifications. See
 [P42 design notes](docs/p42-backup-restore-drills.md).
 
+**Auto-fix failing tests.** A failed suite run can be handed to the code agent
+("Fix with code agent", or automatically per project). After approval Claude Code
+fixes the code and opens a draft PR. EAHP then runs the same suite on the PR's
+commit and reports FIXED, PARTLY_FIXED or NOT_FIXED as a PR comment. See
+[P43 design notes](docs/p43-auto-fix-failing-tests.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

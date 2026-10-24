@@ -165,6 +165,13 @@ export interface BackupDrill {
   id: string; trigger: 'SCHEDULE' | 'MANUAL'; actor: string; status: 'RUNNING' | 'PASSED' | 'FAILED' | 'SKIPPED'; startedAt: string; finishedAt: string | null;
   schemaVersion: number | null; expectedRows: Record<string, number> | null; restoredRows: Record<string, number> | null; dumpBytes: number | null; error: string | null;
 }
+export interface AutoFix {
+  id: string; projectKey: string; suiteKey: string; sourceRunId: string; sourceCommit: string; trigger: 'MANUAL' | 'AUTO';
+  status: 'CODING' | 'NO_CHANGE' | 'CODE_FAILED' | 'VERIFYING' | 'FIXED' | 'PARTLY_FIXED' | 'NOT_FIXED' | 'VERIFY_FAILED';
+  codeTaskId: string; codeRunId: string; branch: string | null; pullRequestUrl: string | null; prNumber: number | null; verifyCommit: string | null;
+  verifyRunId: string | null; result: { outcome: string; fixed?: number; stillFailing?: number; newFailures?: number } | null; error: string | null;
+  createdBy: string; createdAt: string; updatedAt: string;
+}
 export interface PerformanceLimit { maxP95Ms?: number | null; maxErrorRate?: number | null; maxP95IncreasePercent?: number | null }
 export interface PerformancePoint {
   runId: string; suite: string; commit: string; outcome: string | null; at: string; requests: number; requestsPerSecond: number;

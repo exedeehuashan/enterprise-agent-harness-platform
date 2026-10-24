@@ -42,6 +42,11 @@ public final class ChatMessages {
                 title = "⚠️ Flaky test suggested for quarantine: " + (project == null ? "" : project + "/") + code;
                 body = "A test passed and failed at the same commit repeatedly. An approver can confirm or dismiss it on the Quality page.";
             }
+            case "QA_AUTO_FIX_FIXED", "QA_AUTO_FIX_PARTLY_FIXED", "QA_AUTO_FIX_NOT_FIXED" -> {
+                String status = action.substring("QA_AUTO_FIX_".length());
+                title = (status.equals("FIXED") ? "✅ " : status.equals("PARTLY_FIXED") ? "🟡 " : "❌ ") + "Auto-fix " + label(status) + ": " + target;
+                body = "The code agent's draft pull request was verified by running the suite again. Review it before merging.";
+            }
             case "BACKUP_DRILL_PASSED" -> {
                 title = "✅ Backup-restore drill passed";
                 body = "A fresh backup of the EAHP database restored cleanly and matched the live database.";
