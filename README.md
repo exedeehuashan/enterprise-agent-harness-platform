@@ -445,6 +445,12 @@ validated by the same parser as human-written tests, can run against an
 environment, or can be downloaded to commit. See
 [P34 design notes](docs/p34-ai-api-test-generation.md). Setting up Claude or DeepSeek: [docs/ai-model-setup.md](docs/ai-model-setup.md).
 
+**Code agent (Claude Code).** `CODE_AGENT_RUN` runs Claude Code headless on an
+approver-registered repository at an exact commit, in a hardened container. Every
+run needs approval. EAHP records the diff and, where pushing is allowed and a write
+token is set, pushes a branch and opens a draft PR (never merged). Build the runner
+image with `scripts/build-code-agent.sh`. See [P35 design notes](docs/p35-code-agent.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

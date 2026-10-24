@@ -213,3 +213,5 @@ export interface AiTestDraft {
   collection: { key: string; name: string; service: string; cases?: unknown[] } | null; valid: boolean; error: string | null; notes: string | null;
   provider: string; model: string; inputTokens: number; outputTokens: number; createdBy: string; createdAt: string;
 }
+
+export interface CodeRepository { key: string; name: string; repositoryUrl: string; defaultRef: string; enabled: boolean; allowPush: boolean; changedBy: string }

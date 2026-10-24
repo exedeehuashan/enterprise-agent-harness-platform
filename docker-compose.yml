@@ -52,6 +52,9 @@ services:
       EAHP_AI_ANTHROPIC_FALLBACKS: ${EAHP_AI_ANTHROPIC_FALLBACKS:-true}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      # Code agent (P35): Claude Code runs in this image (scripts/build-code-agent.sh) with ANTHROPIC_API_KEY above.
+      EAHP_CODE_AGENT_IMAGE: ${EAHP_CODE_AGENT_IMAGE:-eahp-code-agent:local}
+      EAHP_CODE_AGENT_MODEL: ${EAHP_CODE_AGENT_MODEL:-}
     ports:
       - "127.0.0.1:${EAHP_BACKEND_PORT:-8080}:8080"
     # API tests (P24) reach systems under test published on the host, for example a local UAT stack.

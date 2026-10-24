@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool,
 } from './types';
 
@@ -112,6 +112,9 @@ export const api = {
   },
   environments: (project: string) => get<QaEnvironment[]>(`/qa/environments${query({ project })}`),
   apiTests: (project: string, ref?: string) => get<ApiTestCatalog>(`/qa/projects/${project}/api-tests${query({ ref })}`),
+  codeRepositories: () => get<CodeRepository[]>('/code-repositories'),
+  putCodeRepository: (key: string, body: Record<string, unknown>) => request<CodeRepository>(`/admin/code-repositories/${key}`, { method: 'PUT', body }).then(r => r.data),
+  deleteCodeRepository: (key: string) => request<null>(`/admin/code-repositories/${key}`, { method: 'DELETE' }).then(r => r.data),
   aiDrafts: (project: string) => get<AiTestDraft[]>(`/qa/projects/${project}/ai/api-tests`),
   generateAiTests: (project: string, body: Record<string, unknown>) => post<AiTestDraft>(`/qa/projects/${project}/ai/api-tests`, body),
   runAiDraft: (project: string, id: string, environment: string) => post<{ runId: string }>(`/qa/projects/${project}/ai/api-tests/${id}/run`, { environment }),

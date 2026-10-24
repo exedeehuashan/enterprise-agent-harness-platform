@@ -2,6 +2,7 @@ import { api } from '../api/client';
 import { usePolling } from '../hooks';
 import { Section } from '../components/ui';
 import { ModulesPanel } from '../components/modules';
+import { CodeRepositoriesPanel } from '../components/codeAgent';
 import { StoragePanel } from '../components/storage';
 import { TokensPanel } from '../components/tokens';
 import { WebhooksPanel } from '../components/webhooks';
@@ -16,6 +17,7 @@ export function AdminPage() {
           {ai.data.provider === 'mock' && <span className="muted"> No model is configured: set EAHP_AI_PROVIDER and its API key in .env.</span>}</p>}
       </Section>
       <ModulesPanel />
+      <CodeRepositoriesPanel />
       <TokensPanel />
       <WebhooksPanel />
       <StoragePanel />

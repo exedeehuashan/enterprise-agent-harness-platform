@@ -44,6 +44,8 @@ function taskRoutes(extra: Record<string, Parameters<typeof fakeApi>[0][string]>
     'GET /tools': () => ({ body: tools }),
     'GET /qa/projects': () => ({ body: projects }),
     'GET /qa/projects/online-shop/suites': (c: { path: string }) => ({ body: catalogFor(new URLSearchParams(c.path.split('?')[1] ?? '').get('ref') ?? 'main') }),
+    'GET /code-repositories': () => ({ body: [{ key: 'online-shop', name: 'Online shop', repositoryUrl: 'https://github.com/exedeehuashan/online-shop.git',
+      defaultRef: 'main', enabled: true, allowPush: true, changedBy: 'admin' }] }),
     ...extra,
   };
 }
@@ -162,6 +164,19 @@ describe('QA console', () => {
     expect(screen.getByText('Environment')).toBeInTheDocument();
     expect(screen.getByText('Run this suite with Docker access, or tag the test docker.')).toBeInTheDocument();
     expect(screen.getByText(/anthropic \/ claude-opus-5-5 · 1020 tokens/)).toBeInTheDocument();
+  });
+
+  it('requests a code change from the code agent, which waits for approval', async () => {
+    tokenStore.set(TOKEN);
+    const calls = fakeApi(taskRoutes({ 'POST /agent-tasks/task-1/runs': () => ({ status: 202, body: { id: 'run-c' } }) }));
+    renderApp('/tasks/task-1');
+    const form = (await screen.findByRole('heading', { name: 'Code agent' })).closest('section')!;
+    expect(await within(form).findByText(/pushed to a new branch with a draft pull request/)).toBeInTheDocument();
+    await userEvent.type(within(form).getByLabelText('Instructions for Claude Code'), 'Make OrderTotalsTest pass without changing the test.');
+    await userEvent.click(within(form).getByRole('button', { name: 'Request code change' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true));
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual({ tool: 'CODE_AGENT_RUN', timeoutSeconds: 1800,
+      arguments: { repository: 'online-shop', instructions: 'Make OrderTotalsTest pass without changing the test.', maxTurns: 40 } });
   });
 
   it('runs an API test collection against a registered environment', async () => {
@@ -376,6 +391,7 @@ describe('project administration', () => {
       'POST /admin/retention/run': () => ({ body: storage.lastRun }),
       'GET /admin/webhooks': () => ({ body: [] }),
       'GET /admin/tokens': () => ({ body: [] }),
+      'GET /code-repositories': () => ({ body: [] }),
       'GET /modules': () => ({ body: [
         { key: 'core', name: 'EAHP core', description: 'Platform', enabled: true, canDisable: false, tools: [{ name: 'DEMO_ANALYZE', enabled: true }], changedBy: null },
         { key: 'qa', name: '方案 4: AI Quality Engineering', description: 'QA', enabled: true, canDisable: true, tools: [{ name: 'QA_RUN_SUITE', enabled: true }], changedBy: null }] }),

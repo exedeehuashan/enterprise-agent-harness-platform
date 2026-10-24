@@ -4,6 +4,7 @@ import { api, newKey } from '../api/client';
 import type { ModelCall, Page, PlanExecution, Task } from '../api/types';
 import { RunSuiteForm, isQaTool, runLabel } from '../components/qa';
 import { RunApiTestsForm } from '../components/qaApiTests';
+import { RunCodeAgentForm } from '../components/codeAgent';
 import { Empty, ErrorBanner, Section, ShortId, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
@@ -95,6 +96,11 @@ function Runs({ taskId }: { taskId: string }) {
       </Section>
     )}
     {can('OPERATOR') && (
+      <Section title="Code agent">
+        <RunCodeAgentForm taskId={taskId} onStarted={() => void runs.reload()} />
+      </Section>
+    )}
+    {can('OPERATOR') && (
       <Section title="Run API tests">
         <RunApiTestsForm taskId={taskId} onStarted={() => void runs.reload()} />
       </Section>
@@ -104,7 +110,7 @@ function Runs({ taskId }: { taskId: string }) {
         <form className="row" onSubmit={start}>
           <label className="inline">Tool
             <select value={tool} onChange={e => setTool(e.target.value)}>
-              {(tools.data ?? []).filter(t => t.enabled && !isQaTool(t.name)).map(t => (
+              {(tools.data ?? []).filter(t => t.enabled && !isQaTool(t.name) && t.name !== 'CODE_AGENT_RUN').map(t => (
                 <option key={t.name} value={t.name}>{t.name}{t.requiresApproval ? ' (needs approval)' : ''}</option>
               ))}
             </select>
