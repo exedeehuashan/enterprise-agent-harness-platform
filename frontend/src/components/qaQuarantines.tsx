@@ -39,10 +39,10 @@ export function QuarantinePanel({ project, failing }: { project: string; failing
           {suggestions.data!.map(s => (
             <article key={s.id} className="item small">
               <div className="row spread">
-                <div><code title={`${s.testClass}#${s.testName}`}>{testLabel(s.testClass, s.testName)}</code> <span className="muted">in {s.suiteKey}</span>
-                  <div>Passed and failed at the same commit on {s.flakyCommits} commit{s.flakyCommits === 1 ? '' : 's'} in {s.evidence.windowDays} days:{' '}
-                    {s.evidence.commits.map(c => <code key={c.commit} title={`${c.passed} passed, ${c.failed} failed`}>{c.commit.slice(0, 7)} </code>)}</div>
-                  {s.evidence.lastFailure && <div className="muted wrap">Last failure: {s.evidence.lastFailure}</div>}
+                <div><code title={`${s.testClass}#${s.testName}`}>{testLabel(s.testClass, s.testName)}</code> <span className="muted">{tr('in {suite}', { suite: s.suiteKey })}</span>
+                  <div>{tr(s.flakyCommits === 1 ? 'Passed and failed at the same commit on {n} commit in {days} days:' : 'Passed and failed at the same commit on {n} commits in {days} days:', { n: s.flakyCommits, days: s.evidence.windowDays })}{' '}
+                    {s.evidence.commits.map(c => <code key={c.commit} title={tr('{passed} passed, {failed} failed', { passed: c.passed, failed: c.failed })}>{c.commit.slice(0, 7)} </code>)}</div>
+                  {s.evidence.lastFailure && <div className="muted wrap">{tr('Last failure: {message}', { message: s.evidence.lastFailure })}</div>}
                 </div>
                 {can('APPROVER') && <div className="row">
                   <button className="secondary" disabled={action.busy} onClick={() => void decide(() => api.admin.acceptSuggestion(s.id))}>{tr('Quarantine 14 days')}</button>

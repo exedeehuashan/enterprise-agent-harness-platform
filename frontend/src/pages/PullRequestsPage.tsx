@@ -46,7 +46,7 @@ export function PullRequestsPage() {
           <div key={p.projectKey} className="row spread item">
             <div className="row"><strong>{p.projectKey}</strong>
               {p.lastError ? <span className="badge badge-bad">{tr('error')}</span> : <span className="badge badge-ok">{tr('ok')}</span>}
-              {p.openPullRequests !== null && <span className="muted small">{p.openPullRequests} open pull requests</span>}</div>
+              {p.openPullRequests !== null && <span className="muted small">{tr('{n} open pull requests', { n: p.openPullRequests })}</span>}</div>
             <span className="muted small">{tr('last poll')} <Time value={p.lastPolledAt} />{p.lastError ? ` · ${p.lastError}` : ''}</span>
           </div>
         ))}

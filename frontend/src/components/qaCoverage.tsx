@@ -37,7 +37,7 @@ export function CoveragePanel({ project, defaultRef, minimums }: { project: stri
           <article key={suite} className="item">
             <div className="row spread">
               <div className="row"><strong>{suite}</strong><span className="muted small">{tr('last at')} <code>{last.commit.slice(0, 7)}</code>, <Time value={last.at} /></span></div>
-              <span className="small">{tr('lines')} <strong>{pct(last.linePercent)}</strong> · branches {pct(last.branchPercent)}</span>
+              <span className="small">{tr('lines')} <strong>{pct(last.linePercent)}</strong> · {tr('branches')} {pct(last.branchPercent)}</span>
             </div>
             <MetricTrend label={tr('line coverage')} format={v => `${Math.round(v)}%`} points={list.filter(p => p.linePercent !== null).map(p => ({ key: p.runId, value: p.linePercent!,
               title: `${p.commit.slice(0, 7)} ${new Date(p.at).toISOString().slice(0, 16).replace('T', ' ')}: lines ${pct(p.linePercent)}, branches ${pct(p.branchPercent)}` }))} />
@@ -57,11 +57,11 @@ export function CoveragePanel({ project, defaultRef, minimums }: { project: stri
       {result && (
         <div className="stack-tight small">
           {result.status === 'COMPUTED' ? (
-            <p><strong>{pct(result.percent)}</strong> of changed lines covered ({result.covered} of {result.covered + result.missed}) in {result.changedFiles} changed files
-              {minimums[result.suite] != null && <> · gate requires {minimums[result.suite]}%</>}</p>
+            <p><strong>{pct(result.percent)}</strong> {tr('of changed lines covered ({covered} of {total}) in {files} changed files', { covered: result.covered, total: result.covered + result.missed, files: result.changedFiles })}
+              {minimums[result.suite] != null && <> · {tr('gate requires {n}%', { n: minimums[result.suite] })}</>}</p>
           ) : <p className="muted">{tr(STATUS[result.status])}</p>}
           {result.files.filter(f => f.missed > 0).map(f => (
-            <div key={f.path}><code className="wrap">{f.path}</code> {f.covered}/{f.covered + f.missed} covered · uncovered lines {f.uncoveredLines.join(', ')}</div>
+            <div key={f.path}><code className="wrap">{f.path}</code> {tr('{covered}/{total} covered · uncovered lines {lines}', { covered: f.covered, total: f.covered + f.missed, lines: f.uncoveredLines.join(', ') })}</div>
           ))}
         </div>
       )}

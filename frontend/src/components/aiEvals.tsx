@@ -25,11 +25,11 @@ export function AiEvalsPanel() {
           <thead><tr><th>{tr('Started')}</th><th>{tr('Model')}</th><th>{tr('Score')}</th><th>{tr('Tokens')}</th></tr></thead>
           <tbody>{runs.data.map(r => (
             <tr key={r.id}>
-              <td className="small"><Time value={r.startedAt} /><div className="muted">set v{r.setVersion}</div></td>
+              <td className="small"><Time value={r.startedAt} /><div className="muted">{tr('set v{n}', { n: r.setVersion })}</div></td>
               <td className="small">{r.provider} / {r.model}</td>
               <td><span className={`badge ${r.status === 'RUNNING' ? 'badge-warn' : r.passed === r.total && r.status === 'DONE' ? 'badge-ok' : 'badge-bad'}`}>
                 {r.status === 'RUNNING' ? `running ${r.total}…` : `${r.passed} / ${r.total}`}</span></td>
-              <td className="small">{r.inputTokens.toLocaleString()} in · {r.outputTokens.toLocaleString()} out</td>
+              <td className="small">{tr('{in} in · {out} out', { in: r.inputTokens.toLocaleString(), out: r.outputTokens.toLocaleString() })}</td>
             </tr>
           ))}</tbody>
         </table></div>

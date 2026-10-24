@@ -32,7 +32,7 @@ export function TemporaryEnvironmentsPanel({ project }: { project: QaProject }) 
       <ErrorBanner error={templates.error ?? live.error ?? action.error} />
       {t && t.file !== 'found' && (
         <p className="muted small">
-          {t.file === 'absent' && <>{tr('No')} <code>.eahp/environments.json</code> at {t.ref}.</>}
+          {t.file === 'absent' && <>{tr('No {file} at {ref}.', { file: '.eahp/environments.json', ref: t.ref })}</>}
           {t.file === 'disabled' && tr('This project does not allow repository-declared environments.')}
           {t.file === 'invalid' && <span className="error">{t.error}</span>}
         </p>
@@ -40,7 +40,7 @@ export function TemporaryEnvironmentsPanel({ project }: { project: QaProject }) 
       {t?.templates.map(tpl => (
         <div key={tpl.key} className="row spread item">
           <div><strong>{tpl.name}</strong> <code className="muted small">{tpl.key}</code>
-            <div className="muted small">{tpl.compose.join(', ')} · services {tpl.services.map(s => s.name).join(', ')} · tests {tpl.apiTests.join(', ') || 'none'} · lives {tpl.ttlMinutes} min</div>
+            <div className="muted small">{tpl.compose.join(', ')} · {tr('services {list}', { list: tpl.services.map(s => s.name).join(', ') })} · {tr('tests {list}', { list: tpl.apiTests.join(', ') || tr('none') })} · {tr('lives {n} min', { n: tpl.ttlMinutes })}</div>
           </div>
           {can('OPERATOR') && <div className="row">
             <button className="secondary" disabled={action.busy || tpl.apiTests.length === 0} onClick={() => void start(tpl.key, 'test')}>{tr('Run tests on a fresh environment')}</button>

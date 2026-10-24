@@ -1,4 +1,5 @@
 import { useT } from '../i18n';
+
 /** One point of a metric over time; {@code title} is the hover text. */
 export interface TrendPoint { key: string; value: number; title: string }
 
@@ -19,7 +20,7 @@ export function MetricTrend({ label, points, format, limit, limitLabel }: {
   return (
     <div className="trend">
       <div className="trend-axis small muted"><span>{format(max)}</span><span>0</span></div>
-      <svg width={width + 8} height={height + 1} role="img" aria-label={`${label}, oldest to newest`}>
+      <svg width={width + 8} height={height + 1} role="img" aria-label={tr('{label}, oldest to newest', { label: tr(label) })}>
         <line x1={0} x2={width} y1={height + 0.5} y2={height + 0.5} className="trend-base" />
         {limit != null && <line x1={0} x2={width} y1={y(limit)} y2={y(limit)} className="trend-limit"><title>{limitLabel ?? `limit ${format(limit)}`}</title></line>}
         {points.length > 1 && <path className="trend-line" d={path} />}
@@ -31,7 +32,7 @@ export function MetricTrend({ label, points, format, limit, limitLabel }: {
           </g>
         ))}
       </svg>
-      <span className="small muted">{label}, oldest to newest</span>
+      <span className="small muted">{tr('{label}, oldest to newest', { label: tr(label) })}</span>
       <details><summary className="small muted">{tr('Table')}</summary>
         <table className="small"><tbody>{points.map(p => <tr key={p.key}><td>{p.title}</td></tr>)}</tbody></table>
       </details>

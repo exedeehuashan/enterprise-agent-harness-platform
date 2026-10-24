@@ -184,7 +184,7 @@ function Plans({ taskId, executions }: { taskId: string; executions: ExecutionsS
             <>
               <p>{call.plan.summary}</p>
               <ol className="steps">
-                {call.plan.steps.map((s, i) => <li key={i}>{s.tool} v{s.toolVersion} on {s.target}, timeout {s.timeoutSeconds}s</li>)}
+                {call.plan.steps.map((s, i) => <li key={i}>{tr('{tool} v{version} on {target}, timeout {seconds}s', { tool: s.tool, version: s.toolVersion, target: s.target, seconds: s.timeoutSeconds })}</li>)}
               </ol>
             </>
           )}
@@ -205,7 +205,7 @@ function Executions({ executions }: { executions: ExecutionsState }) {
           <div className="row spread">
             <div className="row"><Link to={`/executions/${e.id}`}><ShortId id={e.id} /></Link><Status value={e.status} />
               {e.errorCode && <span className="muted small">{e.errorCode}</span>}</div>
-            <span className="muted small">by {e.requestedBy}, <Time value={e.createdAt} /></span>
+            <span className="muted small">{tr('by {who}', { who: e.requestedBy })}, <Time value={e.createdAt} /></span>
           </div>
           <div className="row">{e.steps.map(s => <Status key={s.sequence} value={s.status} />)}</div>
         </article>

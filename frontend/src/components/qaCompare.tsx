@@ -44,8 +44,8 @@ export function CompareCommits({ project, defaultBase }: { project: string; defa
           {d.status === 'NO_BASE_RESULT' && <p className="muted small">{tr('No result at the base commit to compare with.')}</p>}
           {d.status === 'COMPARED' && (
             <>
-              <p className="small">{d.newFailureCount} new failure{d.newFailureCount === 1 ? '' : 's'}, {d.fixedCount} fixed, {d.stillFailingCount} still failing,
-                {' '}{d.addedCount} added{d.sameScope ? `, ${d.removedCount} removed` : tr(' (different scope: removed tests not compared)')}
+              <p className="small">{tr(d.newFailureCount === 1 ? '{fresh} new failure, {fixed} fixed, {still} still failing, {added} added' : '{fresh} new failures, {fixed} fixed, {still} still failing, {added} added',
+                  { fresh: d.newFailureCount, fixed: d.fixedCount, still: d.stillFailingCount, added: d.addedCount })}{d.sameScope ? tr(', {n} removed', { n: d.removedCount }) : tr(' (different scope: removed tests not compared)')}
                 {' '}<span className="muted">({d.base?.tests} → {d.head?.tests} tests)</span></p>
               <List title={tr('New failures')} tests={d.newFailures} total={d.newFailureCount} />
               <List title={tr('Fixed')} tests={d.fixed} total={d.fixedCount} />

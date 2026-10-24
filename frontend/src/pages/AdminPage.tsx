@@ -17,7 +17,7 @@ export function AdminPage() {
   return (
     <>
       <Section title={tr('AI model')}>
-        {ai.data && <p className="small">{tr('Provider')} <strong>{ai.data.provider}</strong> ({ai.data.model}) · {ai.data.usedToday.toLocaleString()} of {ai.data.dailyTokenBudget.toLocaleString()} tokens used today.
+        {ai.data && <p className="small">{tr('Provider')} <strong>{ai.data.provider}</strong> ({ai.data.model}) · {tr('{used} of {budget} tokens used today.', { used: ai.data.usedToday.toLocaleString(), budget: ai.data.dailyTokenBudget.toLocaleString() })}
           {ai.data.provider === 'mock' && <span className="muted"> {tr('No model is configured: set EAHP_AI_PROVIDER and its API key in .env.')}</span>}</p>}
       </Section>
       <ModulesPanel />

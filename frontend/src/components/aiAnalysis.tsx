@@ -32,11 +32,11 @@ export function AiAnalysisPanel({ runId }: { runId: string }) {
       {!a && !action.busy && <p className="muted small">{tr('Ask the configured model to explain this failure from the run\'s evidence (failing tests, triage and the console log, with secrets redacted).')}</p>}
       {a && analysis && (
         <div className="stack-tight">
-          <p><strong>{CATEGORY[a.category] ? tr(CATEGORY[a.category]) : a.category}</strong> <span className="muted small">· {a.confidence} confidence</span></p>
+          <p><strong>{CATEGORY[a.category] ? tr(CATEGORY[a.category]) : a.category}</strong> <span className="muted small">· {tr('{level} confidence', { level: tr(a.confidence) })}</span></p>
           <p>{a.summary}</p>
           <p className="small"><strong>{tr('Likely cause:')}</strong> {a.likelyCause}</p>
           {a.suggestedActions.length > 0 && <><strong className="small">{tr('Suggested next steps')}</strong><ul className="small">{a.suggestedActions.map((s, i) => <li key={i}>{s}</li>)}</ul></>}
-          <p className="muted small">{analysis.provider} / {analysis.model} · {analysis.inputTokens + analysis.outputTokens} tokens · <Time value={analysis.createdAt} /> by {analysis.createdBy}. Advisory only: check it against the evidence.</p>
+          <p className="muted small">{analysis.provider} / {analysis.model} · {tr('{n} tokens', { n: analysis.inputTokens + analysis.outputTokens })} · <Time value={analysis.createdAt} /> {tr('by {who}', { who: analysis.createdBy })}. {tr('Advisory only: check it against the evidence.')}</p>
         </div>
       )}
     </Section>

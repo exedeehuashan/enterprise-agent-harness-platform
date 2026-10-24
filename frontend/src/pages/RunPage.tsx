@@ -40,7 +40,7 @@ export function RunPage() {
         <ErrorBanner error={action.error} />
         {r.cancelRequested && r.status === 'RUNNING' && <p className="muted">Cancellation requested; waiting for the worker.</p>}
         <dl className="meta">
-          <dt>{tr('Tool')}</dt><dd>{r.tool} v{r.toolVersion} on {r.target}</dd>
+          <dt>{tr('Tool')}</dt><dd>{tr('{tool} v{version} on {target}', { tool: r.tool, version: r.toolVersion, target: r.target })}</dd>
           <dt>{tr('Snapshot')}</dt><dd>{r.snapshotTitle}{r.snapshotDescription ? ` — ${r.snapshotDescription}` : ''}</dd>
           <dt>{tr('Timeout')}</dt><dd>{r.timeoutSeconds}s (deadline <Time value={r.deadlineAt} />)</dd>
           <dt>{tr('Attempts')}</dt><dd>{r.attemptCount}</dd>
@@ -59,7 +59,7 @@ export function RunPage() {
           {approval.data ? (
             <div className="row spread">
               <div className="row"><Status value={approval.data.status} />
-                {approval.data.decidedBy && <span className="muted small">by {approval.data.decidedBy}</span>}
+                {approval.data.decidedBy && <span className="muted small">{tr('by {who}', { who: approval.data.decidedBy })}</span>}
                 <span className="muted small">{tr('expires')} <Time value={approval.data.expiresAt} /></span></div>
               {approval.data.status === 'PENDING' && <DecisionButtons approval={approval.data} onDone={() => { void run.reload(); void approval.reload(); }} />}
             </div>

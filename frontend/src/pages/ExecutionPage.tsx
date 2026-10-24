@@ -55,7 +55,7 @@ export function ExecutionPage() {
           </table>
         </div>
         {e.steps.some(s => s.runStatus === 'WAITING_APPROVAL') && (
-          <p className="muted">A step is waiting for approval{can('APPROVER') ? <> {tr('— see')} <Link to="/approvals">{tr('Approvals')}</Link>.</> : '.'}</p>
+          <p className="muted">{tr('A step is waiting for approval')}{can('APPROVER') ? <> {tr('— see')} <Link to="/approvals">{tr('Approvals')}</Link>.</> : '.'}</p>
         )}
       </Section>
     </>

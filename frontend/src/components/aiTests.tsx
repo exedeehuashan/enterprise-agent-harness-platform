@@ -57,7 +57,7 @@ export function AiTestsPanel({ project }: { project: QaProject }) {
           <div className="row spread">
             <div><strong>{d.collection?.name ?? tr('Invalid draft')}</strong> <code className="muted">{d.collection?.key}</code>{' '}
               <span className={`badge ${d.valid ? 'badge-ok' : 'badge-bad'}`}>{d.valid ? `${d.collection?.cases?.length ?? 0} cases` : tr('invalid')}</span>
-              <div className="muted">{d.specPath} @ <code>{d.commitSha.slice(0, 7)}</code> → {d.service} · {d.provider}/{d.model} · <Time value={d.createdAt} /> by {d.createdBy}</div>
+              <div className="muted">{d.specPath} @ <code>{d.commitSha.slice(0, 7)}</code> → {d.service} · {d.provider}/{d.model} · <Time value={d.createdAt} /> {tr('by {who}', { who: d.createdBy })}</div>
               {d.error && <div className="error">{d.error}</div>}
               {d.notes && <div>{d.notes}</div>}
             </div>
