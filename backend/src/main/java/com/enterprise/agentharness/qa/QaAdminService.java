@@ -38,7 +38,7 @@ public class QaAdminService {
     public QaAdminService(JdbcTemplate jdbc, QaRegistry registry, ObjectMapper mapper) { this.jdbc = jdbc; this.registry = registry; this.mapper = mapper; }
 
     public record Trigger(String suite, boolean enabled) {}
-    public record ProjectAdmin(QaRegistry.Project project, List<Trigger> triggers, List<String> gateSuites, JsonNode gateCoverage) {}
+    public record ProjectAdmin(QaRegistry.Project project, List<Trigger> triggers, List<String> gateSuites, JsonNode gateCoverage, JsonNode gatePerformance) {}
     public record Event(long id, String actor, String action, String projectKey, String subject, JsonNode before, JsonNode after, Instant occurredAt) {}
 
     @PreAuthorize("hasRole('APPROVER')")
@@ -46,7 +46,8 @@ public class QaAdminService {
     public ProjectAdmin get(String key) {
         var project = registry.project(key).orElseThrow(() -> notFound(key));
         var gate = gateState(key);
-        return new ProjectAdmin(project, triggers(key), gate(key), gate == null || !gate.has("minLineCoverage") ? mapper.createObjectNode() : gate.get("minLineCoverage"));
+        return new ProjectAdmin(project, triggers(key), gate(key), gate == null || !gate.has("minLineCoverage") ? mapper.createObjectNode() : gate.get("minLineCoverage"),
+                gate == null || !gate.has("performance") ? mapper.createObjectNode() : gate.get("performance"));
     }
 
     @PreAuthorize("hasRole('APPROVER')")
@@ -135,7 +136,7 @@ public class QaAdminService {
 
     @PreAuthorize("hasRole('APPROVER')")
     public ProjectAdmin putGate(String key, JsonNode body) {
-        fields(body, Set.of("requiredSuites", "minLineCoverage"));
+        fields(body, Set.of("requiredSuites", "minLineCoverage", "performance"));
         registry.project(key).orElseThrow(() -> notFound(key));
         var suites = strings(body, "requiredSuites", 20);
         if (suites.isEmpty()) throw bad("requiredSuites must name at least one suite; delete the gate to remove it");
@@ -151,11 +152,28 @@ public class QaAdminService {
                 coverage.put(e.getKey(), e.getValue().doubleValue());
             }
         }
+        var performance = mapper.createObjectNode();
+        if (body.has("performance")) {
+            var p = body.get("performance");
+            if (!p.isObject()) throw bad("performance must map suite keys to limits");
+            for (var it = p.fields(); it.hasNext(); ) {
+                var e = it.next();
+                if (!suites.contains(e.getKey())) throw bad("performance names " + e.getKey() + ", which is not a required suite");
+                var limits = e.getValue();
+                fields(limits, Set.of("maxP95Ms", "maxErrorRate", "maxP95IncreasePercent"));
+                if (limits.isEmpty()) throw bad("performance limits for " + e.getKey() + " are empty");
+                var out = performance.putObject(e.getKey());
+                limit(limits, "maxP95Ms", 0.001, 600_000, out);
+                limit(limits, "maxErrorRate", 0, 1, out);
+                limit(limits, "maxP95IncreasePercent", 0, 1000, out);
+            }
+        }
         var before = gateState(key);
         jdbc.update("""
-                INSERT INTO qa_quality_gates(project_key, required_suites, min_line_coverage) VALUES (?, ?::jsonb, ?::jsonb)
-                ON CONFLICT (project_key) DO UPDATE SET required_suites=EXCLUDED.required_suites, min_line_coverage=EXCLUDED.min_line_coverage
-                """, key, json(suites), coverage.toString());
+                INSERT INTO qa_quality_gates(project_key, required_suites, min_line_coverage, performance) VALUES (?, ?::jsonb, ?::jsonb, ?::jsonb)
+                ON CONFLICT (project_key) DO UPDATE SET required_suites=EXCLUDED.required_suites, min_line_coverage=EXCLUDED.min_line_coverage,
+                    performance=EXCLUDED.performance
+                """, key, json(suites), coverage.toString(), performance.toString());
         audit("GATE_SET", key, null, before, gateState(key));
         return get(key);
     }
@@ -216,15 +234,24 @@ public class QaAdminService {
         return jdbc.query("SELECT suite_key, enabled FROM qa_pr_triggers WHERE project_key=? ORDER BY suite_key",
                 (r, i) -> new Trigger(r.getString("suite_key"), r.getBoolean("enabled")), key);
     }
-    /** The gate as audited: required suites plus any coverage minimums; null when there is no gate. */
+    private static void limit(JsonNode limits, String field, double min, double max, com.fasterxml.jackson.databind.node.ObjectNode out) {
+        if (!limits.has(field)) return;
+        var v = limits.get(field);
+        if (!v.isNumber() || v.doubleValue() < min || v.doubleValue() > max) throw bad(field + " must be a number " + (min == 0 ? "0" : "above 0") + ".." + (long) max);
+        out.put(field, v.doubleValue());
+    }
+
+    /** The gate as audited: required suites plus any coverage minimums and performance limits; null when there is no gate. */
     private JsonNode gateState(String key) {
-        var rows = jdbc.queryForList("SELECT required_suites::text AS suites, min_line_coverage::text AS coverage FROM qa_quality_gates WHERE project_key=?", key);
+        var rows = jdbc.queryForList("SELECT required_suites::text AS suites, min_line_coverage::text AS coverage, performance::text AS performance FROM qa_quality_gates WHERE project_key=?", key);
         if (rows.isEmpty()) return null;
         try {
             var node = mapper.createObjectNode();
             node.set("requiredSuites", mapper.readTree((String) rows.get(0).get("suites")));
             var coverage = mapper.readTree((String) rows.get(0).get("coverage"));
             if (!coverage.isEmpty()) node.set("minLineCoverage", coverage);
+            var performance = mapper.readTree((String) rows.get(0).get("performance"));
+            if (!performance.isEmpty()) node.set("performance", performance);
             return node;
         } catch (Exception ex) { throw new IllegalStateException(ex); }
     }

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api/client';
-import type { ProjectAdmin, QaProject } from '../api/types';
+import type { PerformanceLimit, ProjectAdmin, QaProject } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Time } from './ui';
 
@@ -62,8 +62,8 @@ export function ProjectAdminPanel({ project, onChanged }: { project: QaProject; 
         })}
         {suiteKeys.length === 0 && <span className="muted small">No suites yet.</span>}
       </div>
-      <GateForm suites={a.gateSuites} coverage={a.gateCoverage ?? {}} busy={action.busy}
-        onSave={(list, minimums) => apply(() => list.length ? api.admin.gate(project.key, list, minimums) : api.admin.removeGate(project.key))} />
+      <GateForm suites={a.gateSuites} coverage={a.gateCoverage ?? {}} performance={a.gatePerformance ?? {}} busy={action.busy}
+        onSave={(list, minimums, limits) => apply(() => list.length ? api.admin.gate(project.key, list, minimums, limits) : api.admin.removeGate(project.key))} />
       <SuiteForm busy={action.busy} onSave={(key, body) => apply(() => api.admin.suite(project.key, key, body))} />
       <h3 className="subhead">Change history</h3>
       {events.data?.length === 0 && <Empty>No changes recorded.</Empty>}
@@ -104,10 +104,36 @@ function PolicyForm({ project, busy, onSave }: { project: QaProject; busy: boole
   );
 }
 
-function GateForm({ suites, coverage, busy, onSave }: { suites: string[]; coverage: Record<string, number>; busy: boolean;
-    onSave: (list: string[], minLineCoverage: Record<string, number>) => void }) {
+const LIMIT_KEYS: Record<string, keyof PerformanceLimit> = { p95: 'maxP95Ms', errors: 'maxErrorRate', increase: 'maxP95IncreasePercent' };
+
+/** "performance: p95=500, errors=0.01, increase=50; other: p95=300" ↔ limits per suite. */
+function formatLimits(limits: Record<string, PerformanceLimit>) {
+  return Object.entries(limits).map(([suite, l]) => `${suite}: ` + Object.entries(LIMIT_KEYS)
+    .filter(([, field]) => l[field] != null).map(([name, field]) => `${name}=${l[field]}`).join(', ')).join('; ');
+}
+function parseLimits(text: string): Record<string, PerformanceLimit> | string {
+  const result: Record<string, PerformanceLimit> = {};
+  for (const entry of text.split(';').map(e => e.trim()).filter(Boolean)) {
+    const m = /^([a-z0-9][a-z0-9-]{1,59})\s*:\s*(.+)$/.exec(entry);
+    if (!m) return `"${entry}" is not suite: p95=ms, errors=rate, increase=percent`;
+    const limit: PerformanceLimit = {};
+    for (const part of m[2].split(',').map(p => p.trim())) {
+      const kv = /^(p95|errors|increase)\s*=\s*(\d+(?:\.\d+)?)$/.exec(part);
+      if (!kv) return `"${part}" in ${m[1]} is not p95=ms, errors=rate (0-1) or increase=percent`;
+      if (kv[1] === 'errors' && Number(kv[2]) > 1) return `errors in ${m[1]} is a rate between 0 and 1`;
+      limit[LIMIT_KEYS[kv[1]]] = Number(kv[2]);
+    }
+    result[m[1]] = limit;
+  }
+  return result;
+}
+
+function GateForm({ suites, coverage, performance, busy, onSave }: { suites: string[]; coverage: Record<string, number>;
+    performance: Record<string, PerformanceLimit>; busy: boolean;
+    onSave: (list: string[], minLineCoverage: Record<string, number>, performance: Record<string, PerformanceLimit>) => void }) {
   const [value, setValue] = useState(suites.join(', '));
   const [minimums, setMinimums] = useState(Object.entries(coverage).map(([k, v]) => `${k}=${v}`).join(', '));
+  const [limits, setLimits] = useState(formatLimits(performance));
   const [invalid, setInvalid] = useState<string | null>(null);
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -119,14 +145,17 @@ function GateForm({ suites, coverage, busy, onSave }: { suites: string[]; covera
       if (!m || Number(m[2]) > 100) { setInvalid(`"${part}" is not suite=percentage (0-100)`); return; }
       parsed[m[1]] = Number(m[2]);
     }
+    const perf = parseLimits(limits);
+    if (typeof perf === 'string') { setInvalid(perf); return; }
     setInvalid(null);
-    onSave(value.split(/[,\s]+/).filter(Boolean), parsed);
+    onSave(value.split(/[,\s]+/).filter(Boolean), parsed, perf);
   };
   return (
     <form className="row" onSubmit={submit}>
       <h3 className="subhead">Release gate</h3>
       <label className="inline">Required suites<input value={value} onChange={e => setValue(e.target.value)} placeholder="empty removes the gate" /></label>
       <label className="inline">Minimum line coverage<input value={minimums} onChange={e => setMinimums(e.target.value)} placeholder="backend-unit=70" /></label>
+      <label className="inline">Performance limits<input value={limits} onChange={e => setLimits(e.target.value)} placeholder="performance: p95=500, errors=0.01, increase=50" /></label>
       <button type="submit" className="secondary" disabled={busy}>Save gate</button>
       {invalid && <div className="error" role="alert">{invalid}</div>}
     </form>

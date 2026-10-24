@@ -12,7 +12,7 @@ import java.util.Map;
  * arguments, so the approval digest covers the image and command, and the executor never re-reads a moving source.
  */
 public record SuiteDefinition(String source, String key, String name, String description, String image, List<String> command,
-        List<String> reportDirs, String network, boolean dockerAccess, int maxTimeoutSeconds, String selection, List<String> paths, String results, List<String> coverage, Map<String, String> environment) {
+        List<String> reportDirs, String network, boolean dockerAccess, int maxTimeoutSeconds, String selection, List<String> paths, String results, List<String> coverage, Map<String, String> environment, String performance) {
     public static final String REGISTRY = "registry";
     public static final String REPOSITORY = "repository";
     /** The suite is a Maven build that may be narrowed to affected modules ({@code -pl ... -am}) for pull requests. */
@@ -32,11 +32,14 @@ public record SuiteDefinition(String source, String key, String name, String des
     /** The suite runs against a deployed environment: variable name → service name, URLs supplied per run. */
     public boolean needsEnvironment() { return !environment.isEmpty(); }
 
+    /** A k6 {@code --summary-export} file the suite writes, relative to the checkout (P38); null when it reports none. */
+    public boolean reportsPerformance() { return performance != null; }
+
     public boolean exitCodeResults() { return EXIT_CODE.equals(results); }
 
     static SuiteDefinition fromRegistry(QaRegistry.Suite s) {
         return new SuiteDefinition(REGISTRY, s.key(), s.name(), s.description(), s.runnerImage(), s.command(), s.reportDirs(),
-                s.network(), s.dockerAccess(), s.maxTimeoutSeconds(), null, List.of(), null, List.of(), Map.of());
+                s.network(), s.dockerAccess(), s.maxTimeoutSeconds(), null, List.of(), null, List.of(), Map.of(), null);
     }
 
     public ObjectNode toJson() {
@@ -47,6 +50,7 @@ public record SuiteDefinition(String source, String key, String name, String des
         if (!paths.isEmpty()) paths.forEach(node.putArray("paths")::add);
         if (results != null) node.put("results", results);
         if (!coverage.isEmpty()) coverage.forEach(node.putArray("coverage")::add);
+        if (performance != null) node.put("performance", performance);
         if (!environment.isEmpty()) { var env = node.putObject("environment"); new java.util.TreeMap<>(environment).forEach(env::put); }
         command.forEach(node.putArray("command")::add);
         reportDirs.forEach(node.putArray("reportDirs")::add);
@@ -58,7 +62,8 @@ public record SuiteDefinition(String source, String key, String name, String des
                 n.get("description").isNull() ? null : n.get("description").asText(), n.get("image").asText(), texts(n.get("command")),
                 texts(n.get("reportDirs")), n.get("network").asText(), n.get("dockerAccess").asBoolean(), n.get("maxTimeoutSeconds").asInt(),
                 n.hasNonNull("selection") ? n.get("selection").asText() : null, n.has("paths") ? texts(n.get("paths")) : List.of(),
-                n.hasNonNull("results") ? n.get("results").asText() : null, n.has("coverage") ? texts(n.get("coverage")) : List.of(), environment(n.get("environment")));
+                n.hasNonNull("results") ? n.get("results").asText() : null, n.has("coverage") ? texts(n.get("coverage")) : List.of(), environment(n.get("environment")),
+                n.hasNonNull("performance") ? n.get("performance").asText() : null);
     }
 
     private static Map<String, String> environment(JsonNode node) {

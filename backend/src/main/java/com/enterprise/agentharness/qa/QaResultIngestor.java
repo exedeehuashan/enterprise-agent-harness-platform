@@ -67,7 +67,7 @@ public class QaResultIngestor {
         String project = args.get("project").asText(), suite = args.get("suite").asText(), commit = args.get("commit").asText();
         Timestamp created = (Timestamp) run.get("created_at");
         String outcome = null, consoleTail = null;
-        byte[] coverage = null;
+        byte[] coverage = null, performance = null;
         List<JUnitReports.TestCase> cases = new ArrayList<>();
         for (var a : artifacts.list(runId)) {
             if (a.expiredAt() != null) continue; // content removed by retention; nothing left to read
@@ -79,6 +79,7 @@ public class QaResultIngestor {
                 case "console.log" -> consoleTail = new String(bytes, Math.max(0, bytes.length - 200_000), Math.min(bytes.length, 200_000), StandardCharsets.UTF_8);
                 case "junit-reports.zip" -> cases.addAll(readZip(bytes));
                 case "coverage.json" -> coverage = bytes;
+                case "performance.json" -> performance = bytes;
                 default -> { }
             }
         }
@@ -105,6 +106,7 @@ public class QaResultIngestor {
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """, runId, project, suite, commit, run.get("status"), outcome, runCategory, cases.size(), failed);
         if (coverage != null) recordCoverage(runId, project, suite, commit, coverage);
+        if (performance != null) recordPerformance(runId, project, suite, commit, outcome, performance);
         // Makes the result an event like any other (for example for webhooks): code is the outcome.
         jdbc.update("INSERT INTO audit_events(actor,action,run_id,code) VALUES ('qa','QA_RESULT_INGESTED',?,?)", runId, outcome == null ? "NO_RESULT" : outcome);
         writeBack.onIngested(project, suite, commit, outcome == null ? "NO_RESULT" : outcome, cases.size(), failed);
@@ -131,6 +133,22 @@ public class QaResultIngestor {
                     c.path("branchesCovered").asLong(), c.path("branchesMissed").asLong(), c.path("modules").toString());
         } catch (java.io.IOException ex) {
             log.warn("Unreadable coverage.json for run {}", runId);
+        }
+    }
+
+    /** Stores the run's k6 results; a summary that reported an error (no or invalid file) records nothing. */
+    private void recordPerformance(UUID runId, String project, String suite, String commit, String outcome, byte[] json) {
+        try {
+            var p = mapper.readTree(json);
+            if (p.has("error") || !p.path("p95Ms").isNumber()) return;
+            jdbc.update("""
+                    INSERT INTO qa_performance(run_id,project_key,suite_key,commit_sha,outcome,requests,requests_per_second,avg_ms,p90_ms,p95_ms,max_ms,error_rate,checks_rate)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (run_id) DO NOTHING
+                    """, runId, project, suite, commit, outcome, p.path("requests").asLong(), p.path("requestsPerSecond").asDouble(), p.path("avgMs").asDouble(),
+                    p.path("p90Ms").asDouble(), p.path("p95Ms").asDouble(), p.path("maxMs").asDouble(),
+                    p.path("errorRate").isNumber() ? p.get("errorRate").asDouble() : null, p.path("checksRate").isNumber() ? p.get("checksRate").asDouble() : null);
+        } catch (java.io.IOException ex) {
+            log.warn("Unreadable performance.json for run {}", runId);
         }
     }
 

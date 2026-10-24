@@ -30,9 +30,14 @@ public class QualityService {
     }
 
     /** {@code minLineCoverage}: optional minimum line coverage (percent) per required suite, checked on full-scope runs. */
-    public record GatePolicy(List<String> requiredSuites, Map<String, Double> minLineCoverage) {}
+    public record GatePolicy(List<String> requiredSuites, Map<String, Double> minLineCoverage, Map<String, PerformanceLimit> performance) {}
+    /** Performance limits of a required suite (P38); each is optional. The increase compares p95 with the median of recent runs. */
+    public record PerformanceLimit(Double maxP95Ms, Double maxErrorRate, Double maxP95IncreasePercent) {}
+    /** One measured run of a performance suite. */
+    public record PerformancePoint(UUID runId, String suite, String commit, String outcome, Instant at, long requests, double requestsPerSecond,
+            double avgMs, double p90Ms, double p95Ms, double maxMs, Double errorRate, Double checksRate) {}
     /** {@code modules} is empty for a full run, or lists the only modules a selective run built and tested. */
-    public record SuiteCheck(String suite, String status, UUID runId, String outcome, String category, String reason, List<String> modules, Double lineCoverage) {}
+    public record SuiteCheck(String suite, String status, UUID runId, String outcome, String category, String reason, List<String> modules, Double lineCoverage, Double p95Ms) {}
     /** {@code reasons} explain a FAIL or PENDING verdict; {@code notes} add context such as new or flaky failures. */
     public record Gate(String project, String commit, String verdict, List<SuiteCheck> suites, List<String> reasons, List<String> notes, GatePolicy policy) {}
 
@@ -46,11 +51,12 @@ public class QualityService {
             List<FlakyTest> flaky, List<SlowTest> slowest, List<PullRequestStatus> pullRequests, GatePolicy gate) {}
 
     public GatePolicy policy(String project) {
-        var rows = jdbc.queryForList("SELECT required_suites::text AS suites, min_line_coverage::text AS coverage FROM qa_quality_gates WHERE project_key=?", project);
+        var rows = jdbc.queryForList("SELECT required_suites::text AS suites, min_line_coverage::text AS coverage, performance::text AS performance FROM qa_quality_gates WHERE project_key=?", project);
         if (rows.isEmpty()) return null;
         try {
             return new GatePolicy(mapper.readValue((String) rows.get(0).get("suites"), new TypeReference<List<String>>() {}),
-                    mapper.readValue((String) rows.get(0).get("coverage"), new TypeReference<java.util.LinkedHashMap<String, Double>>() {}));
+                    mapper.readValue((String) rows.get(0).get("coverage"), new TypeReference<java.util.LinkedHashMap<String, Double>>() {}),
+                    mapper.readValue((String) rows.get(0).get("performance"), new TypeReference<java.util.LinkedHashMap<String, PerformanceLimit>>() {}));
         } catch (Exception ex) {
             throw new IllegalStateException("Invalid gate policy", ex);
         }
@@ -76,7 +82,7 @@ public class QualityService {
             if (latest.isEmpty()) {
                 pending = true;
                 String reason = active ? suite + " is running at this commit." : suite + " has not run at this commit.";
-                checks.add(new SuiteCheck(suite, "PENDING", null, null, null, reason, List.of(), null));
+                checks.add(new SuiteCheck(suite, "PENDING", null, null, null, reason, List.of(), null, null));
                 reasons.add(reason);
                 continue;
             }
@@ -86,30 +92,34 @@ public class QualityService {
             List<String> modules = modules(row.get("modules"));
             if (!modules.isEmpty()) notes.add(suite + " ran only the affected modules at this commit: " + String.join(", ", modules) + ".");
             Double lineCoverage = lineCoverage(runId);
+            var measured = measurement(runId);
+            Double p95 = measured == null ? null : measured.p95Ms();
+            // Coverage and performance are requirements of their own: a passing (or waived) run can still fail them.
             String coverageFailure = coverageFailure(policy, suite, modules, exactLineCoverage(runId), lineCoverage, notes);
+            if (coverageFailure == null) coverageFailure = performanceFailure(policy, project, suite, measured, notes);
             if ("PASSED".equals(outcome) && coverageFailure != null) {
                 failed = true;
-                checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, null, coverageFailure, modules, lineCoverage));
+                checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, null, coverageFailure, modules, lineCoverage, p95));
                 reasons.add(coverageFailure);
             } else if ("PASSED".equals(outcome)) {
-                checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, null, active ? suite + " passed but is running again." : null, modules, lineCoverage));
+                checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, null, active ? suite + " passed but is running again." : null, modules, lineCoverage, p95));
                 if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
             } else {
                 var waiver = "TESTS_FAILED".equals(outcome) ? quarantineWaiver(project, suite, row) : null;
                 if (waiver != null && waiver.accepted() && coverageFailure != null) {
                     // A quarantine waives test failures, not the separate coverage requirement.
                     failed = true;
-                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, coverageFailure, modules, lineCoverage));
+                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, coverageFailure, modules, lineCoverage, p95));
                     reasons.add(coverageFailure);
                 } else if (waiver != null && waiver.accepted()) {
-                    checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, category, waiver.message(), modules, lineCoverage));
+                    checks.add(new SuiteCheck(suite, active ? "PENDING" : "PASSED", runId, outcome, category, waiver.message(), modules, lineCoverage, p95));
                     notes.add(waiver.message());
                     if (active) { pending = true; reasons.add(suite + " is running again at this commit."); }
                 } else {
                     failed = true;
                     String reason = suite + " " + (outcome == null ? "did not produce a result" : "failed (" + outcome + (category == null ? "" : ", " + category) + ")") + ".";
                     if (waiver != null) reason += " " + waiver.message();
-                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason, modules, lineCoverage));
+                    checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, category, reason, modules, lineCoverage, p95));
                     reasons.add(reason);
                 }
             }
@@ -257,6 +267,63 @@ public class QualityService {
         if (exact == null) return suite + " passed but reported no coverage; the gate requires at least " + min + "% line coverage.";
         if (exact < min) return suite + " line coverage " + display + "% is below the gate's " + min + "%.";
         return null;
+    }
+
+    /** The performance suite's measured runs, oldest first (for trends). */
+    public List<PerformancePoint> performance(String project, String suite, int limit) {
+        var points = new ArrayList<>(jdbc.query("""
+                SELECT p.*, r.created_at FROM qa_performance p JOIN agent_runs r ON r.id = p.run_id
+                WHERE p.project_key=? AND (?::text IS NULL OR p.suite_key=?) ORDER BY r.created_at DESC LIMIT ?
+                """, this::point, project, suite, suite, limit));
+        java.util.Collections.reverse(points);
+        return points;
+    }
+
+    private PerformancePoint measurement(UUID runId) {
+        var rows = jdbc.query("SELECT p.*, r.created_at FROM qa_performance p JOIN agent_runs r ON r.id = p.run_id WHERE p.run_id=?", this::point, runId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * The gate's performance limits for a suite: null when met or not configured. The increase limit compares with the
+     * median p95 of the suite's last five passing runs at other commits, and needs at least three of them.
+     */
+    private String performanceFailure(GatePolicy policy, String project, String suite, PerformancePoint p, List<String> notes) {
+        var limit = policy.performance().get(suite);
+        if (limit == null) return null;
+        if (p == null) return suite + " reported no performance results; the gate has performance limits for it.";
+        if (limit.maxP95Ms() != null && p.p95Ms() > limit.maxP95Ms()) return suite + " p95 " + ms(p.p95Ms()) + " ms is above the gate's " + ms(limit.maxP95Ms()) + " ms.";
+        if (limit.maxErrorRate() != null && (p.errorRate() == null || p.errorRate() > limit.maxErrorRate())) {
+            return p.errorRate() == null ? suite + " reported no HTTP error rate; the gate limits it to " + pct(limit.maxErrorRate()) + "."
+                    : suite + " HTTP error rate " + pct(p.errorRate()) + " is above the gate's " + pct(limit.maxErrorRate()) + ".";
+        }
+        if (limit.maxP95IncreasePercent() != null) {
+            var baseline = jdbc.queryForList("""
+                    SELECT p.p95_ms FROM qa_performance p JOIN agent_runs r ON r.id = p.run_id
+                    WHERE p.project_key=? AND p.suite_key=? AND p.commit_sha<>? AND p.outcome='PASSED' AND r.created_at < ?
+                    ORDER BY r.created_at DESC LIMIT 5
+                    """, Double.class, project, suite, p.commit(), java.sql.Timestamp.from(p.at()));
+            if (baseline.size() < 3) {
+                notes.add("The p95 increase limit of " + suite + " was not checked: fewer than three earlier passing runs to compare with.");
+                return null;
+            }
+            var sorted = baseline.stream().sorted().toList();
+            double median = sorted.size() % 2 == 1 ? sorted.get(sorted.size() / 2) : (sorted.get(sorted.size() / 2 - 1) + sorted.get(sorted.size() / 2)) / 2;
+            double allowed = median * (1 + limit.maxP95IncreasePercent() / 100);
+            if (p.p95Ms() > allowed) {
+                return suite + " p95 " + ms(p.p95Ms()) + " ms is " + Math.round((p.p95Ms() / median - 1) * 100) + "% above the recent median of " + ms(median)
+                        + " ms (the gate allows " + Math.round(limit.maxP95IncreasePercent()) + "%).";
+            }
+        }
+        return null;
+    }
+    private static String ms(double v) { return v >= 100 ? String.valueOf(Math.round(v)) : String.format(java.util.Locale.ROOT, "%.2f", v); }
+    private static String pct(double rate) { return String.format(java.util.Locale.ROOT, "%.2f%%", rate * 100); }
+
+    private PerformancePoint point(java.sql.ResultSet r, int i) throws java.sql.SQLException {
+        return new PerformancePoint(r.getObject("run_id", UUID.class), r.getString("suite_key"), r.getString("commit_sha"), r.getString("outcome"), r.getTimestamp("created_at").toInstant(),
+                r.getLong("requests"), r.getDouble("requests_per_second"), r.getDouble("avg_ms"), r.getDouble("p90_ms"), r.getDouble("p95_ms"), r.getDouble("max_ms"),
+                (Double) r.getObject("error_rate"), (Double) r.getObject("checks_rate"));
     }
 
     record Waiver(boolean accepted, String message) {}

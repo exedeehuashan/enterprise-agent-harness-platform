@@ -99,6 +99,15 @@ public class QaController {
         catch (IllegalArgumentException ex) { throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage()); }
     }
 
+    /** Measured runs of the project's performance suites (or one suite), oldest first: latency, throughput, error rate. */
+    @GetMapping("/projects/{key}/performance")
+    public List<QualityService.PerformancePoint> performance(@org.springframework.web.bind.annotation.PathVariable String key,
+            @RequestParam(required = false) String suite, @RequestParam(defaultValue = "50") int limit) {
+        if (limit < 1 || limit > 500) throw new RunException(HttpStatus.BAD_REQUEST, "limit must be 1..500");
+        registry.project(key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Project not found: " + key));
+        return quality.performance(key, suite, limit);
+    }
+
     @GetMapping("/projects/{key}/dashboard")
     public QualityService.Dashboard dashboard(@org.springframework.web.bind.annotation.PathVariable String key, @RequestParam(defaultValue = "14") int days) {
         if (days < 1 || days > 90) throw new RunException(HttpStatus.BAD_REQUEST, "days must be 1..90");
