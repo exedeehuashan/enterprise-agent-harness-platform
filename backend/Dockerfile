@@ -7,13 +7,15 @@ COPY pom.xml .
 COPY src src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -q -DskipTests package
 
-FROM docker:27.3.1-cli AS docker-cli
+FROM docker:28.5.1-cli AS docker-cli
 
 FROM eclipse-temurin:17-jre
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+# Compose (a release with --no-env-resolution) and buildx start per-commit test environments (P36).
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 COPY --from=build /src/target/agent-harness-backend-0.0.1-SNAPSHOT.jar /app/app.jar
 # A new named volume mounted here inherits this ownership, so the QA work directory is writable without root.
 RUN mkdir -p /var/lib/eahp-qa && chown 10001:10001 /var/lib/eahp-qa

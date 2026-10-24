@@ -40,7 +40,7 @@ public class RetentionService {
         var expired = jdbc.queryForList("""
                 WITH keep AS (
                   SELECT DISTINCT ON (arguments::jsonb->>'project', arguments::jsonb->>'suite', arguments::jsonb->>'ref') id
-                  FROM agent_runs WHERE tool IN ('QA_RUN_SUITE','QA_RUN_PRIVILEGED_SUITE','QA_RUN_API_TESTS') AND arguments IS NOT NULL
+                  FROM agent_runs WHERE tool IN ('QA_RUN_SUITE','QA_RUN_PRIVILEGED_SUITE','QA_RUN_API_TESTS','QA_RUN_ENVIRONMENT_TESTS') AND arguments IS NOT NULL
                   ORDER BY arguments::jsonb->>'project', arguments::jsonb->>'suite', arguments::jsonb->>'ref', created_at DESC, id DESC)
                 UPDATE run_artifacts SET content = ''::bytea, expired_at = clock_timestamp()
                 WHERE expired_at IS NULL AND created_at < clock_timestamp() - (? * interval '1 day') AND run_id NOT IN (SELECT id FROM keep)

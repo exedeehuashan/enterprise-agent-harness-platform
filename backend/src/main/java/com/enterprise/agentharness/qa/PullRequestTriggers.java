@@ -115,6 +115,12 @@ public class PullRequestTriggers {
         var row = jdbc.queryForMap("SELECT * FROM qa_pr_runs WHERE id=?", id);
         String project = (String) row.get("project_key"), suiteKey = (String) row.get("suite_key"), sha = (String) row.get("head_sha");
         int number = ((Number) row.get("pr_number")).intValue();
+        if (suiteKey.startsWith("env-")) {
+            // An environment template (P36): start this commit's own stack and run its API tests against it.
+            var args = JsonNodeFactory.instance.objectNode().put("project", project).put("environment", suiteKey).put("ref", sha);
+            launch(id, row, project, number, suiteKey, sha, "QA_RUN_ENVIRONMENT_TESTS", 3600, args);
+            return;
+        }
         QaSuiteResolver.Resolved resolved;
         try {
             resolved = resolver.resolve(project, suiteKey, sha);
@@ -143,6 +149,14 @@ public class PullRequestTriggers {
             return;
         }
 
+        var args = JsonNodeFactory.instance.objectNode().put("project", project).put("suite", suiteKey).put("ref", sha);
+        if (selection.mode() == ImpactSelection.Mode.MODULES) args.set("modules", selected);
+        launch(id, row, project, number, suiteKey, sha, suite.dockerAccess() ? "QA_RUN_PRIVILEGED_SUITE" : "QA_RUN_SUITE", Math.min(1800, suite.maxTimeoutSeconds()), args);
+    }
+
+    /** Starts the run for a pending row, reusing the PR's task and cancelling the run of an older commit first. */
+    private void launch(UUID id, java.util.Map<String, Object> row, String project, int number, String suiteKey, String sha, String tool, int timeout,
+            com.fasterxml.jackson.databind.node.ObjectNode args) {
         var previous = jdbc.queryForList("""
                 SELECT p.task_id, p.run_id, p.id FROM qa_pr_runs p WHERE p.project_key=? AND p.pr_number=? AND p.suite_key=? AND p.task_id IS NOT NULL AND p.id<>?
                 ORDER BY p.created_at DESC LIMIT 1
@@ -161,12 +175,9 @@ public class PullRequestTriggers {
             String description = "Automatic " + suiteKey + " run for " + row.get("pr_url") + " (branch " + row.get("head_ref") + ").";
             taskId = tasks.create(new CreateTaskRequest(title, description)).id();
         }
-        var args = JsonNodeFactory.instance.objectNode().put("project", project).put("suite", suiteKey).put("ref", sha);
-        if (selection.mode() == ImpactSelection.Mode.MODULES) args.set("modules", selected);
-        String tool = suite.dockerAccess() ? "QA_RUN_PRIVILEGED_SUITE" : "QA_RUN_SUITE";
         String key = "github-pr-" + number + "-" + sha.substring(0, 12) + "-" + suiteKey;
         try {
-            var run = runs.start(taskId, key, new StartRunRequest(tool, Math.min(1800, suite.maxTimeoutSeconds()), args), ACTOR);
+            var run = runs.start(taskId, key, new StartRunRequest(tool, timeout, args), ACTOR);
             jdbc.update("UPDATE qa_pr_runs SET status='STARTED', task_id=?, run_id=?, started_at=clock_timestamp() WHERE id=?", taskId, run.id(), id);
         } catch (RunException ex) {
             jdbc.update("UPDATE qa_pr_runs SET task_id=? WHERE id=?", taskId, id);

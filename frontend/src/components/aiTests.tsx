@@ -23,7 +23,7 @@ export function AiTestsPanel({ project }: { project: QaProject }) {
   const action = useAction();
   const [form, setForm] = useState({ specPath: '', service: '', ref: '', instructions: '' });
   const [started, setStarted] = useState<string | null>(null);
-  const env = (environments.data ?? []).find(e => e.enabled);
+  const env = (environments.data ?? []).find(e => e.enabled && !e.ephemeral);
   const generate = async (e: FormEvent) => {
     e.preventDefault();
     const body: Record<string, unknown> = { specPath: form.specPath.trim(), service: form.service.trim() };

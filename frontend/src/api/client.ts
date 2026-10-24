@@ -1,6 +1,6 @@
 import type {
   AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
-  TaskStatus, Tool,
+  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -115,6 +115,11 @@ export const api = {
   codeRepositories: () => get<CodeRepository[]>('/code-repositories'),
   putCodeRepository: (key: string, body: Record<string, unknown>) => request<CodeRepository>(`/admin/code-repositories/${key}`, { method: 'PUT', body }).then(r => r.data),
   deleteCodeRepository: (key: string) => request<null>(`/admin/code-repositories/${key}`, { method: 'DELETE' }).then(r => r.data),
+  environmentTemplates: (project: string) => get<EnvironmentTemplates>(`/qa/projects/${project}/environment-templates`),
+  temporaryEnvironments: (project: string) => get<TemporaryEnvironment[]>(`/qa/temporary-environments?project=${encodeURIComponent(project)}&all=true`),
+  startEnvironmentRun: (project: string, environment: string, mode: 'test' | 'start') =>
+    post<{ taskId: string; runId: string }>(`/qa/projects/${project}/environment-runs`, { environment, mode }),
+  stopTemporaryEnvironment: (id: string) => post<{ stopped: boolean }>(`/qa/temporary-environments/${id}/stop`, {}),
   aiDrafts: (project: string) => get<AiTestDraft[]>(`/qa/projects/${project}/ai/api-tests`),
   generateAiTests: (project: string, body: Record<string, unknown>) => post<AiTestDraft>(`/qa/projects/${project}/ai/api-tests`, body),
   runAiDraft: (project: string, id: string, environment: string) => post<{ runId: string }>(`/qa/projects/${project}/ai/api-tests/${id}/run`, { environment }),

@@ -175,7 +175,18 @@ export interface SuiteDiff {
 }
 
 /** A deployed system under test: service names and the base URLs API tests may call. */
-export interface QaEnvironment { projectKey: string; key: string; name: string; services: Record<string, string>; enabled: boolean }
+export interface QaEnvironment { projectKey: string; key: string; name: string; services: Record<string, string>; enabled: boolean; network?: string | null; ephemeral?: boolean }
+export interface EnvironmentTemplate {
+  key: string; name: string; compose: string[]; services: { name: string; composeService: string; port: number }[];
+  apiTests: string[]; startupTimeoutSeconds: number; ttlMinutes: number;
+}
+export interface EnvironmentTemplates {
+  project: string; ref: string; commit: string; file: 'found' | 'absent' | 'disabled' | 'invalid'; error: string | null; templates: EnvironmentTemplate[];
+}
+export interface TemporaryEnvironment {
+  id: string; projectKey: string; template: string; commit: string; environmentKey: string; composeProject: string; network: string | null;
+  status: 'STARTING' | 'RUNNING' | 'STOPPED' | 'FAILED'; runId: string | null; error: string | null; createdAt: string; expiresAt: string; stoppedAt: string | null;
+}
 export interface ApiTestCatalog {
   project: string; ref: string; commit: string; file: 'found' | 'absent' | 'disabled' | 'invalid'; error: string | null;
   collections: { key: string; name: string; description: string | null; service: string; cases: number }[];

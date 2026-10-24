@@ -61,7 +61,7 @@ class OpsModulesApiTest {
     void modulesListTheirToolsAndApproversCanSwitchADomainOff() throws Exception {
         mvc.perform(get("/api/v1/modules").header("Authorization", "Bearer " + VIEWER)).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].key").value("core")).andExpect(jsonPath("$[0].canDisable").value(false))
-                .andExpect(jsonPath("$[?(@.key=='qa')].tools.length()").value(3))
+                .andExpect(jsonPath("$[?(@.key=='qa')].tools.length()").value(6))
                 .andExpect(jsonPath("$[?(@.key=='qa')].enabled").value(true)).andExpect(jsonPath("$[?(@.key=='code')].canDisable").value(true));
         mvc.perform(put("/api/v1/admin/modules/qa/enabled").header("Authorization", "Bearer " + OPERATOR).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"enabled\":false}")).andExpect(status().isForbidden());
@@ -73,7 +73,7 @@ class OpsModulesApiTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM tool_definitions WHERE name LIKE 'QA_%' AND enabled", Long.class)).isZero();
         mvc.perform(put("/api/v1/admin/modules/qa/enabled").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"enabled\":true}")).andExpect(jsonPath("$.enabled").value(true));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM tool_definitions WHERE name LIKE 'QA_%' AND enabled", Long.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM tool_definitions WHERE name LIKE 'QA_%' AND enabled", Long.class)).isEqualTo(6);
         mvc.perform(put("/api/v1/admin/modules/nope/enabled").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"enabled\":true}")).andExpect(status().isNotFound());
     }

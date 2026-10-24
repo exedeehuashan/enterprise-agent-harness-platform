@@ -46,7 +46,7 @@ public class QaResultIngestor {
     public int runOnce() {
         var ids = jdbc.queryForList("""
                 SELECT r.id FROM agent_runs r LEFT JOIN qa_run_ingestions i ON i.run_id = r.id
-                WHERE r.tool IN ('QA_RUN_SUITE','QA_RUN_PRIVILEGED_SUITE','QA_RUN_API_TESTS') AND i.run_id IS NULL
+                WHERE r.tool IN ('QA_RUN_SUITE','QA_RUN_PRIVILEGED_SUITE','QA_RUN_API_TESTS','QA_RUN_ENVIRONMENT_TESTS') AND i.run_id IS NULL
                   AND r.status NOT IN ('QUEUED','RUNNING','WAITING_APPROVAL') AND r.arguments IS NOT NULL
                 ORDER BY r.created_at, r.id LIMIT 20
                 """, UUID.class);
