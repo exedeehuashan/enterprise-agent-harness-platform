@@ -84,3 +84,25 @@ of silently falling back to the mock.
 Set `EAHP_GITHUB_WRITE_TOKEN` in `.env`: a fine-grained token with "Commit
 statuses: write" and "Pull requests: write" on the tested repositories. Then turn
 on "GitHub write-back" for the project on the console's Test projects page.
+
+## 代码智能体（Claude Code）/ Code agent (Claude Code)
+
+代码智能体使用同一个 `ANTHROPIC_API_KEY`（即使 `EAHP_AI_PROVIDER` 选的是 DeepSeek，也需要这个 key）。第一次使用前先构建运行镜像：
+
+The code agent uses the same `ANTHROPIC_API_KEY`, which is needed even when
+`EAHP_AI_PROVIDER` is DeepSeek. Build its runner image once:
+
+```bash
+./scripts/build-code-agent.sh
+```
+
+然后在 Administration 页面登记仓库，在任务页面的 "Code agent" 提交修改要求。每次运行都需要审批人批准。
+
+Then register a repository on the Administration page and request a change from a
+task's "Code agent" form. Every run needs an approver.
+
+如果要推分支并开草稿 PR：在仓库上勾选 "allow push"，并在 `.env` 中设置 `EAHP_GITHUB_WRITE_TOKEN`，权限为 "Contents: write" 和 "Pull requests: write"。
+
+To push a branch and open a draft PR, tick "allow push" for the repository and set
+`EAHP_GITHUB_WRITE_TOKEN` in `.env`, with "Contents: write" and "Pull requests:
+write".

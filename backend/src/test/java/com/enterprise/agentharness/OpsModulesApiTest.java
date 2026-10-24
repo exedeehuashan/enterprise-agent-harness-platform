@@ -61,8 +61,8 @@ class OpsModulesApiTest {
     void modulesListTheirToolsAndApproversCanSwitchADomainOff() throws Exception {
         mvc.perform(get("/api/v1/modules").header("Authorization", "Bearer " + VIEWER)).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].key").value("core")).andExpect(jsonPath("$[0].canDisable").value(false))
-                .andExpect(jsonPath("$[1].key").value("qa")).andExpect(jsonPath("$[1].tools.length()").value(3))
-                .andExpect(jsonPath("$[1].enabled").value(true));
+                .andExpect(jsonPath("$[?(@.key=='qa')].tools.length()").value(3))
+                .andExpect(jsonPath("$[?(@.key=='qa')].enabled").value(true)).andExpect(jsonPath("$[?(@.key=='code')].canDisable").value(true));
         mvc.perform(put("/api/v1/admin/modules/qa/enabled").header("Authorization", "Bearer " + OPERATOR).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"enabled\":false}")).andExpect(status().isForbidden());
         mvc.perform(put("/api/v1/admin/modules/core/enabled").header("Authorization", "Bearer " + ADMIN).contentType(MediaType.APPLICATION_JSON)
