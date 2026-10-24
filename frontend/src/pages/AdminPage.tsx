@@ -8,15 +8,17 @@ import { BackupDrillsPanel } from '../components/backupDrills';
 import { AiEvalsPanel } from '../components/aiEvals';
 import { TokensPanel } from '../components/tokens';
 import { WebhooksPanel } from '../components/webhooks';
+import { useT } from '../i18n';
 
 /** Platform administration for approvers: domain modules, API tokens, webhooks, storage and retention. */
 export function AdminPage() {
+  const tr = useT();
   const ai = usePolling(() => api.aiStatus(), [], 30000);
   return (
     <>
-      <Section title="AI model">
-        {ai.data && <p className="small">Provider <strong>{ai.data.provider}</strong> ({ai.data.model}) · {ai.data.usedToday.toLocaleString()} of {ai.data.dailyTokenBudget.toLocaleString()} tokens used today.
-          {ai.data.provider === 'mock' && <span className="muted"> No model is configured: set EAHP_AI_PROVIDER and its API key in .env.</span>}</p>}
+      <Section title={tr('AI model')}>
+        {ai.data && <p className="small">{tr('Provider')} <strong>{ai.data.provider}</strong> ({ai.data.model}) · {ai.data.usedToday.toLocaleString()} of {ai.data.dailyTokenBudget.toLocaleString()} tokens used today.
+          {ai.data.provider === 'mock' && <span className="muted"> {tr('No model is configured: set EAHP_AI_PROVIDER and its API key in .env.')}</span>}</p>}
       </Section>
       <ModulesPanel />
       <CodeRepositoriesPanel />
@@ -25,7 +27,7 @@ export function AdminPage() {
       <StoragePanel />
       <BackupDrillsPanel />
       <AiEvalsPanel />
-      <p className="muted small">Metrics for monitoring are at <code>/actuator/prometheus</code> on the backend (any viewer token).</p>
+      <p className="muted small">{tr('Metrics for monitoring are at')} <code>/actuator/prometheus</code> {tr('on the backend (any viewer token).')}</p>
     </>
   );
 }

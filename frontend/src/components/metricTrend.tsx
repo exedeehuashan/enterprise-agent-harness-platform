@@ -1,3 +1,4 @@
+import { useT } from '../i18n';
 /** One point of a metric over time; {@code title} is the hover text. */
 export interface TrendPoint { key: string; value: number; title: string }
 
@@ -8,6 +9,7 @@ export interface TrendPoint { key: string; value: number; title: string }
 export function MetricTrend({ label, points, format, limit, limitLabel }: {
   label: string; points: TrendPoint[]; format: (v: number) => string; limit?: number | null; limitLabel?: string;
 }) {
+  const tr = useT();
   if (points.length === 0) return null;
   const height = 48, step = 16;
   const width = Math.max((points.length - 1) * step, 1);
@@ -30,7 +32,7 @@ export function MetricTrend({ label, points, format, limit, limitLabel }: {
         ))}
       </svg>
       <span className="small muted">{label}, oldest to newest</span>
-      <details><summary className="small muted">Table</summary>
+      <details><summary className="small muted">{tr('Table')}</summary>
         <table className="small"><tbody>{points.map(p => <tr key={p.key}><td>{p.title}</td></tr>)}</tbody></table>
       </details>
     </div>

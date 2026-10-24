@@ -8,12 +8,14 @@ import { AutoFixesSection } from '../components/autoFix';
 import { QuarantinePanel, testLabel as test } from '../components/qaQuarantines';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
+import { useT } from '../i18n';
 
 const percent = (v: number | null) => (v === null ? '—' : `${v}%`);
 const label = (s: string | null) => (s ? s.replace(/_/g, ' ').toLowerCase() : '—');
 
 /** Release readiness for one project: gate verdicts, pass-rate trend, failing, flaky and slow tests. */
 export function QualityPage() {
+  const tr = useT();
   const projects = usePolling(() => api.qaProjects(), [], 0);
   const [projectKey, setProjectKey] = useState('');
   const [days, setDays] = useState(14);
@@ -21,19 +23,19 @@ export function QualityPage() {
   const dashboard = usePolling(() => (project ? api.qualityDashboard(project.key, days) : Promise.resolve(null)), [project?.key, days], 15000);
 
   if (projects.error) return <ErrorBanner error={projects.error} />;
-  if (projects.data?.length === 0) return <Empty>No test projects are registered.</Empty>;
+  if (projects.data?.length === 0) return <Empty>{tr('No test projects are registered.')}</Empty>;
   if (!project) return null;
   const d = dashboard.data;
   return (
     <>
-      <Section title="Quality" actions={
+      <Section title={tr('Quality')} actions={
         <div className="row">
-          <label className="inline">Project
+          <label className="inline">{tr('Project')}
             <select value={project.key} onChange={e => setProjectKey(e.target.value)}>
               {(projects.data ?? []).map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
             </select>
           </label>
-          <label className="inline">Period
+          <label className="inline">{tr('Period')}
             <select value={days} onChange={e => setDays(Number(e.target.value))}>
               {[7, 14, 30, 90].map(n => <option key={n} value={n}>last {n} days</option>)}
             </select>
@@ -43,10 +45,10 @@ export function QualityPage() {
         <ErrorBanner error={dashboard.error} />
         {d && (
           <div className="stats">
-            <Tile label="Pass rate" value={percent(d.passRate)} detail={`${d.passed} of ${d.runs} runs`} />
-            <Tile label="Failing tests" value={String(d.failingNow.length)} detail="in each suite's latest run" />
-            <Tile label="Flaky tests" value={String(d.flaky.length)} detail="passed and failed on one commit" />
-            <Tile label="Gate" value={d.gate ? d.gate.requiredSuites.join(', ') : 'not configured'} detail="required suites" />
+            <Tile label={tr('Pass rate')} value={percent(d.passRate)} detail={`${d.passed} of ${d.runs} runs`} />
+            <Tile label={tr('Failing tests')} value={String(d.failingNow.length)} detail="in each suite's latest run" />
+            <Tile label={tr('Flaky tests')} value={String(d.flaky.length)} detail="passed and failed on one commit" />
+            <Tile label={tr('Gate')} value={d.gate ? d.gate.requiredSuites.join(', ') : tr('not configured')} detail="required suites" />
           </div>
         )}
       </Section>
@@ -56,13 +58,13 @@ export function QualityPage() {
 
       {d && (
         <>
-          <Section title="Suites">
-            {d.suites.length === 0 && <Empty>No finished runs in this period.</Empty>}
+          <Section title={tr('Suites')}>
+            {d.suites.length === 0 && <Empty>{tr('No finished runs in this period.')}</Empty>}
             {d.suites.map(s => (
               <article key={s.suite} className="item">
                 <div className="row spread">
                   <div className="row"><strong>{s.suite}</strong><Status value={s.lastOutcome} />
-                    <span className="muted small">last at <code>{s.lastCommit.slice(0, 7)}</code>, <Time value={s.lastAt} /></span></div>
+                    <span className="muted small">{tr('last at')} <code>{s.lastCommit.slice(0, 7)}</code>, <Time value={s.lastAt} /></span></div>
                   <span className="muted small">{percent(s.passRate)} of {s.runs} runs passed</span>
                 </div>
                 <PassRateTrend suite={s.suite} daily={s.daily} />
@@ -72,10 +74,10 @@ export function QualityPage() {
           <AutoFixesSection project={project.key} />
           <CoveragePanel project={project.key} defaultRef={project.defaultRef} minimums={d.gate?.minNewCodeCoverage ?? {}} />
           <PerformancePanel project={project.key} limits={d.gate?.performance ?? {}} />
-          <Section title="Failing now">
-            {d.failingNow.length === 0 ? <Empty>No test is currently failing.</Empty> : (
+          <Section title={tr('Failing now')}>
+            {d.failingNow.length === 0 ? <Empty>{tr('No test is currently failing.')}</Empty> : (
               <div className="table-wrap"><table>
-                <thead><tr><th>Test</th><th>Suite</th><th>Cause</th><th>Failing for</th><th>Since</th></tr></thead>
+                <thead><tr><th>{tr('Test')}</th><th>{tr('Suite')}</th><th>{tr('Cause')}</th><th>{tr('Failing for')}</th><th>{tr('Since')}</th></tr></thead>
                 <tbody>{d.failingNow.map((f, i) => (
                   <tr key={i}><td className="wrap-cell"><code title={`${f.testClass}#${f.testName}`}>{test(f.testClass, f.testName)}</code></td><td>{f.suite}</td><td>{label(f.category)}</td>
                     <td>{f.consecutiveFailures} run{f.consecutiveFailures === 1 ? '' : 's'}</td>
@@ -86,23 +88,23 @@ export function QualityPage() {
           </Section>
           <QuarantinePanel project={project.key} failing={d.failingNow} />
           <div className="grid-2">
-            <Section title="Flaky tests">
-              {d.flaky.length === 0 ? <Empty>No flaky tests in this period.</Empty> : (
-                <div className="table-wrap"><table><thead><tr><th>Test</th><th>Commits with mixed results</th></tr></thead>
+            <Section title={tr('Flaky tests')}>
+              {d.flaky.length === 0 ? <Empty>{tr('No flaky tests in this period.')}</Empty> : (
+                <div className="table-wrap"><table><thead><tr><th>{tr('Test')}</th><th>{tr('Commits with mixed results')}</th></tr></thead>
                   <tbody>{d.flaky.map((f, i) => <tr key={i}><td className="wrap-cell"><code>{test(f.testClass, f.testName)}</code></td><td>{f.flakyCommits}</td></tr>)}</tbody></table></div>
               )}
             </Section>
-            <Section title="Slowest tests">
-              {d.slowest.length === 0 ? <Empty>No timing data yet.</Empty> : (
-                <div className="table-wrap"><table><thead><tr><th>Test</th><th>Average</th></tr></thead>
+            <Section title={tr('Slowest tests')}>
+              {d.slowest.length === 0 ? <Empty>{tr('No timing data yet.')}</Empty> : (
+                <div className="table-wrap"><table><thead><tr><th>{tr('Test')}</th><th>{tr('Average')}</th></tr></thead>
                   <tbody>{d.slowest.map((t, i) => <tr key={i}><td className="wrap-cell"><code>{test(t.testClass, t.testName)}</code></td><td>{(t.averageMs / 1000).toFixed(2)} s</td></tr>)}</tbody></table></div>
               )}
             </Section>
           </div>
-          <Section title="Pull requests">
-            {d.pullRequests.length === 0 ? <Empty>No pull requests seen yet.</Empty> : (
+          <Section title={tr('Pull requests')}>
+            {d.pullRequests.length === 0 ? <Empty>{tr('No pull requests seen yet.')}</Empty> : (
               <div className="table-wrap"><table>
-                <thead><tr><th>Pull request</th><th>Head</th><th>Gate</th><th>Affected modules</th><th>Impact warnings</th></tr></thead>
+                <thead><tr><th>{tr('Pull request')}</th><th>{tr('Head')}</th><th>{tr('Gate')}</th><th>{tr('Affected modules')}</th><th>{tr('Impact warnings')}</th></tr></thead>
                 <tbody>{d.pullRequests.map(p => (
                   <tr key={p.prNumber}><td className="wrap-cell"><a href={p.url} target="_blank" rel="noopener noreferrer">#{p.prNumber}</a> {p.title}</td>
                     <td><code>{p.headSha.slice(0, 7)}</code></td><td><Status value={p.gate} /></td>
@@ -126,6 +128,7 @@ function Tile({ label: name, value, detail }: { label: string; value: string; de
  * has a hover tooltip, and the same numbers are available as a table.
  */
 function PassRateTrend({ suite, daily }: { suite: string; daily: QualityDashboard['suites'][number]['daily'] }) {
+  const tr = useT();
   const height = 48, bar = 10, gap = 4;
   const width = Math.max(daily.length * (bar + gap), bar);
   return (
@@ -147,9 +150,9 @@ function PassRateTrend({ suite, daily }: { suite: string; daily: QualityDashboar
           );
         })}
       </svg>
-      <span className="small muted">daily pass rate, oldest to newest</span>
-      <details><summary className="small muted">Table</summary>
-        <table className="small"><thead><tr><th>Day</th><th>Runs</th><th>Passed</th></tr></thead>
+      <span className="small muted">{tr('daily pass rate, oldest to newest')}</span>
+      <details><summary className="small muted">{tr('Table')}</summary>
+        <table className="small"><thead><tr><th>{tr('Day')}</th><th>{tr('Runs')}</th><th>{tr('Passed')}</th></tr></thead>
           <tbody>{daily.map(d => <tr key={d.day}><td>{d.day}</td><td>{d.runs}</td><td>{d.passed}</td></tr>)}</tbody></table>
       </details>
     </div>
@@ -157,6 +160,7 @@ function PassRateTrend({ suite, daily }: { suite: string; daily: QualityDashboar
 }
 
 function GateCheck({ project, defaultRef }: { project: string; defaultRef: string }) {
+  const tr = useT();
   const [ref, setRef] = useState(defaultRef);
   const [gate, setGate] = useState<Gate | null>(null);
   const [report, setReport] = useState<QaReport | null>(null);
@@ -178,21 +182,21 @@ function GateCheck({ project, defaultRef }: { project: string; defaultRef: strin
     try { await navigator.clipboard.writeText(report.markdown); setCopied(true); } catch { setCopied(false); }
   };
   return (
-    <Section title="Release gate">
+    <Section title={tr('Release gate')}>
       <form className="row" onSubmit={check}>
-        <label className="inline">Branch, tag or commit<input value={ref} onChange={e => setRef(e.target.value)} maxLength={100} /></label>
-        <button type="submit" disabled={action.busy || !ref.trim()}>{action.busy ? 'Checking…' : 'Check gate'}</button>
+        <label className="inline">{tr('Branch, tag or commit')}<input value={ref} onChange={e => setRef(e.target.value)} maxLength={100} /></label>
+        <button type="submit" disabled={action.busy || !ref.trim()}>{action.busy ? tr('Checking…') : tr('Check gate')}</button>
       </form>
       <ErrorBanner error={action.error} />
       {gate && (
         <div className="stack-tight">
           <div className="row"><Status value={gate.verdict} /><code>{gate.commit.slice(0, 12)}</code>
-            <span className="muted small">{gate.verdict === 'PASS' ? 'All required suites passed at this commit.' : ''}</span></div>
+            <span className="muted small">{gate.verdict === 'PASS' ? tr('All required suites passed at this commit.') : ''}</span></div>
           {gate.reasons.map((r, i) => <p key={i} className="small">{r}</p>)}
           {gate.notes.map((n, i) => <p key={i} className="muted small">{n}</p>)}
           <div className="row">
-            <button type="button" className="secondary" disabled={action.busy} onClick={() => void showReport()}>QA report</button>
-            {report && <button type="button" className="secondary" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy Markdown'}</button>}
+            <button type="button" className="secondary" disabled={action.busy} onClick={() => void showReport()}>{tr('QA report')}</button>
+            {report && <button type="button" className="secondary" onClick={() => void copy()}>{copied ? tr('Copied') : tr('Copy Markdown')}</button>}
           </div>
           {report && <pre className="report" aria-label="QA report Markdown">{report.markdown}</pre>}
         </div>

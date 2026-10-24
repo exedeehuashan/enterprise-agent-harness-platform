@@ -3,9 +3,11 @@ import { api, newKey } from '../api/client';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
 import { Empty, ErrorBanner, Section } from './ui';
+import { useT } from '../i18n';
 
 /** Repositories the code agent may work on; approvers register them and decide whether a branch may be pushed. */
 export function CodeRepositoriesPanel() {
+  const tr = useT();
   const { can } = useSession();
   const repos = usePolling(() => api.codeRepositories(), [], 0);
   const action = useAction();
@@ -17,26 +19,26 @@ export function CodeRepositoriesPanel() {
     }
   };
   return (
-    <Section title="Code agent repositories">
+    <Section title={tr('Code agent repositories')}>
       <p className="muted small">Claude Code may only work on these repositories, and every run needs an approver. With pushing allowed and EAHP_GITHUB_WRITE_TOKEN set,
         EAHP pushes the agent's change to a new branch and opens a draft pull request; otherwise only the diff is recorded.</p>
       <ErrorBanner error={repos.error ?? action.error} />
-      {repos.data?.length === 0 && <Empty>No repositories are registered.</Empty>}
+      {repos.data?.length === 0 && <Empty>{tr('No repositories are registered.')}</Empty>}
       {repos.data?.map(r => (
         <div key={r.key} className="row spread item small">
-          <div><strong>{r.name}</strong> <code className="muted">{r.key}</code> {r.allowPush ? <span className="badge badge-warn">push + draft PR</span> : <span className="badge badge-muted">diff only</span>}
-            {!r.enabled && <span className="badge badge-muted"> disabled</span>}<div className="muted"><code className="wrap">{r.repositoryUrl}</code> @ {r.defaultRef}</div></div>
-          {can('APPROVER') && <button className="danger" disabled={action.busy} onClick={() => window.confirm(`Remove ${r.key}?`) && action.run(() => api.deleteCodeRepository(r.key)).then(() => repos.reload())}>Remove</button>}
+          <div><strong>{r.name}</strong> <code className="muted">{r.key}</code> {r.allowPush ? <span className="badge badge-warn">{tr('push + draft PR')}</span> : <span className="badge badge-muted">{tr('diff only')}</span>}
+            {!r.enabled && <span className="badge badge-muted"> {tr('disabled')}</span>}<div className="muted"><code className="wrap">{r.repositoryUrl}</code> @ {r.defaultRef}</div></div>
+          {can('APPROVER') && <button className="danger" disabled={action.busy} onClick={() => window.confirm(`Remove ${r.key}?`) && action.run(() => api.deleteCodeRepository(r.key)).then(() => repos.reload())}>{tr('Remove')}</button>}
         </div>
       ))}
       {can('APPROVER') && (
         <form className="row" onSubmit={save}>
-          <label className="inline">Key<input value={form.key} onChange={e => setForm({ ...form, key: e.target.value })} required placeholder="online-shop" /></label>
-          <label className="inline">Name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
-          <label className="inline">Repository URL<input value={form.repositoryUrl} onChange={e => setForm({ ...form, repositoryUrl: e.target.value })} required placeholder="https://github.com/owner/repo.git" /></label>
-          <label className="inline">Default ref<input value={form.defaultRef} onChange={e => setForm({ ...form, defaultRef: e.target.value })} required /></label>
-          <label className="inline"><input type="checkbox" checked={form.allowPush} onChange={e => setForm({ ...form, allowPush: e.target.checked })} />allow push</label>
-          <button type="submit" className="secondary" disabled={action.busy}>Save repository</button>
+          <label className="inline">{tr('Key')}<input value={form.key} onChange={e => setForm({ ...form, key: e.target.value })} required placeholder="online-shop" /></label>
+          <label className="inline">{tr('Name')}<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
+          <label className="inline">{tr('Repository URL')}<input value={form.repositoryUrl} onChange={e => setForm({ ...form, repositoryUrl: e.target.value })} required placeholder="https://github.com/owner/repo.git" /></label>
+          <label className="inline">{tr('Default ref')}<input value={form.defaultRef} onChange={e => setForm({ ...form, defaultRef: e.target.value })} required /></label>
+          <label className="inline"><input type="checkbox" checked={form.allowPush} onChange={e => setForm({ ...form, allowPush: e.target.checked })} />{tr('allow push')}</label>
+          <button type="submit" className="secondary" disabled={action.busy}>{tr('Save repository')}</button>
         </form>
       )}
     </Section>
@@ -45,6 +47,7 @@ export function CodeRepositoriesPanel() {
 
 /** Asks Claude Code to make a change; the run waits for an approver before anything executes. */
 export function RunCodeAgentForm({ taskId, onStarted }: { taskId: string; onStarted: () => void }) {
+  const tr = useT();
   const repos = usePolling(() => api.codeRepositories(), [], 0);
   const action = useAction();
   const enabled = (repos.data ?? []).filter(r => r.enabled);
@@ -57,21 +60,21 @@ export function RunCodeAgentForm({ taskId, onStarted }: { taskId: string; onStar
     if (form.ref.trim()) args.ref = form.ref.trim();
     if (await action.run(() => api.startRun(taskId, newKey('code'), 'CODE_AGENT_RUN', form.timeout, args))) { setForm({ ...form, instructions: '' }); onStarted(); }
   };
-  if (repos.data && enabled.length === 0) return <Empty>No repository is registered for the code agent (Administration page).</Empty>;
+  if (repos.data && enabled.length === 0) return <Empty>{tr('No repository is registered for the code agent (Administration page).')}</Empty>;
   if (!repo) return null;
   return (
     <form className="stack" onSubmit={submit}>
       <div className="row">
-        <label className="inline">Repository<select value={repo.key} onChange={e => setForm({ ...form, repository: e.target.value })}>
+        <label className="inline">{tr('Repository')}<select value={repo.key} onChange={e => setForm({ ...form, repository: e.target.value })}>
           {enabled.map(r => <option key={r.key} value={r.key}>{r.name}</option>)}</select></label>
-        <label className="inline">Branch, tag or commit<input value={form.ref} onChange={e => setForm({ ...form, ref: e.target.value })} placeholder={repo.defaultRef} maxLength={100} /></label>
-        <label className="inline">Max turns<input type="number" min={1} max={200} value={form.maxTurns} onChange={e => setForm({ ...form, maxTurns: Number(e.target.value) })} /></label>
-        <label className="inline">Timeout (s)<input type="number" min={60} max={3600} value={form.timeout} onChange={e => setForm({ ...form, timeout: Number(e.target.value) })} /></label>
+        <label className="inline">{tr('Branch, tag or commit')}<input value={form.ref} onChange={e => setForm({ ...form, ref: e.target.value })} placeholder={repo.defaultRef} maxLength={100} /></label>
+        <label className="inline">{tr('Max turns')}<input type="number" min={1} max={200} value={form.maxTurns} onChange={e => setForm({ ...form, maxTurns: Number(e.target.value) })} /></label>
+        <label className="inline">{tr('Timeout (s)')}<input type="number" min={60} max={3600} value={form.timeout} onChange={e => setForm({ ...form, timeout: Number(e.target.value) })} /></label>
       </div>
-      <label>Instructions for Claude Code<textarea rows={4} value={form.instructions} onChange={e => setForm({ ...form, instructions: e.target.value })} minLength={10} maxLength={20000} required
+      <label>{tr('Instructions for Claude Code')}<textarea rows={4} value={form.instructions} onChange={e => setForm({ ...form, instructions: e.target.value })} minLength={10} maxLength={20000} required
         placeholder="For example: make OrderTotalsTest pass without changing the test; keep the change minimal." /></label>
-      <p className="muted small">The run waits for an approver. {repo.allowPush ? 'Its change is pushed to a new branch with a draft pull request (if a write token is configured).' : 'Only the diff is recorded.'}</p>
-      <div><button type="submit" disabled={action.busy}>Request code change</button></div>
+      <p className="muted small">The run waits for an approver. {repo.allowPush ? tr('Its change is pushed to a new branch with a draft pull request (if a write token is configured).') : tr('Only the diff is recorded.')}</p>
+      <div><button type="submit" disabled={action.busy}>{tr('Request code change')}</button></div>
       <ErrorBanner error={repos.error ?? action.error} />
     </form>
   );

@@ -4,6 +4,7 @@ import type { FailingTest } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
 import { Empty, ErrorBanner, Section, Time } from './ui';
+import { useT } from '../i18n';
 
 /** Short test label: the simple class name for Java (com.example.OrderTest), the file path as-is for JavaScript runners. */
 export const testLabel = (cls: string, test: string) => `${cls.includes('/') ? cls : cls.split('.').pop()}${test ? `#${test}` : ''}`;
@@ -13,6 +14,7 @@ export const testLabel = (cls: string, test: string) => `${cls.includes('/') ? c
  * a currently failing test with a reason, or release one early.
  */
 export function QuarantinePanel({ project, failing }: { project: string; failing: FailingTest[] }) {
+  const tr = useT();
   const { can } = useSession();
   const quarantines = usePolling(() => api.quarantines(project), [project], 30000);
   const suggestions = usePolling(() => api.quarantineSuggestions(project), [project], 30000);
@@ -28,12 +30,12 @@ export function QuarantinePanel({ project, failing }: { project: string; failing
     void change(() => api.admin.quarantine({ project, suite: f.suite, testClass: f.testClass, testName: f.testName, reason: form.reason.trim(), days: form.days }));
   };
   return (
-    <Section title="Quarantined tests">
-      <p className="muted small">A quarantined test still runs and is recorded, but a suite that fails only in quarantined tests does not block the gate, as long as it ran at least as many tests as its last passing run. Quarantines expire after at most 30 days.</p>
+    <Section title={tr('Quarantined tests')}>
+      <p className="muted small">{tr('A quarantined test still runs and is recorded, but a suite that fails only in quarantined tests does not block the gate, as long as it ran at least as many tests as its last passing run. Quarantines expire after at most 30 days.')}</p>
       <ErrorBanner error={quarantines.error ?? suggestions.error ?? action.error} />
       {(suggestions.data?.length ?? 0) > 0 && (
         <div className="stack-tight">
-          <h3 className="subhead">Suggested by EAHP</h3>
+          <h3 className="subhead">{tr('Suggested by EAHP')}</h3>
           {suggestions.data!.map(s => (
             <article key={s.id} className="item small">
               <div className="row spread">
@@ -43,40 +45,40 @@ export function QuarantinePanel({ project, failing }: { project: string; failing
                   {s.evidence.lastFailure && <div className="muted wrap">Last failure: {s.evidence.lastFailure}</div>}
                 </div>
                 {can('APPROVER') && <div className="row">
-                  <button className="secondary" disabled={action.busy} onClick={() => void decide(() => api.admin.acceptSuggestion(s.id))}>Quarantine 14 days</button>
+                  <button className="secondary" disabled={action.busy} onClick={() => void decide(() => api.admin.acceptSuggestion(s.id))}>{tr('Quarantine 14 days')}</button>
                   <button className="secondary" disabled={action.busy} onClick={() => {
-                    const note = window.prompt('Why is this not flaky? (optional)');
+                    const note = window.prompt(tr('Why is this not flaky? (optional)'));
                     if (note !== null) void decide(() => api.admin.dismissSuggestion(s.id, note.trim()));
-                  }}>Dismiss</button>
+                  }}>{tr('Dismiss')}</button>
                 </div>}
               </div>
             </article>
           ))}
         </div>
       )}
-      {quarantines.data?.length === 0 && <Empty>No test is quarantined.</Empty>}
+      {quarantines.data?.length === 0 && <Empty>{tr('No test is quarantined.')}</Empty>}
       {quarantines.data && quarantines.data.length > 0 && (
         <div className="table-wrap"><table>
-          <thead><tr><th>Test</th><th>Suite</th><th>Reason</th><th>By</th><th>Expires</th>{can('APPROVER') && <th />}</tr></thead>
+          <thead><tr><th>{tr('Test')}</th><th>{tr('Suite')}</th><th>{tr('Reason')}</th><th>{tr('By')}</th><th>{tr('Expires')}</th>{can('APPROVER') && <th />}</tr></thead>
           <tbody>{quarantines.data.map(q => (
             <tr key={q.id}>
               <td className="wrap-cell"><code title={`${q.testClass}#${q.testName}`}>{testLabel(q.testClass, q.testName)}</code></td>
               <td>{q.suiteKey}</td><td className="wrap-cell">{q.reason}</td><td>{q.createdBy}</td><td><Time value={q.expiresAt} /></td>
               {can('APPROVER') && <td><button className="secondary" disabled={action.busy}
-                onClick={() => window.confirm('Release this quarantine? Its failures will block the gate again.') && change(() => api.admin.releaseQuarantine(q.id))}>Release</button></td>}
+                onClick={() => window.confirm(tr('Release this quarantine? Its failures will block the gate again.')) && change(() => api.admin.releaseQuarantine(q.id))}>{tr('Release')}</button></td>}
             </tr>
           ))}</tbody>
         </table></div>
       )}
       {can('APPROVER') && candidates.length > 0 && (
         <form className="row" onSubmit={create}>
-          <label className="inline">Failing test<select value={form.test} onChange={e => setForm({ ...form, test: e.target.value })} required>
-            <option value="">choose…</option>
+          <label className="inline">{tr('Failing test')}<select value={form.test} onChange={e => setForm({ ...form, test: e.target.value })} required>
+            <option value="">{tr('choose…')}</option>
             {candidates.map((f, i) => <option key={i} value={i}>{f.suite}: {testLabel(f.testClass, f.testName)}</option>)}
           </select></label>
-          <label className="inline">Reason<input value={form.reason} minLength={10} maxLength={500} onChange={e => setForm({ ...form, reason: e.target.value })} required /></label>
-          <label className="inline">Days<input type="number" min={1} max={30} value={form.days} onChange={e => setForm({ ...form, days: Number(e.target.value) })} required /></label>
-          <button type="submit" className="secondary" disabled={action.busy}>Quarantine</button>
+          <label className="inline">{tr('Reason')}<input value={form.reason} minLength={10} maxLength={500} onChange={e => setForm({ ...form, reason: e.target.value })} required /></label>
+          <label className="inline">{tr('Days')}<input type="number" min={1} max={30} value={form.days} onChange={e => setForm({ ...form, days: Number(e.target.value) })} required /></label>
+          <button type="submit" className="secondary" disabled={action.busy}>{tr('Quarantine')}</button>
         </form>
       )}
     </Section>

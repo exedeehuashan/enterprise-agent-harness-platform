@@ -1,27 +1,28 @@
 import { api } from '../api/client';
 import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Time } from './ui';
+import { useT } from '../i18n';
 
 /**
  * The AI evaluation set (P44): fixed inputs for failure analysis, test generation and planning, graded automatically.
  * Running it spends real tokens on the configured provider.
  */
 export function AiEvalsPanel() {
+  const tr = useT();
   const runs = usePolling(() => api.aiEvals(), [], 5000);
   const action = useAction();
   const running = (runs.data ?? []).some(r => r.status === 'RUNNING');
   const latest = runs.data?.[0];
   const run = async () => { if (await action.run(() => api.runAiEvals()) !== undefined) void runs.reload(); };
   return (
-    <Section title="AI evaluation" actions={<button className="secondary" disabled={action.busy || running}
-      onClick={() => window.confirm('Run the evaluation set against the configured model? It uses real tokens.') && void run()}>{running ? 'Evaluating…' : 'Run evaluation'}</button>}>
-      <p className="muted small">Twelve fixed cases check failure analysis (categories, named tests, resistance to instructions hidden in test output),
-        API test generation (valid collections, negative cases, only paths from the spec) and planning (valid plans, right tools, injected tools refused).</p>
+    <Section title={tr('AI evaluation')} actions={<button className="secondary" disabled={action.busy || running}
+      onClick={() => window.confirm(tr('Run the evaluation set against the configured model? It uses real tokens.')) && void run()}>{running ? tr('Evaluating…') : tr('Run evaluation')}</button>}>
+      <p className="muted small">{tr('Twelve fixed cases check failure analysis (categories, named tests, resistance to instructions hidden in test output), API test generation (valid collections, negative cases, only paths from the spec) and planning (valid plans, right tools, injected tools refused).')}</p>
       <ErrorBanner error={runs.error ?? action.error} />
-      {runs.data?.length === 0 && <Empty>No evaluation has run yet.</Empty>}
+      {runs.data?.length === 0 && <Empty>{tr('No evaluation has run yet.')}</Empty>}
       {runs.data && runs.data.length > 0 && (
         <div className="table-wrap"><table>
-          <thead><tr><th>Started</th><th>Model</th><th>Score</th><th>Tokens</th></tr></thead>
+          <thead><tr><th>{tr('Started')}</th><th>{tr('Model')}</th><th>{tr('Score')}</th><th>{tr('Tokens')}</th></tr></thead>
           <tbody>{runs.data.map(r => (
             <tr key={r.id}>
               <td className="small"><Time value={r.startedAt} /><div className="muted">set v{r.setVersion}</div></td>

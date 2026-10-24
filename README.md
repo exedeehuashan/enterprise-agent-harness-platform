@@ -3,6 +3,8 @@
 Java 17 / Spring Boot 3 backend for Agent Task Management, with a React +
 TypeScript web console in `frontend/`.
 
+中文文档：[用户手册](docs/zh/用户手册.md) · [运维手册](docs/zh/运维手册.md)。控制台右上角可切换中文 / English。
+
 ## One-command local deployment
 
 Prerequisites: Docker with Compose v2, curl and openssl. From the repository root:

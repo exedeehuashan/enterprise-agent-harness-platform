@@ -5,10 +5,12 @@ import type { TaskStatus } from '../api/types';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
+import { useT } from '../i18n';
 
 const STATUSES: (TaskStatus | '')[] = ['', 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED'];
 
 export function TasksPage() {
+  const tr = useT();
   const { can } = useSession();
   const [status, setStatus] = useState<TaskStatus | ''>('');
   const [page, setPage] = useState(0);
@@ -17,10 +19,10 @@ export function TasksPage() {
   return (
     <>
       {can('OPERATOR') && <CreateTask />}
-      <Section title="Tasks" actions={
-        <label className="inline">Status
+      <Section title={tr('Tasks')} actions={
+        <label className="inline">{tr('Status')}
           <select value={status} onChange={e => { setStatus(e.target.value as TaskStatus | ''); setPage(0); }}>
-            {STATUSES.map(s => <option key={s} value={s}>{s || 'All'}</option>)}
+            {STATUSES.map(s => <option key={s} value={s}>{s || tr('All')}</option>)}
           </select>
         </label>
       }>
@@ -29,7 +31,7 @@ export function TasksPage() {
         {tasks.data && tasks.data.items.length > 0 && (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Title</th><th>Status</th><th>Created</th><th>Updated</th></tr></thead>
+              <thead><tr><th>{tr('Title')}</th><th>{tr('Status')}</th><th>{tr('Created')}</th><th>{tr('Updated')}</th></tr></thead>
               <tbody>
                 {tasks.data.items.map(t => (
                   <tr key={t.id}>
@@ -45,9 +47,9 @@ export function TasksPage() {
         )}
         {tasks.data && tasks.data.totalPages > 1 && (
           <nav className="pager">
-            <button className="secondary" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</button>
+            <button className="secondary" disabled={page === 0} onClick={() => setPage(p => p - 1)}>{tr('Previous')}</button>
             <span>Page {page + 1} of {tasks.data.totalPages}</span>
-            <button className="secondary" disabled={page + 1 >= tasks.data.totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
+            <button className="secondary" disabled={page + 1 >= tasks.data.totalPages} onClick={() => setPage(p => p + 1)}>{tr('Next')}</button>
           </nav>
         )}
       </Section>
@@ -56,6 +58,7 @@ export function TasksPage() {
 }
 
 function CreateTask() {
+  const tr = useT();
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -68,12 +71,12 @@ function CreateTask() {
   };
 
   return (
-    <Section title="New task">
+    <Section title={tr('New task')}>
       <form className="stack" onSubmit={submit}>
-        <label>Title<input value={title} onChange={e => setTitle(e.target.value)} maxLength={255} required /></label>
-        <label>Description<textarea value={description} onChange={e => setDescription(e.target.value)} maxLength={10000} rows={3} /></label>
+        <label>{tr('Title')}<input value={title} onChange={e => setTitle(e.target.value)} maxLength={255} required /></label>
+        <label>{tr('Description')}<textarea value={description} onChange={e => setDescription(e.target.value)} maxLength={10000} rows={3} /></label>
         <ErrorBanner error={action.error} />
-        <div><button type="submit" disabled={action.busy || !title.trim()}>Create task</button></div>
+        <div><button type="submit" disabled={action.busy || !title.trim()}>{tr('Create task')}</button></div>
       </form>
     </Section>
   );

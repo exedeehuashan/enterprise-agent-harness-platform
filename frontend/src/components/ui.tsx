@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ApiError } from '../api/client';
+import { useT } from '../i18n';
 
 const TONE: Record<string, string> = {
   COMPLETED: 'ok', VALIDATED: 'ok', APPROVED: 'ok', CONSUMED: 'ok', PASS: 'ok', PASSED: 'ok', FAIL: 'bad',
@@ -11,16 +12,18 @@ const TONE: Record<string, string> = {
 };
 
 export function Status({ value }: { value: string | null | undefined }) {
+  const tr = useT();
   if (!value) return <span className="muted">—</span>;
-  return <span className={`badge badge-${TONE[value] ?? 'muted'}`}>{value.replace(/_/g, ' ')}</span>;
+  return <span className={`badge badge-${TONE[value] ?? 'muted'}`}>{tr(value.replace(/_/g, ' '))}</span>;
 }
 
 export function ErrorBanner({ error }: { error: Error | null | undefined }) {
+  const tr = useT();
   if (!error) return null;
   const status = error instanceof ApiError ? error.status : null;
-  const hint = status === 401 ? 'Your session is no longer valid. Sign in again.'
-    : status === 403 ? 'Your role does not allow this action.'
-    : status === 412 ? 'The task changed since you loaded it. Reload and reapply your edit.'
+  const hint = status === 401 ? tr('Your session is no longer valid. Sign in again.')
+    : status === 403 ? tr('Your role does not allow this action.')
+    : status === 412 ? tr('The task changed since you loaded it. Reload and reapply your edit.')
     : null;
   return (
     <div className="error" role="alert">

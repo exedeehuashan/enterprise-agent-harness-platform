@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { tokenStore } from '../api/client';
 import { SessionProvider } from '../session';
+import { LanguageProvider, useT } from '../i18n';
 import { fakeApi } from './fakeApi';
 
 const TOKEN = 'a'.repeat(40);
@@ -90,5 +91,37 @@ describe('console', () => {
     expect(await screen.findByText('WAITING APPROVAL')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel execution' })).toBeInTheDocument();
     expect(screen.getByText(/A step is waiting for approval/)).toBeInTheDocument();
+  });
+});
+
+describe('languages', () => {
+  it('shows the console in Chinese and switches back to English', async () => {
+    tokenStore.set(TOKEN);
+    fakeApi({
+      'GET /me': () => ({ body: { name: 'operator', roles: ['OPERATOR', 'VIEWER'] } }),
+      'GET /agent-tasks': () => ({ body: { items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 } }),
+    });
+    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <LanguageProvider language="zh"><SessionProvider><App /></SessionProvider></LanguageProvider></MemoryRouter>);
+    expect(await screen.findByRole('link', { name: '测试项目' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '质量' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '退出' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'English' }));
+    expect(await screen.findByRole('link', { name: 'Test projects' })).toBeInTheDocument();
+    expect(localStorage.getItem('eahp.language')).toBe('en');
+    await userEvent.click(screen.getByRole('button', { name: '中文' }));
+    expect(await screen.findByRole('link', { name: '任务' })).toBeInTheDocument();
+    localStorage.removeItem('eahp.language');
+  });
+
+  it('fills placeholders and falls back to English for unknown text', () => {
+    let seen = '';
+    function Probe() {
+      const tr = useT();
+      seen = [tr('{n} affected modules only', { n: 3 }), tr('Not in the dictionary')].join(' | ');
+      return null;
+    }
+    render(<LanguageProvider language="zh"><Probe /></LanguageProvider>);
+    expect(seen).toBe('仅 3 个受影响模块 | Not in the dictionary');
   });
 });

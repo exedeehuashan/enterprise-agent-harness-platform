@@ -5,6 +5,7 @@ import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Status, Time } from './ui';
 import { AiAnalysisPanel } from './aiAnalysis';
 import { AutoFixPanel } from './autoFix';
+import { useT } from '../i18n';
 
 /** Suites that need Docker access must use the approval-gated tool; the backend enforces the same split. */
 export const QA_TOOLS = { normal: 'QA_RUN_SUITE', privileged: 'QA_RUN_PRIVILEGED_SUITE', api: 'QA_RUN_API_TESTS' } as const;
@@ -18,6 +19,7 @@ export function runLabel(run: Run): string {
 }
 
 export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted: () => void }) {
+  const tr = useT();
   const projects = usePolling(() => api.qaProjects(), [], 0);
   const [projectKey, setProjectKey] = useState('');
   const [suiteKey, setSuiteKey] = useState('');
@@ -51,50 +53,50 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
   };
 
   if (projects.error) return <ErrorBanner error={projects.error} />;
-  if (projects.data && enabled.length === 0) return <Empty>No test projects are registered.</Empty>;
+  if (projects.data && enabled.length === 0) return <Empty>{tr('No test projects are registered.')}</Empty>;
   if (!project) return null;
   return (
     <form className="stack" onSubmit={submit}>
       <div className="row">
-        <label className="inline">Project
+        <label className="inline">{tr('Project')}
           <select value={project.key} onChange={e => { setProjectKey(e.target.value); setSuiteKey(''); setRef(''); setCheckedRef(''); }}>
             {enabled.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
           </select>
         </label>
-        <label className="inline">Branch, tag or commit
+        <label className="inline">{tr('Branch, tag or commit')}
           <input value={ref} onChange={e => setRef(e.target.value)} onBlur={() => setCheckedRef(ref.trim())} placeholder={project.defaultRef} maxLength={100} />
         </label>
-        <label className="inline">Suite
+        <label className="inline">{tr('Suite')}
           <select value={suite?.key ?? ''} onChange={e => setSuiteKey(e.target.value)} disabled={!suite}>
             {suites.map(s => <option key={s.key} value={s.key}>{s.name}{s.source === 'repository' ? ' [repo]' : ''}{s.dockerAccess ? ' (needs approval)' : ''}</option>)}
           </select>
         </label>
         {needsEnvironment && (
-          <label className="inline">Environment
+          <label className="inline">{tr('Environment')}
             <select value={environment?.key ?? ''} onChange={e => setEnvironmentKey(e.target.value)} disabled={!environment}>
               {(environments.data ?? []).filter(e => e.enabled).map(e => <option key={e.key} value={e.key}>{e.name}</option>)}
             </select>
           </label>
         )}
-        <label className="inline">Timeout (s)
+        <label className="inline">{tr('Timeout (s)')}
           <input type="number" min={1} max={suite?.maxTimeoutSeconds ?? 300} value={timeout} onChange={e => setTimeoutSeconds(Number(e.target.value))} />
         </label>
-        <button type="submit" disabled={action.busy || !suite || checkedRef !== ref.trim() || (needsEnvironment && !environment)}>{action.busy ? 'Resolving…' : 'Run suite'}</button>
+        <button type="submit" disabled={action.busy || !suite || checkedRef !== ref.trim() || (needsEnvironment && !environment)}>{action.busy ? 'Resolving…' : tr('Run suite')}</button>
       </div>
       {catalog.data && (
         <p className="muted small">
           {catalog.data.ref} → <code>{catalog.data.commit.slice(0, 12)}</code> ·{' '}
-          {catalog.data.repositoryFile === 'found' && <>suites from <code>{project.suitesFile}</code> in the repository, registry suites as fallback</>}
-          {catalog.data.repositoryFile === 'absent' && <>no <code>{project.suitesFile}</code> at this commit; registry suites</>}
-          {catalog.data.repositoryFile === 'disabled' && <>registry suites</>}
-          {catalog.data.repositoryFile === 'invalid' && <>registry suites only</>}
+          {catalog.data.repositoryFile === 'found' && <>{tr('suites from')} <code>{project.suitesFile}</code> {tr('in the repository, registry suites as fallback')}</>}
+          {catalog.data.repositoryFile === 'absent' && <>{tr('no')} <code>{project.suitesFile}</code> at this commit; registry suites</>}
+          {catalog.data.repositoryFile === 'disabled' && <>{tr('registry suites')}</>}
+          {catalog.data.repositoryFile === 'invalid' && <>{tr('registry suites only')}</>}
         </p>
       )}
       {catalog.data?.repositoryError && <div className="error" role="alert"><strong>{project.suitesFile} is invalid at this commit:</strong> {catalog.data.repositoryError}</div>}
       <ErrorBanner error={catalog.error} />
       {suite?.description && <p className="muted small">{suite.description}</p>}
       {suite?.dockerAccess && (
-        <p className="muted small">This suite needs Docker access on the runner host, so an approver must approve the exact commit before it runs.</p>
+        <p className="muted small">{tr('This suite needs Docker access on the runner host, so an approver must approve the exact commit before it runs.')}</p>
       )}
       <ErrorBanner error={action.error} />
     </form>
@@ -102,6 +104,7 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
 }
 
 export function ArtifactList({ runId }: { runId: string }) {
+  const tr = useT();
   const artifacts = usePolling(() => api.artifacts(runId), [runId], 5000);
   const action = useAction();
   const download = async (a: Artifact) => {
@@ -115,19 +118,19 @@ export function ArtifactList({ runId }: { runId: string }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <Section title="Artifacts">
+    <Section title={tr('Artifacts')}>
       <ErrorBanner error={artifacts.error ?? action.error} />
-      {artifacts.data?.length === 0 && <Empty>No artifacts were produced.</Empty>}
+      {artifacts.data?.length === 0 && <Empty>{tr('No artifacts were produced.')}</Empty>}
       {artifacts.data && artifacts.data.length > 0 && (
         <div className="table-wrap"><table>
-          <thead><tr><th>Name</th><th>Size</th><th>Attempt</th><th>SHA-256</th><th /></tr></thead>
+          <thead><tr><th>{tr('Name')}</th><th>{tr('Size')}</th><th>{tr('Attempt')}</th><th>{tr('SHA-256')}</th><th /></tr></thead>
           <tbody>{artifacts.data.map(a => (
             <tr key={a.id}>
               <td>{a.name}</td><td>{formatBytes(a.sizeBytes)}</td><td>{a.attempt}</td>
               <td><code title={a.sha256}>{a.sha256.slice(0, 12)}</code></td>
               <td>{a.expiredAt
-                ? <span className="badge badge-muted" title={`Content removed by retention on ${new Date(a.expiredAt).toLocaleString()}; the SHA-256 still identifies it`}>expired</span>
-                : <button className="secondary" onClick={() => download(a)} disabled={action.busy}>Download</button>}</td>
+                ? <span className="badge badge-muted" title={`Content removed by retention on ${new Date(a.expiredAt).toLocaleString()}; the SHA-256 still identifies it`}>{tr('expired')}</span>
+                : <button className="secondary" onClick={() => download(a)} disabled={action.busy}>{tr('Download')}</button>}</td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -138,6 +141,7 @@ export function ArtifactList({ runId }: { runId: string }) {
 
 /** Test outcome from the run's summary.json: the evidence a reviewer needs before trusting a result. */
 export function QaEvidence({ run }: { run: Run }) {
+  const tr = useT();
   const artifacts = usePolling(() => api.artifacts(run.id), [run.id, run.status], 0);
   const summaryId = artifacts.data?.find(a => a.name === 'summary.json')?.id;
   const summary = usePolling(() => (summaryId ? api.qaSummary(summaryId) : Promise.resolve(null)), [summaryId], 0);
@@ -145,31 +149,31 @@ export function QaEvidence({ run }: { run: Run }) {
 
   return (
     <>
-    <Section title="Test result" actions={summary.data && <Status value={summary.data.outcome === 'PASSED' ? 'COMPLETED' : summary.data.outcome === 'STOPPED' ? 'CANCELLED' : 'FAILED'} />}>
+    <Section title={tr('Test result')} actions={summary.data && <Status value={summary.data.outcome === 'PASSED' ? 'COMPLETED' : summary.data.outcome === 'STOPPED' ? 'CANCELLED' : 'FAILED'} />}>
       <dl className="meta">
-        <dt>Project / suite</dt><dd>{String(a.project)} / {String(a.suite)}</dd>
-        <dt>Ref</dt><dd>{String(a.ref)} → <code className="wrap">{String(a.commit)}</code></dd>
+        <dt>{tr('Project / suite')}</dt><dd>{String(a.project)} / {String(a.suite)}</dd>
+        <dt>{tr('Ref')}</dt><dd>{String(a.ref)} → <code className="wrap">{String(a.commit)}</code></dd>
       </dl>
       <ErrorBanner error={artifacts.error ?? summary.error} />
-      {!summary.data && <p className="muted">{['QUEUED', 'RUNNING', 'WAITING_APPROVAL'].includes(run.status) ? 'Waiting for the suite to finish.' : 'No test summary was produced; see the run error and artifacts.'}</p>}
+      {!summary.data && <p className="muted">{['QUEUED', 'RUNNING', 'WAITING_APPROVAL'].includes(run.status) ? tr('Waiting for the suite to finish.') : tr('No test summary was produced; see the run error and artifacts.')}</p>}
       {summary.data && (
         <>
           <div className="stats">
-            <Stat label="Outcome" value={summary.data.outcome.replace(/_/g, ' ')} tone={summary.data.outcome === 'PASSED' ? 'ok' : 'bad'} />
-            <Stat label="Exit code" value={summary.data.exitCode === null ? 'n/a' : String(summary.data.exitCode)} />
-            <Stat label="Tests" value={String(summary.data.tests)} />
-            <Stat label="Failures" value={String(summary.data.failures)} tone={summary.data.failures ? 'bad' : undefined} />
-            <Stat label="Errors" value={String(summary.data.errors)} tone={summary.data.errors ? 'bad' : undefined} />
-            <Stat label="Skipped" value={String(summary.data.skipped)} />
-            <Stat label="Duration" value={`${summary.data.durationSeconds} s`} />
+            <Stat label={tr('Outcome')} value={summary.data.outcome.replace(/_/g, ' ')} tone={summary.data.outcome === 'PASSED' ? 'ok' : 'bad'} />
+            <Stat label={tr('Exit code')} value={summary.data.exitCode === null ? 'n/a' : String(summary.data.exitCode)} />
+            <Stat label={tr('Tests')} value={String(summary.data.tests)} />
+            <Stat label={tr('Failures')} value={String(summary.data.failures)} tone={summary.data.failures ? 'bad' : undefined} />
+            <Stat label={tr('Errors')} value={String(summary.data.errors)} tone={summary.data.errors ? 'bad' : undefined} />
+            <Stat label={tr('Skipped')} value={String(summary.data.skipped)} />
+            <Stat label={tr('Duration')} value={`${summary.data.durationSeconds} s`} />
           </div>
           <dl className="meta">
-            <dt>Suite source</dt><dd>{summary.data.suiteSource === 'repository' ? 'declared in the repository at this commit' : summary.data.suiteSource === 'api-tests' ? 'API tests declared in the repository at this commit' : 'EAHP registry'}</dd>
-            <dt>Started</dt><dd><Time value={summary.data.startedAt} /></dd>
-            {summary.data.runnerImage && <><dt>Runner</dt><dd><code>{summary.data.runnerImage}</code>{summary.data.dockerAccess ? ' with Docker access' : ''}</dd></>}
-            {summary.data.command && <><dt>Command</dt><dd><code className="wrap">{summary.data.command.join(' ')}</code></dd></>}
-            {summary.data.environment && <><dt>Environment</dt><dd>{summary.data.environment}</dd></>}
-            <dt>Reports</dt><dd>{summary.data.reportFiles} files{summary.data.unreadableReportFiles ? `, ${summary.data.unreadableReportFiles} unreadable` : ''}{summary.data.reportsTruncated ? ', archive omitted (too large)' : ''}</dd>
+            <dt>{tr('Suite source')}</dt><dd>{summary.data.suiteSource === 'repository' ? tr('declared in the repository at this commit') : summary.data.suiteSource === 'api-tests' ? tr('API tests declared in the repository at this commit') : tr('EAHP registry')}</dd>
+            <dt>{tr('Started')}</dt><dd><Time value={summary.data.startedAt} /></dd>
+            {summary.data.runnerImage && <><dt>{tr('Runner')}</dt><dd><code>{summary.data.runnerImage}</code>{summary.data.dockerAccess ? tr(' with Docker access') : ''}</dd></>}
+            {summary.data.command && <><dt>{tr('Command')}</dt><dd><code className="wrap">{summary.data.command.join(' ')}</code></dd></>}
+            {summary.data.environment && <><dt>{tr('Environment')}</dt><dd>{summary.data.environment}</dd></>}
+            <dt>{tr('Reports')}</dt><dd>{summary.data.reportFiles} files{summary.data.unreadableReportFiles ? `, ${summary.data.unreadableReportFiles} unreadable` : ''}{summary.data.reportsTruncated ? ', archive omitted (too large)' : ''}</dd>
           </dl>
           <TriageView run={run} fallback={summary.data.failedTests} />
         </>
@@ -191,6 +195,7 @@ const HISTORY: Record<string, { text: string; tone: string }> = {
 
 /** Why the run failed, from the ingested test results: a category per failure and each test's history in this suite. */
 function TriageView({ run, fallback }: { run: Run; fallback: QaSummary['failedTests'] }) {
+  const tr = useT();
   const triage = usePolling(() => api.qaTriage(run.id), [run.id, run.status], 5000);
   const t = triage.data;
   if (triage.error) return <ErrorBanner error={triage.error} />;
@@ -198,7 +203,7 @@ function TriageView({ run, fallback }: { run: Run; fallback: QaSummary['failedTe
     return (
       <>
         {fallback.length > 0 && <FailedList rows={fallback.map(f => ({ test: `${f.suite}${f.name ? `#${f.name}` : ''}`, message: f.message }))} />}
-        {['COMPLETED', 'FAILED', 'CANCELLED', 'TIMED_OUT'].includes(run.status) && <p className="muted small">Analysing test results…</p>}
+        {['COMPLETED', 'FAILED', 'CANCELLED', 'TIMED_OUT'].includes(run.status) && <p className="muted small">{tr('Analysing test results…')}</p>}
       </>
     );
   }
@@ -212,16 +217,16 @@ function TriageView({ run, fallback }: { run: Run; fallback: QaSummary['failedTe
       )}
       {t.failures.length > 0 && (
         <>
-          <h3 className="subhead">Failing tests</h3>
+          <h3 className="subhead">{tr('Failing tests')}</h3>
           <div className="table-wrap"><table>
-            <thead><tr><th>Test</th><th>Category</th><th>History</th><th>Message</th></tr></thead>
+            <thead><tr><th>{tr('Test')}</th><th>{tr('Category')}</th><th>{tr('History')}</th><th>{tr('Message')}</th></tr></thead>
             <tbody>{t.failures.map((f, i) => {
               const h = HISTORY[f.history.label];
               return (
                 <tr key={i}>
                   <td><code>{f.testClass}{f.testName ? `#${f.testName}` : ''}</code>{f.failureType && <div className="muted small">{f.failureType}</div>}</td>
                   <td title={f.explanation ?? ''}>{f.category.replace(/_/g, ' ').toLowerCase()}</td>
-                  <td><span className={`badge badge-${h?.tone ?? 'muted'}`}>{h?.text ?? f.history.label}</span>
+                  <td><span className={`badge badge-${h?.tone ?? 'muted'}`}>{h ? tr(h.text) : f.history.label}</span>
                     <div className="muted small">{f.history.recentFailures}/{f.history.recentRuns} recent runs failed
                       {f.history.lastPassedCommit ? <>; last passed at <code>{f.history.lastPassedCommit.slice(0, 7)}</code></> : ''}</div></td>
                   <td className="wrap-cell">{f.message}</td>
@@ -236,11 +241,12 @@ function TriageView({ run, fallback }: { run: Run; fallback: QaSummary['failedTe
 }
 
 function FailedList({ rows }: { rows: { test: string; message: string }[] }) {
+  const tr = useT();
   return (
     <>
-      <h3 className="subhead">Failing tests</h3>
+      <h3 className="subhead">{tr('Failing tests')}</h3>
       <div className="table-wrap"><table>
-        <thead><tr><th>Test</th><th>Message</th></tr></thead>
+        <thead><tr><th>{tr('Test')}</th><th>{tr('Message')}</th></tr></thead>
         <tbody>{rows.map((r, i) => <tr key={i}><td><code>{r.test}</code></td><td className="wrap-cell">{r.message}</td></tr>)}</tbody>
       </table></div>
     </>
