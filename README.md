@@ -451,6 +451,16 @@ run needs approval. EAHP records the diff and, where pushing is allowed and a wr
 token is set, pushes a branch and opens a draft PR (never merged). Build the runner
 image with `scripts/build-code-agent.sh`. See [P35 design notes](docs/p35-code-agent.md).
 
+**Per-commit environments.** A project declares Docker Compose templates in
+`.eahp/environments.json`. `QA_RUN_ENVIRONMENT_TESTS` (approval) builds and starts
+the stack for one exact commit, runs the template's API test collections against
+it and always removes it; `QA_START_ENVIRONMENT` leaves it running for its TTL as a
+temporary environment that suites and API tests can target. Compose files are
+checked first (no privileged or host settings, bind mounts or external networks,
+no published ports, no host environment). A pull request trigger whose key is a
+template key (`env-pr`) runs it for every new head commit. See
+[P36 design notes](docs/p36-ephemeral-environments.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

@@ -89,8 +89,9 @@ export function ProjectEnvironments({ project }: { project: QaProject }) {
       {environments.data?.map(env => (
         <div key={env.key} className="row spread item">
           <div><strong>{env.name}</strong> <code className="muted small">{env.key}</code>{!env.enabled && <span className="badge badge-muted"> disabled</span>}
+            {env.ephemeral && <span className="badge badge-warn"> temporary</span>}
             <div className="small">{Object.entries(env.services).map(([k, v]) => <div key={k}><code>{k}</code> → <code className="wrap">{v}</code></div>)}</div></div>
-          {can('APPROVER') && <button className="danger" disabled={action.busy}
+          {can('APPROVER') && !env.ephemeral && <button className="danger" disabled={action.busy}
             onClick={() => window.confirm(`Delete environment ${env.key}?`) && change(() => api.admin.deleteEnvironment(project.key, env.key))}>Delete</button>}
         </div>
       ))}

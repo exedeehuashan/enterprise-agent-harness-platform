@@ -37,6 +37,8 @@ services:
       EAHP_SECURITY_VIEWER_TOKEN: ${EAHP_SECURITY_VIEWER_TOKEN:-}
       EAHP_QA_WORKDIR: /var/lib/eahp-qa
       EAHP_QA_VOLUME: eahp-qa-work
+      # Per-commit environments (P36): this container joins each environment's network to reach it.
+      EAHP_QA_SELF_CONTAINER: eahp-backend
       EAHP_GITHUB_POLL_ENABLED: ${EAHP_GITHUB_POLL_ENABLED:-false}
       EAHP_GITHUB_TOKEN: ${EAHP_GITHUB_TOKEN:-}
       # Optional: a token that may write commit statuses and pull request comments (QA write-back, P30).

@@ -32,7 +32,8 @@ public class QaEnvironments {
 
     public QaEnvironments(JdbcTemplate jdbc, QaRegistry registry, ObjectMapper mapper) { this.jdbc = jdbc; this.registry = registry; this.mapper = mapper; }
 
-    public record Environment(String projectKey, String key, String name, Map<String, String> services, boolean enabled) {}
+    /** {@code ephemeral} environments are per-commit stacks (P36): EAHP registers and removes them; {@code network} is their Docker network. */
+    public record Environment(String projectKey, String key, String name, Map<String, String> services, boolean enabled, String network, boolean ephemeral) {}
 
     public List<Environment> list(String project) {
         return jdbc.query("SELECT * FROM qa_environments WHERE (?::text IS NULL OR project_key=?) ORDER BY project_key, key", this::map, project, project);
@@ -48,6 +49,7 @@ public class QaEnvironments {
     public Environment put(String project, String key, JsonNode body) {
         if (registry.project(project).isEmpty()) throw new RunException(HttpStatus.NOT_FOUND, "Project not found: " + project);
         if (!key.matches("[a-z0-9][a-z0-9-]{1,59}")) throw bad("invalid environment key");
+        if (key.startsWith("eph-")) throw bad("eph- keys are reserved for temporary environments");
         if (body == null || !body.isObject()) throw bad("A JSON object is required");
         for (Iterator<String> it = body.fieldNames(); it.hasNext(); ) if (!Set.of("name", "services", "enabled").contains(it.next())) throw bad("Unknown field");
         if (!body.path("name").isTextual() || body.get("name").textValue().isBlank() || body.get("name").textValue().length() > 120) throw bad("name is required text up to 120 characters");
@@ -61,6 +63,7 @@ public class QaEnvironments {
         }
         boolean enabled = !body.has("enabled") || body.get("enabled").asBoolean(true);
         var before = find(project, key).orElse(null);
+        if (before != null && before.ephemeral()) throw new RunException(HttpStatus.CONFLICT, "Temporary environments are managed by EAHP");
         String json = write(normalized);
         jdbc.update("""
                 INSERT INTO qa_environments(project_key,key,name,services,enabled) VALUES (?,?,?,?::jsonb,?)
@@ -75,8 +78,19 @@ public class QaEnvironments {
     @PreAuthorize("hasRole('APPROVER')")
     public void delete(String project, String key) {
         var before = find(project, key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Environment not found: " + key));
+        if (before.ephemeral()) throw new RunException(HttpStatus.CONFLICT, "Stop the temporary environment instead");
         jdbc.update("DELETE FROM qa_environments WHERE project_key=? AND key=?", project, key);
         audit("ENVIRONMENT_DELETED", project, key, before, null);
+    }
+
+    /** Registers a temporary environment started by EAHP itself (no approver: the start was approved). */
+    void registerEphemeral(String project, String key, String name, Map<String, String> services, String network) {
+        jdbc.update("INSERT INTO qa_environments(project_key,key,name,services,enabled,network,ephemeral) VALUES (?,?,?,?::jsonb,TRUE,?,TRUE)",
+                project, key, name, write(services), network);
+    }
+
+    void removeEphemeral(String project, String key) {
+        jdbc.update("DELETE FROM qa_environments WHERE project_key=? AND key=? AND ephemeral", project, key);
     }
 
     /** http(s) with a host, no credentials, query or fragment; a trailing slash is removed. */
@@ -103,7 +117,8 @@ public class QaEnvironments {
         Map<String, String> services;
         try { services = mapper.readValue(r.getString("services"), new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, String>>() {}); }
         catch (Exception ex) { throw new IllegalStateException("Invalid environment services", ex); }
-        return new Environment(r.getString("project_key"), r.getString("key"), r.getString("name"), services, r.getBoolean("enabled"));
+        return new Environment(r.getString("project_key"), r.getString("key"), r.getString("name"), services, r.getBoolean("enabled"),
+                r.getString("network"), r.getBoolean("ephemeral"));
     }
     private static RunException bad(String m) { return new RunException(HttpStatus.BAD_REQUEST, m); }
 }

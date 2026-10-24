@@ -51,7 +51,7 @@ public class QaAiAnalysis {
     public Analysis analyze(UUID runId) {
         var run = jdbc.queryForList("SELECT tool, status, arguments::jsonb->>'project' AS project, arguments::jsonb->>'suite' AS suite, arguments::jsonb->>'commit' AS commit FROM agent_runs WHERE id=?", runId);
         if (run.isEmpty()) throw new RunException(HttpStatus.NOT_FOUND, "Run not found: " + runId);
-        if (!Set.of("QA_RUN_SUITE", "QA_RUN_PRIVILEGED_SUITE", "QA_RUN_API_TESTS").contains((String) run.get(0).get("tool"))) {
+        if (!Set.of("QA_RUN_SUITE", "QA_RUN_PRIVILEGED_SUITE", "QA_RUN_API_TESTS", "QA_RUN_ENVIRONMENT_TESTS").contains((String) run.get(0).get("tool"))) {
             throw new RunException(HttpStatus.BAD_REQUEST, "Only QA runs can be analysed");
         }
         var t = triage.triage(runId);

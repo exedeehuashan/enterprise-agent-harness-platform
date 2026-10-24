@@ -229,6 +229,34 @@ describe('QA console', () => {
     expect(screen.getByText('enabled')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Test projects' })).toBeInTheDocument();
   });
+
+  it('starts environment tests on a fresh stack and stops temporary environments', async () => {
+    tokenStore.set(TOKEN);
+    const live: Record<string, unknown>[] = [{ id: 'e1', projectKey: 'online-shop', template: 'env-pr', commit: 'c'.repeat(40), environmentKey: 'eph-1a2b3c4d', composeProject: 'eahp-env-1a2b3c4d',
+      network: 'eahp-env-1a2b3c4d_app', status: 'RUNNING', runId: 'run-e', error: null, createdAt: '2026-10-24T00:00:00Z', expiresAt: '2026-10-24T02:00:00Z', stoppedAt: null }];
+    const calls = fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }),
+      'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'eph-1a2b3c4d', name: 'Temporary env-pr @ cccccccccccc',
+        services: { 'order-api': 'http://eahp-env-1a2b3c4d-order-api-1:8080' }, enabled: true, network: 'eahp-env-1a2b3c4d_app', ephemeral: true }] }),
+      'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }),
+      'GET /qa/projects/online-shop/ai/api-tests': () => ({ body: [] }),
+      'GET /qa/projects/online-shop/environment-templates': () => ({ body: { project: 'online-shop', ref: 'main', commit: 'c'.repeat(40), file: 'found', error: null,
+        templates: [{ key: 'env-pr', name: 'PR stack', compose: ['compose.yaml'], services: [{ name: 'order-api', composeService: 'order-api', port: 8080 }],
+          apiTests: ['order-api-smoke'], startupTimeoutSeconds: 900, ttlMinutes: 120 }] } }),
+      'GET /qa/temporary-environments': () => ({ body: live }),
+      'POST /qa/projects/online-shop/environment-runs': () => ({ body: { taskId: 't-e', runId: 'run-env' } }),
+      'POST /qa/temporary-environments/e1/stop': () => { live[0] = { ...live[0], status: 'STOPPED', stoppedAt: '2026-10-24T01:00:00Z' }; return { body: { stopped: true } }; } });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderApp('/qa');
+    expect(await screen.findByText('PR stack')).toBeInTheDocument();
+    expect(screen.getByText('temporary')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Run tests on a fresh environment' }));
+    expect(await screen.findByRole('link', { name: 'a run' })).toHaveAttribute('href', '/runs/run-env');
+    expect(calls.find(c => c.method === 'POST' && c.path.endsWith('/environment-runs'))!.body).toEqual({ environment: 'env-pr', mode: 'test' });
+    expect(await screen.findByText('running')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(await screen.findByText('stopped')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
+  });
 });
 
 describe('pull request runs', () => {

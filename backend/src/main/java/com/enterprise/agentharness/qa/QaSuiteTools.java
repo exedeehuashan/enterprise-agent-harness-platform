@@ -113,6 +113,8 @@ public class QaSuiteTools {
                     bound.put(e.getKey(), url);
                 }
                 normalized.put("environment", env.key());
+                // A temporary environment (P36) is reachable only on its own Docker network.
+                if (env.ephemeral() && env.network() != null) normalized.put("network", env.network());
             }
             return normalized;
         }
@@ -163,6 +165,7 @@ public class QaSuiteTools {
                 var env = environments.find(project.key(), args.path("environment").asText()).orElse(null);
                 boolean same = env != null && env.enabled();
                 if (same) for (var e : suite.environment().entrySet()) same &= args.path("services").path(e.getKey()).asText().equals(env.services().get(e.getValue()));
+                if (same) same = java.util.Objects.equals(args.path("network").asText(null), env.ephemeral() ? env.network() : null);
                 if (!same) return ToolResult.failure("ENVIRONMENT_CHANGED", "The environment was changed, disabled or removed after this run was created.");
             }
             String commit = args.get("commit").textValue();
@@ -284,7 +287,7 @@ public class QaSuiteTools {
                     "--label", "eahp.run=" + context.run().id(), "--label", "eahp.project=" + project.key(),
                     "--cpus", settings.cpus(), "--memory", settings.memory(), "--pids-limit", "2048",
                     "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
-                    "--network", suite.network().equals("none") ? "none" : "bridge",
+                    "--network", suite.network().equals("none") ? "none" : context.arguments().path("network").asText("bridge"),
                     "--user", user(),
                     "-e", "HOME=" + home, "-e", "MAVEN_CONFIG=" + home.resolve(".m2"), "-e", "MAVEN_OPTS=-Duser.home=" + home + MAVEN_NETWORK_TIMEOUTS,
                     "-e", "CI=true",
@@ -293,7 +296,7 @@ public class QaSuiteTools {
             if (services != null) {
                 // Suites against an environment (for example performance tests) get its URLs and can reach services published on the host.
                 services.fields().forEachRemaining(e -> argv.addAll(List.of("-e", e.getKey() + "=" + e.getValue().asText())));
-                if (!suite.dockerAccess()) argv.addAll(List.of("--add-host", "host.docker.internal:host-gateway"));
+                if (!suite.dockerAccess() && !context.arguments().has("network")) argv.addAll(List.of("--add-host", "host.docker.internal:host-gateway"));
             }
             if (suite.dockerAccess()) {
                 argv.addAll(List.of("-v", settings.dockerSocket() + ":/var/run/docker.sock",
