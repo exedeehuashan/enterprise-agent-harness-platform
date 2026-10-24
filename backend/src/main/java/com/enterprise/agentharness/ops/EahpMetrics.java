@@ -34,6 +34,10 @@ public class EahpMetrics implements MeterBinder {
                 .description("Enabled webhooks whose last delivery failed").register(registry);
         Gauge.builder("eahp.webhooks.paused", () -> count("SELECT count(*) FROM webhook_subscriptions WHERE NOT enabled"))
                 .description("Paused webhooks").register(registry);
+        Gauge.builder("eahp.backup.drill.last.success", () -> count("SELECT COALESCE(EXTRACT(EPOCH FROM max(finished_at)),0) FROM backup_drills WHERE status='PASSED'"))
+                .description("When the last backup-restore drill passed (Unix time; 0 = never)").baseUnit("seconds").register(registry);
+        Gauge.builder("eahp.backup.drill.last.failed", () -> count("SELECT count(*) FROM (SELECT status FROM backup_drills WHERE status IN ('PASSED','FAILED') ORDER BY started_at DESC LIMIT 1) d WHERE status='FAILED'"))
+                .description("1 when the most recent backup-restore drill failed").register(registry);
         for (String outcome : QA_OUTCOMES) {
             Gauge.builder("eahp.qa.results.24h", () -> count("SELECT count(*) FROM qa_run_ingestions WHERE outcome=? AND ingested_at > clock_timestamp()-interval '1 day'", outcome))
                     .description("QA results ingested in the last 24 hours by outcome").tag("outcome", outcome).register(registry);

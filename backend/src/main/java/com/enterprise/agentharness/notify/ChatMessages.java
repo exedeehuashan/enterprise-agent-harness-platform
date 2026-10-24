@@ -36,11 +36,19 @@ public final class ChatMessages {
             case "QA_RESULT_INGESTED" -> {
                 boolean passed = "PASSED".equals(code);
                 title = (passed ? "✅ QA passed: " : "❌ QA " + label(code) + ": ") + target;
-                body = "Result of " + tool + " recorded by EAHP.";
+                body = tool == null ? "Result recorded by EAHP." : "Result of " + tool + " recorded by EAHP.";
             }
             case "QA_QUARANTINE_SUGGESTED" -> {
                 title = "⚠️ Flaky test suggested for quarantine: " + (project == null ? "" : project + "/") + code;
                 body = "A test passed and failed at the same commit repeatedly. An approver can confirm or dismiss it on the Quality page.";
+            }
+            case "BACKUP_DRILL_PASSED" -> {
+                title = "✅ Backup-restore drill passed";
+                body = "A fresh backup of the EAHP database restored cleanly and matched the live database.";
+            }
+            case "BACKUP_DRILL_FAILED" -> {
+                title = "❌ Backup-restore drill failed";
+                body = "The EAHP database backup did not restore cleanly: " + (code == null ? "see Administration → Backups" : code) + ".";
             }
             case "APPROVAL_REQUESTED" -> {
                 title = "🔐 Approval needed: " + tool + (target.isEmpty() || target.equals(tool) ? "" : " for " + target);
@@ -58,7 +66,8 @@ public final class ChatMessages {
                 }
             }
         }
-        String link = publicUrl == null || publicUrl.isBlank() || e.get("run_id") == null ? null
+        // Only events of an agent run (those that joined a run row) link to a run page.
+        String link = publicUrl == null || publicUrl.isBlank() || e.get("run_id") == null || tool == null ? null
                 : publicUrl.replaceAll("/+$", "") + "/runs/" + e.get("run_id");
         return new Message(title, body, link);
     }

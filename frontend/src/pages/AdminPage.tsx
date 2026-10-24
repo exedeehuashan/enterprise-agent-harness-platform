@@ -4,6 +4,7 @@ import { Section } from '../components/ui';
 import { ModulesPanel } from '../components/modules';
 import { CodeRepositoriesPanel } from '../components/codeAgent';
 import { StoragePanel } from '../components/storage';
+import { BackupDrillsPanel } from '../components/backupDrills';
 import { TokensPanel } from '../components/tokens';
 import { WebhooksPanel } from '../components/webhooks';
 
@@ -21,6 +22,7 @@ export function AdminPage() {
       <TokensPanel />
       <WebhooksPanel />
       <StoragePanel />
+      <BackupDrillsPanel />
       <p className="muted small">Metrics for monitoring are at <code>/actuator/prometheus</code> on the backend (any viewer token).</p>
     </>
   );

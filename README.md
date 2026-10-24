@@ -493,6 +493,14 @@ signed JSON, or as short messages to DingTalk (钉钉), WeCom (企业微信), Fe
 (`EAHP_SMTP_*`). Add them under Administration → Notifications and use
 "Send test". See [P41 design notes](docs/p41-notification-integrations.md).
 
+**Backup-restore drills.** `scripts/restore.sh --drill [FILE]` restores a backup
+into a throwaway Postgres container and verifies it.
+`scripts/restore.sh --production FILE` restores for real, after a safety backup.
+EAHP also drills nightly: a fresh dump is restored in a disposable container and
+must match the live schema version and row counts. Results appear under
+Administration → Backup drills, in metrics and in notifications. See
+[P42 design notes](docs/p42-backup-restore-drills.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

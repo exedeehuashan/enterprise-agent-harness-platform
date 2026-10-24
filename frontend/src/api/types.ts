@@ -161,6 +161,10 @@ export interface QuarantineSuggestion {
   status: 'PENDING' | 'ACCEPTED' | 'DISMISSED' | 'RESOLVED'; createdAt: string; decidedBy: string | null; decidedAt: string | null;
   decisionNote: string | null; quarantineId: string | null;
 }
+export interface BackupDrill {
+  id: string; trigger: 'SCHEDULE' | 'MANUAL'; actor: string; status: 'RUNNING' | 'PASSED' | 'FAILED' | 'SKIPPED'; startedAt: string; finishedAt: string | null;
+  schemaVersion: number | null; expectedRows: Record<string, number> | null; restoredRows: Record<string, number> | null; dumpBytes: number | null; error: string | null;
+}
 export interface PerformanceLimit { maxP95Ms?: number | null; maxErrorRate?: number | null; maxP95IncreasePercent?: number | null }
 export interface PerformancePoint {
   runId: string; suite: string; commit: string; outcome: string | null; at: string; requests: number; requestsPerSecond: number;

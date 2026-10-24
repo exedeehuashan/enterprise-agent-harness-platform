@@ -164,7 +164,8 @@ class WebhookApiTest {
         assertThat(query).startsWith("access_token=t&timestamp=").contains("&sign=");
         assertThat(body.get("msgtype").asText()).isEqualTo("markdown");
         assertThat(body.at("/markdown/title").asText()).startsWith("❌ QA tests failed");
-        assertThat(body.at("/markdown/text").asText()).contains("https://eahp.example.com/runs/" + run);
+        // This event has no agent run row behind it, so the message carries no run link (ChatMessagesTest covers links).
+        assertThat(body.at("/markdown/text").asText()).contains("Result recorded by EAHP.").doesNotContain("/runs/").doesNotContain("null");
         // DingTalk answers 200 with an error code when it rejects a message: that is a failed delivery, retried later.
         robotAnswer = "{\"errcode\":310000,\"errmsg\":\"sign not match\"}";
         jdbc.update("INSERT INTO audit_events(actor,action,run_id,code) VALUES ('qa','QA_RESULT_INGESTED',?,'PASSED')", UUID.randomUUID());

@@ -1,6 +1,6 @@
 import type {
   AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
-  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, CoveragePoint, NewCodeCoverage,
+  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, BackupDrill, CoveragePoint, NewCodeCoverage,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -89,6 +89,8 @@ export const api = {
   qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
   qaProjects: () => get<QaProject[]>('/qa/projects'),
   storage: () => get<StorageReport>('/admin/storage'),
+  backupDrills: () => get<BackupDrill[]>('/admin/backup-drills'),
+  runBackupDrill: () => post<BackupDrill>('/admin/backup-drills'),
   runRetention: () => post<StorageReport['lastRun']>('/admin/retention/run'),
   schedules: (project: string) => get<QaSchedule[]>(`/qa/schedules${query({ project })}`),
   admin: {
