@@ -25,6 +25,8 @@ import java.util.Set;
  * variable names to service names; such a suite runs against a registered environment whose URLs are passed in those
  * variables (for example performance tests). {@code coverage} lists
  * JaCoCo or Cobertura XML report paths (matched as path suffixes, for example {@code target/site/jacoco/jacoco.xml}).
+ * {@code performance} names the k6 {@code --summary-export} file the command writes (a relative .json path), whose
+ * latency, throughput and error rate EAHP records for trends and the release gate.
  */
 public final class RepositorySuites {
     public static final int MAX_BYTES = 64 * 1024;
@@ -33,7 +35,7 @@ public final class RepositorySuites {
     /** Variables the runner sets itself; a suite cannot redirect them to an environment URL. */
     static final Set<String> RESERVED_VARIABLES = Set.of("HOME", "PATH", "CI", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH", "JAVA_TOOL_OPTIONS", "NODE_OPTIONS");
     private static final Set<String> FILE_FIELDS = Set.of("schemaVersion", "suites");
-    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection", "paths", "results", "coverage", "environment");
+    private static final Set<String> SUITE_FIELDS = Set.of("key", "name", "description", "image", "command", "reportDirs", "network", "dockerAccess", "timeoutSeconds", "selection", "paths", "results", "coverage", "environment", "performance");
     private RepositorySuites() {}
 
     public static List<SuiteDefinition> parse(String json) {
@@ -81,6 +83,13 @@ public final class RepositorySuites {
             for (String c : coverage) {
                 if (c.startsWith("/") || c.contains("..") || c.contains("\\") || !c.matches("[A-Za-z0-9._/-]+\\.xml")) throw invalid(key + ": coverage report '" + c + "' must be a relative .xml path");
             }
+            String performance = null;
+            if (s.has("performance")) {
+                performance = s.get("performance").asText("");
+                if (!s.get("performance").isTextual() || performance.startsWith("/") || performance.contains("..") || !performance.matches("[A-Za-z0-9._/-]{1,200}\\.json")) {
+                    throw invalid(key + ": performance must be a relative .json path (a k6 --summary-export file)");
+                }
+            }
             var environment = new java.util.TreeMap<String, String>();
             if (s.has("environment")) {
                 var env = s.get("environment");
@@ -98,7 +107,7 @@ public final class RepositorySuites {
             }
             result.add(new SuiteDefinition(SuiteDefinition.REPOSITORY, key, text(s, "name", 120, true), s.has("description") ? text(s, "description", 1000, false) : null,
                     image, command, reportDirs, network, s.get("dockerAccess").booleanValue(), s.get("timeoutSeconds").intValue(), selection, paths,
-                    SuiteDefinition.EXIT_CODE.equals(results) ? results : null, coverage, environment));
+                    SuiteDefinition.EXIT_CODE.equals(results) ? results : null, coverage, environment, performance));
         }
         return result;
     }

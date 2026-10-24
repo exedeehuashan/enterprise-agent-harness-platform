@@ -306,7 +306,7 @@ describe('quality page', () => {
       'GET /me': () => ({ body: operator }),
       'GET /qa/projects': () => ({ body: projects }),
       'GET /qa/projects/online-shop/dashboard': () => ({ body: {
-        project: 'online-shop', days: 14, runs: 8, passed: 4, passRate: 50, gate: { requiredSuites: ['backend-unit'] },
+        project: 'online-shop', days: 14, runs: 8, passed: 4, passRate: 50, gate: { requiredSuites: ['backend-unit'], performance: { performance: { maxP95Ms: 5 } } },
         suites: [{ suite: 'backend-unit', runs: 7, passed: 3, passRate: 42.9, lastOutcome: 'TESTS_FAILED', lastCommit: '1b228a0'.padEnd(40, '0'),
           lastAt: '2026-10-23T11:00:00Z', daily: [{ day: '2026-10-23', runs: 7, passed: 3 }] }],
         failingNow: [{ suite: 'backend-unit', testClass: 'com.example.CatalogMigrationTest', testName: '', category: 'ENVIRONMENT_DOCKER',
@@ -319,6 +319,8 @@ describe('quality page', () => {
         suites: [], reasons: ['backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).'], notes: ['Already failing in backend-unit: CatalogMigrationTest.'],
         policy: { requiredSuites: ['backend-unit'] } } }),
       'GET /qa/quarantines': () => ({ body: [] }),
+      'GET /qa/projects/online-shop/performance': () => ({ body: [2.1, 2.4, 2.19].map((p95, i) => ({ runId: `p${i}`, suite: 'performance', commit: `${i}`.repeat(40),
+        outcome: 'PASSED', at: `2026-10-2${i}T02:00:00Z`, requests: 57574, requestsPerSecond: 1279.4, avgMs: 1.1, p90Ms: 1.8, p95Ms: p95, maxMs: 94, errorRate: 0, checksRate: 1 })) }),
       'GET /qa/projects/online-shop/compare': () => ({ body: [
         { suite: 'backend-unit', status: 'COMPARED', base: { runId: 'r1', outcome: 'PASSED', tests: 42, scope: 'FULL' }, head: { runId: 'r2', outcome: 'TESTS_FAILED', tests: 43, scope: 'FULL' },
           sameScope: true, newFailures: ['com.example.OrderTest#creates'], fixed: ['src/cart.test.tsx#totals', 'com.example.A#b'], stillFailing: [], added: ['com.example.OrderTest#cancels'], removed: [],
@@ -339,6 +341,10 @@ describe('quality page', () => {
     expect(screen.getByText('1.00 s')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'backend-unit daily pass rate' })).toBeInTheDocument();
     expect(screen.getByText('2026-10-23: 3 of 7 runs passed (43%)')).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'p95 latency, oldest to newest' })).toBeInTheDocument();
+    expect(screen.getByText('2.19 ms')).toBeInTheDocument();
+    expect(screen.getByText(/57,574 requests/)).toBeInTheDocument();
+    expect(screen.getByText('gate limit 5.00 ms')).toBeInTheDocument();
     expect(screen.getAllByText('FAIL').length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole('button', { name: 'Check gate' }));
     expect(await screen.findByText('backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).')).toBeInTheDocument();
@@ -414,6 +420,7 @@ describe('project administration', () => {
       'GET /qa/admin/events': () => ({ body: [{ id: 1, actor: 'admin', action: 'GATE_SET', projectKey: 'online-shop', subject: null, before: null, after: ['backend-unit'], occurredAt: '2026-10-24T00:00:00Z' }] }),
       'POST /qa/admin/projects': () => ({ status: 201, body: projectAdmin }),
       'PUT /qa/admin/projects/online-shop/triggers/backend-integration': () => ({ body: projectAdmin }),
+      'PUT /qa/admin/projects/online-shop/gate': () => ({ body: projectAdmin }),
       'GET /qa/schedules': () => ({ body: [] }),
       'GET /admin/storage': () => ({ body: storage }),
       'POST /admin/retention/run': () => ({ body: storage.lastRun }),
@@ -444,6 +451,15 @@ describe('project administration', () => {
     await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
     expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ enabled: true });
     expect(screen.getByText('gate set')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Performance limits'), 'backend-unit: p95=500, errors=2');
+    await userEvent.click(screen.getByRole('button', { name: 'Save gate' }));
+    expect(await screen.findByText('errors in backend-unit is a rate between 0 and 1')).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText('Performance limits'));
+    await userEvent.type(screen.getByLabelText('Performance limits'), 'backend-unit: p95=500, errors=0.01, increase=50');
+    await userEvent.click(screen.getByRole('button', { name: 'Save gate' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'PUT' && c.path.endsWith('/gate'))).toBe(true));
+    expect(calls.find(c => c.method === 'PUT' && c.path.endsWith('/gate'))!.body).toEqual({ requiredSuites: ['backend-unit'], minLineCoverage: {},
+      performance: { 'backend-unit': { maxP95Ms: 500, maxErrorRate: 0.01, maxP95IncreasePercent: 50 } } });
     unmount();
 
     const admin2 = renderApp('/admin');

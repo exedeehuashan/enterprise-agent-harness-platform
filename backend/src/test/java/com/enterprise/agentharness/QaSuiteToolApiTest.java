@@ -71,6 +71,8 @@ class QaSuiteToolApiTest {
     static volatile String consoleText;
     /** A JaCoCo report the fake build leaves under backend/order-api/target/site/jacoco, or null for none. */
     static volatile String coverageXml;
+    /** A k6 --summary-export file the fake run writes to k6-summary.json, or null for none. */
+    static volatile String k6Summary;
     /** Commit that "git ls-remote" reports for any branch. */
     static volatile String remoteSha;
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
@@ -104,6 +106,7 @@ class QaSuiteToolApiTest {
                     Files.writeString(reports.resolve("TEST-com.example.Test.xml"), reportXml);
                 }
                 if (coverageXml != null) Files.writeString(Files.createDirectories(src.resolve("backend/order-api/target/site/jacoco")).resolve("jacoco.xml"), coverageXml);
+                if (k6Summary != null) Files.writeString(src.resolve("k6-summary.json"), k6Summary);
                 if (duringRun != null) duringRun.run();
                 if (stop.getAsBoolean()) { onStop.run(); return new Result(-1,true,false); }
                 return new Result(dockerExit,false,false);
@@ -148,7 +151,7 @@ class QaSuiteToolApiTest {
         repository.deleteAll();
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE");
         jdbc.update("UPDATE qa_projects SET enabled=TRUE");
-        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();coverageXml=null;
+        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();coverageXml=null;k6Summary=null;
         jdbc.update("DELETE FROM qa_schedules WHERE id<>'6b8c0f2e-7f3a-4c1e-9a54-3d2f0e5b7a10'");
         jdbc.update("UPDATE qa_schedules SET enabled=FALSE, last_commit=NULL, last_run_id=NULL, task_id=NULL, last_error=NULL");
         jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");jdbc.update("DELETE FROM qa_quarantines");
@@ -794,6 +797,74 @@ class QaSuiteToolApiTest {
         }
         repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"coverage\":[\"/etc/passwd.xml\"]}");
         mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("invalid"));
+    }
+
+    static String k6(double p95, double failedRate) {
+        return "{\"metrics\":{\"http_req_duration\":{\"avg\":1.1,\"min\":0.3,\"med\":0.9,\"max\":94.4,\"p(90)\":1.8,\"p(95)\":" + p95 + "},"
+                + "\"http_reqs\":{\"count\":57574,\"rate\":1279.4},\"http_req_failed\":{\"passes\":0,\"fails\":57574,\"value\":" + failedRate + "},"
+                + "\"checks\":{\"passes\":100,\"fails\":0,\"value\":1}},\"root_group\":{}}";
+    }
+
+    @Test
+    void performanceIsRecordedTrendedAndEnforcedByTheGate() throws Exception {
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"performance\":\"k6-summary.json\"}");
+        String[] commits={"1".repeat(40),"2".repeat(40),"3".repeat(40),"4".repeat(40),"5".repeat(40)};
+        double[] p95={2.0,2.2,2.1,2.3};
+        UUID task=task();
+        for (int i=0;i<4;i++) { k6Summary=k6(p95[i],0); runAt(task,"perf"+i,commits[i],PASS,0); }
+        UUID last=runAt(task,"perf4",commits[4],PASS,0); // k6Summary still the 2.3 ms one; replaced below
+        var perf=mapper.readTree(content(artifact(last,"performance.json")));
+        assertThat(perf.get("p95Ms").asDouble()).isEqualTo(2.3);
+        assertThat(perf.get("requests").asLong()).isEqualTo(57574);
+        assertThat(perf.get("errorRate").asDouble()).isZero();
+        ingestor.runOnce();
+        jdbc.update("UPDATE qa_performance SET p95_ms=4.0, error_rate=0.02 WHERE run_id=?",last);
+        mvc.perform(get("/api/v1/qa/projects/online-shop/performance").param("suite","backend-unit").header("Authorization",auth(VIEWER)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(5)).andExpect(jsonPath("$[0].p95Ms").value(2.0))
+                .andExpect(jsonPath("$[4].p95Ms").value(4.0)).andExpect(jsonPath("$[4].commit").value(commits[4]));
+        try {
+            putGate("{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"backend-unit\":{\"maxP95Ms\":3}}}").andExpect(jsonPath("$.gatePerformance.backend-unit.maxP95Ms").value(3.0));
+            var slow=gate(commits[4]);
+            assertThat(slow.get("verdict").asText()).isEqualTo("FAIL");
+            assertThat(slow.get("reasons").get(0).asText()).isEqualTo("backend-unit p95 4.00 ms is above the gate's 3.00 ms.");
+            assertThat(slow.get("suites").get(0).get("p95Ms").asDouble()).isEqualTo(4.0);
+            assertThat(gate(commits[3]).get("verdict").asText()).isEqualTo("PASS");
+
+            putGate("{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"backend-unit\":{\"maxErrorRate\":0.01}}}");
+            assertThat(gate(commits[4]).get("reasons").get(0).asText()).isEqualTo("backend-unit HTTP error rate 2.00% is above the gate's 1.00%.");
+
+            // 4.0 ms against the median (2.15 ms) of the four earlier passing runs is +86%.
+            putGate("{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"backend-unit\":{\"maxP95IncreasePercent\":50}}}");
+            assertThat(gate(commits[4]).get("reasons").get(0).asText()).isEqualTo("backend-unit p95 4.00 ms is 86% above the recent median of 2.15 ms (the gate allows 50%).");
+            putGate("{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"backend-unit\":{\"maxP95IncreasePercent\":100}}}");
+            assertThat(gate(commits[4]).get("verdict").asText()).isEqualTo("PASS");
+            // With fewer than three earlier runs the increase is not judged, and the gate says so.
+            var early=gate(commits[1]);
+            assertThat(early.get("verdict").asText()).isEqualTo("PASS");
+            assertThat(early.get("notes").toString()).contains("fewer than three earlier passing runs");
+
+            k6Summary=null; // a passing run without a k6 summary fails a gate with performance limits
+            String c6="6".repeat(40);
+            UUID none=runAt(task,"perf6",c6,PASS,0);ingestor.runOnce();
+            assertThat(mapper.readTree(content(artifact(none,"performance.json"))).get("error").asText()).isEqualTo("no k6-summary.json was written");
+            assertThat(gate(c6).get("reasons").get(0).asText()).isEqualTo("backend-unit reported no performance results; the gate has performance limits for it.");
+
+            for (String bad : List.of("{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"other\":{\"maxP95Ms\":3}}}",
+                    "{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"backend-unit\":{\"maxErrorRate\":2}}}",
+                    "{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"backend-unit\":{\"p99\":3}}}",
+                    "{\"requiredSuites\":[\"backend-unit\"],\"performance\":{\"backend-unit\":{}}}")) {
+                putGate(bad).andExpect(status().isBadRequest());
+            }
+        } finally {
+            jdbc.update("UPDATE qa_quality_gates SET performance='{}'::jsonb");
+        }
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"performance\":\"../k6.json\"}");
+        mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("invalid"));
+    }
+
+    private ResultActions putGate(String body) throws Exception {
+        return mvc.perform(put("/api/v1/qa/admin/projects/online-shop/gate").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().is(org.hamcrest.Matchers.anyOf(org.hamcrest.Matchers.is(200), org.hamcrest.Matchers.is(400))));
     }
 
     @Test

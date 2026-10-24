@@ -63,6 +63,10 @@ pre { background: var(--muted-bg); padding: 8px 12px; border-radius: 6px; overfl
 .trend-axis { display: flex; flex-direction: column; justify-content: space-between; height: 49px; font-size: 0.7rem; line-height: 1; }
 .trend-bar { fill: var(--accent); }
 .trend-hit:hover .trend-bar { fill: var(--active); }
+.trend-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.trend-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.trend-hit:hover .trend-dot { fill: var(--active); }
+.trend-limit { stroke: var(--bad); stroke-width: 1; stroke-dasharray: 4 3; }
 .admin { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
 .admin summary { cursor: pointer; color: var(--accent); }
 .admin textarea { min-width: 260px; }

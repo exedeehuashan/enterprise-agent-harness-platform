@@ -467,6 +467,12 @@ network with no route out. Its only exit is EAHP's built-in proxy, which tunnels
 default the Anthropic API and the Maven and npm registries) and records every
 attempt in `egress.log`. See [P37 design notes](docs/p37-code-agent-egress.md).
 
+**Performance trends.** A suite that declares `"performance": "k6-summary.json"`
+(written by `k6 run --summary-export`) records p95, throughput and error rate per
+run. The Quality page shows the trend, and the release gate can enforce
+`maxP95Ms`, `maxErrorRate` and `maxP95IncreasePercent` (against the median of
+recent passing runs). See [P38 design notes](docs/p38-performance-trends.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

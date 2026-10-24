@@ -218,6 +218,10 @@ public class QaSuiteTools {
                     var coverage = CoverageReports.summarize(source, CoverageReports.find(source, suite.coverage()));
                     evidence.add(new ToolResult.Artifact("coverage.json", "application/json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(coverage)));
                 }
+                if (suite.reportsPerformance()) {
+                    evidence.add(new ToolResult.Artifact("performance.json", "application/json",
+                            mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(PerformanceReports.read(source, suite.performance()))));
+                }
                 String text = String.format("%s/%s @ %s: exit %s, %d tests, %d failures, %d errors, %d skipped in %d s",
                         project.key(), suite.key(), commit.substring(0, 12), result.timedOut() || result.stopped() ? "n/a" : String.valueOf(result.exitCode()),
                         summary.tests(), summary.failures(), summary.errors(), summary.skipped(), Duration.between(started, finished).toSeconds());
