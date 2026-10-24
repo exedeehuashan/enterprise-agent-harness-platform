@@ -480,6 +480,13 @@ The release gate can require `minNewCodeCoverage` per suite (against the default
 branch), and the Quality page shows coverage over time. See
 [P39 design notes](docs/p39-coverage-trends-and-new-code.md).
 
+**Flaky-test quarantine suggestions.** Every 10 minutes EAHP looks for tests that
+passed and failed at the same commit on at least two commits in 14 days. It
+proposes quarantining them, with that evidence and a `QA_QUARANTINE_SUGGESTED`
+event. Approvers confirm (a 14-day, audited quarantine) or dismiss (snoozed) with
+one click on the Quality page. See
+[P40 design notes](docs/p40-flaky-quarantine-suggestions.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

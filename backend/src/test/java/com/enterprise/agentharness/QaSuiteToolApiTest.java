@@ -41,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "eahp.qa.flaky.initial-delay-ms=3600000")
 @AutoConfigureMockMvc
 class QaSuiteToolApiTest {
     private static final EmbeddedPostgres POSTGRES = startPostgres();
@@ -157,7 +157,7 @@ class QaSuiteToolApiTest {
         reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();coverageXml=null;k6Summary=null;diffText=null;
         jdbc.update("DELETE FROM qa_schedules WHERE id<>'6b8c0f2e-7f3a-4c1e-9a54-3d2f0e5b7a10'");
         jdbc.update("UPDATE qa_schedules SET enabled=FALSE, last_commit=NULL, last_run_id=NULL, task_id=NULL, last_error=NULL");
-        jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");jdbc.update("DELETE FROM qa_quarantines");
+        jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");jdbc.update("DELETE FROM qa_quarantine_suggestions");jdbc.update("DELETE FROM qa_quarantines");
         jdbc.update("UPDATE qa_projects SET repository_suites_enabled=TRUE, allow_docker_access=TRUE, allow_network_egress=TRUE, max_timeout_seconds=2400, allowed_images='[\"maven:3.9.11-eclipse-temurin-17\"]'");
     }
 
@@ -642,6 +642,57 @@ class QaSuiteToolApiTest {
 
     private ResultActions quarantine(String token,String body) throws Exception {
         return mvc.perform(post("/api/v1/qa/admin/quarantines").header("Authorization",auth(token)).contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    @Autowired com.enterprise.agentharness.qa.QaQuarantineSuggestions suggestions;
+
+    @Test
+    void flakyTestsAreSuggestedForQuarantineAndApproversConfirmOrDismiss() throws Exception {
+        String a="a".repeat(40),b="b".repeat(40);
+        UUID task=task();
+        // OrderTest#creates passes and fails at the same commit, twice: flaky by evidence. StockTest only ever fails: broken, not flaky.
+        for (String commit : List.of(a,b)) { runAt(task,"f-"+commit.charAt(0)+"1",commit,PASS,0); runAt(task,"f-"+commit.charAt(0)+"2",commit,ORDER_FAIL,1); }
+        runAt(task,"f-s",a,FAIL,1);
+        ingestor.runOnce();
+        assertThat(suggestions.detect()).isEqualTo(1);
+        assertThat(suggestions.detect()).isZero(); // one open suggestion per test
+        var list=mapper.readTree(mvc.perform(get("/api/v1/qa/quarantine-suggestions").param("project","online-shop").header("Authorization",auth(VIEWER)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(list).hasSize(1);
+        var s=list.get(0);
+        assertThat(s.get("testClass").asText()).isEqualTo("OrderTest");
+        assertThat(s.get("testName").asText()).isEqualTo("creates");
+        assertThat(s.get("flakyCommits").asInt()).isEqualTo(2);
+        assertThat(s.at("/evidence/commits").size()).isEqualTo(2);
+        assertThat(s.at("/evidence/commits/0/passed").asInt()).isEqualTo(1);
+        assertThat(s.at("/evidence/commits/0/failed").asInt()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_events WHERE action='QA_QUARANTINE_SUGGESTED' AND code='backend-unit'",Long.class)).isEqualTo(1);
+
+        String id=s.get("id").asText();
+        mvc.perform(post("/api/v1/qa/admin/quarantine-suggestions/"+id+"/accept").header("Authorization",auth(OPERATOR))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/qa/admin/quarantine-suggestions/"+id+"/accept").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"days\":60}")).andExpect(status().isBadRequest());
+        var accepted=mapper.readTree(mvc.perform(post("/api/v1/qa/admin/quarantine-suggestions/"+id+"/accept").header("Authorization",auth(ADMIN)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACCEPTED")).andExpect(jsonPath("$.decidedBy").value("admin"))
+                .andReturn().getResponse().getContentAsString());
+        var q=jdbc.queryForMap("SELECT reason, created_by, expires_at > clock_timestamp() + interval '13 days' AS fourteen FROM qa_quarantines WHERE id=?::uuid",accepted.get("quarantineId").asText());
+        assertThat((String) q.get("reason")).startsWith("Flaky: passed and failed at the same commit on 2 commits in 14 days (EAHP suggestion ");
+        assertThat(q.get("created_by")).isEqualTo("admin");
+        assertThat(q.get("fourteen")).isEqualTo(true);
+        mvc.perform(post("/api/v1/qa/admin/quarantine-suggestions/"+id+"/accept").header("Authorization",auth(ADMIN))).andExpect(status().isConflict());
+        assertThat(gate(b).get("verdict").asText()).isEqualTo("PASS"); // the quarantine waives the flaky failure
+        assertThat(suggestions.detect()).isZero(); // quarantined now
+
+        // A dismissal snoozes the test for the window.
+        jdbc.update("DELETE FROM qa_quarantines");jdbc.update("DELETE FROM qa_quarantine_suggestions");
+        suggestions.detect();
+        String second=jdbc.queryForObject("SELECT id::text FROM qa_quarantine_suggestions WHERE status='PENDING'",String.class);
+        mvc.perform(post("/api/v1/qa/admin/quarantine-suggestions/"+second+"/dismiss").header("Authorization",auth(ADMIN)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"note\":\"Real race condition, fixing in #61\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DISMISSED"))
+                .andExpect(jsonPath("$.decisionNote").value("Real race condition, fixing in #61"));
+        assertThat(suggestions.detect()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM qa_admin_events WHERE action='QUARANTINE_SUGGESTION_DISMISSED'",Long.class)).isEqualTo(1);
+        mvc.perform(get("/api/v1/qa/quarantine-suggestions").param("status","BOGUS").header("Authorization",auth(VIEWER))).andExpect(status().isBadRequest());
     }
 
     @Test
