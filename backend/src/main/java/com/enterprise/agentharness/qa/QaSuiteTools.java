@@ -120,8 +120,11 @@ public class QaSuiteTools {
         }
 
         private JsonNode modules(JsonNode value, QaSuiteResolver.Resolved resolved) {
-            if (!SuiteDefinition.MAVEN_MODULES.equals(resolved.suite().selection())) throw new IllegalArgumentException("this suite does not support module selection");
-            if (!value.isArray() || value.isEmpty() || value.size() > 50) throw new IllegalArgumentException("modules must list 1..50 module directories");
+            String system = resolved.suite().moduleSystem();
+            if (system == null) throw new IllegalArgumentException("this suite does not support module selection");
+            if (!value.isArray() || value.isEmpty() || value.size() > 50) throw new IllegalArgumentException("modules must list 1..50 modules");
+            if (system.equals("gradle")) return gradleProjects(value, resolved);
+            String manifest = system.equals("npm") ? "package.json" : "pom.xml";
             var dirs = new java.util.TreeSet<String>();
             for (JsonNode m : value) {
                 String dir = m.isTextual() ? m.textValue() : "";
@@ -129,8 +132,8 @@ public class QaSuiteTools {
                     throw new IllegalArgumentException("modules must be relative module directories");
                 }
                 try {
-                    if (git.readFile(resolved.project(), resolved.commit(), dir + "/pom.xml", 1024 * 1024).isEmpty()) {
-                        throw new IllegalArgumentException("module " + dir + " has no pom.xml at " + resolved.commit().substring(0, 12));
+                    if (git.readFile(resolved.project(), resolved.commit(), dir + "/" + manifest, 1024 * 1024).isEmpty()) {
+                        throw new IllegalArgumentException("module " + dir + " has no " + manifest + " at " + resolved.commit().substring(0, 12));
                     }
                 } catch (IOException ex) {
                     throw new IllegalArgumentException("could not read module " + dir + " at " + resolved.commit().substring(0, 12));
@@ -139,6 +142,29 @@ public class QaSuiteTools {
             }
             var array = JsonNodeFactory.instance.arrayNode();
             dirs.forEach(array::add);
+            return array;
+        }
+
+        /** Gradle project paths (":core"), each a project of the build's settings at the commit. */
+        private JsonNode gradleProjects(JsonNode value, QaSuiteResolver.Resolved resolved) {
+            com.enterprise.agentharness.qa.impact.BuildGraph graph;
+            try {
+                var files = git.listFiles(resolved.project(), resolved.commit());
+                graph = com.enterprise.agentharness.qa.impact.BuildGraphs.gradle(files,
+                        path -> git.readFile(resolved.project(), resolved.commit(), path, 1024 * 1024));
+            } catch (IOException ex) {
+                throw new IllegalArgumentException("could not read the Gradle build at " + resolved.commit().substring(0, 12));
+            }
+            if (graph == null) throw new IllegalArgumentException("no Gradle build (settings.gradle) at " + resolved.commit().substring(0, 12));
+            var known = graph.modules().values().stream().map(com.enterprise.agentharness.qa.impact.BuildGraph.Module::id).collect(java.util.stream.Collectors.toSet());
+            var paths = new java.util.TreeSet<String>();
+            for (JsonNode m : value) {
+                String path = m.isTextual() ? m.textValue() : "";
+                if (!path.matches("(:[A-Za-z0-9_.-]+)+") || !known.contains(path)) throw new IllegalArgumentException("modules must be Gradle project paths of this build, such as :core");
+                paths.add(path);
+            }
+            var array = JsonNodeFactory.instance.arrayNode();
+            paths.forEach(array::add);
             return array;
         }
 
@@ -313,15 +339,34 @@ public class QaSuiteTools {
                 if (group != null) argv.addAll(List.of("--group-add", group));
             }
             argv.add(suite.image());
-            argv.addAll(suite.command());
             var modules = context.arguments().get("modules");
-            if (modules != null) {
-                // Only the selected modules and what they depend on; tests of those dependencies run too, which keeps it a superset.
-                var dirs = new ArrayList<String>();
-                modules.forEach(m -> dirs.add(m.textValue()));
-                argv.addAll(List.of("-pl", String.join(",", dirs), "-am"));
-            }
+            var selected = new ArrayList<String>();
+            if (modules != null) modules.forEach(m -> selected.add(m.textValue()));
+            argv.addAll(selectiveCommand(suite, selected));
             return argv;
+        }
+
+        /** The suite command, narrowed to the selected modules when there are any (P19, P45). */
+        static List<String> selectiveCommand(SuiteDefinition suite, List<String> selected) {
+            var command = new ArrayList<>(suite.command());
+            if (selected.isEmpty()) return command;
+            switch (suite.selection()) {
+                // Only the selected modules and what they depend on; tests of those dependencies run too, which keeps it a superset.
+                case SuiteDefinition.MAVEN_MODULES -> command.addAll(List.of("-pl", String.join(",", selected), "-am"));
+                // The task of each selected project instead of the task of every project; Gradle still builds what they depend on.
+                case SuiteDefinition.GRADLE_PROJECTS -> {
+                    String task = command.remove(command.size() - 1);
+                    selected.forEach(p -> command.add(p + ":" + task));
+                }
+                case SuiteDefinition.NPM_WORKSPACES -> selected.forEach(d -> command.add("--workspace=" + d));
+                case SuiteDefinition.PNPM_WORKSPACES -> {
+                    var filters = new ArrayList<String>();
+                    selected.forEach(d -> filters.addAll(List.of("--filter", "./" + d)));
+                    command.addAll(1, filters);
+                }
+                default -> { }
+            }
+            return command;
         }
 
         private String user() {

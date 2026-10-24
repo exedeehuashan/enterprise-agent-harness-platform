@@ -135,8 +135,8 @@ public class PullRequestTriggers {
             return;
         }
         String suitesFile = resolved.project().suitesFile();
-        ImpactSelection.Decision selection = SuiteDefinition.MAVEN_MODULES.equals(suite.selection())
-                ? ImpactSelection.decide(impacts.forPullRequestRun(id).impact(), suitesFile)
+        ImpactSelection.Decision selection = suite.moduleSystem() != null
+                ? ImpactSelection.decide(impacts.forPullRequestRun(id).impact(), suitesFile, suite.moduleSystem())
                 : SuiteDefinition.PATHS.equals(suite.selection())
                 ? ImpactSelection.decidePaths(impacts.forPullRequestRun(id).impact(), suitesFile, suite.paths())
                 : ImpactSelection.Decision.full("SUITE_NOT_SELECTIVE");

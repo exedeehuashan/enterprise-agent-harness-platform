@@ -66,10 +66,17 @@ public final class RepositorySuites {
                 if (dir.startsWith("/") || dir.contains("..") || dir.contains("\\") || !dir.matches("[A-Za-z0-9._/-]+")) throw invalid(key + ": report directory '" + dir + "' must be a relative path");
             }
             String selection = s.has("selection") ? text(s, "selection", 20, true) : null;
-            if (selection != null && !selection.equals(SuiteDefinition.MAVEN_MODULES) && !selection.equals(SuiteDefinition.PATHS)) {
-                throw invalid(key + ": selection must be maven-modules or paths");
+            if (selection != null && !Set.of(SuiteDefinition.MAVEN_MODULES, SuiteDefinition.PATHS, SuiteDefinition.GRADLE_PROJECTS,
+                    SuiteDefinition.NPM_WORKSPACES, SuiteDefinition.PNPM_WORKSPACES).contains(selection)) {
+                throw invalid(key + ": selection must be maven-modules, gradle-projects, npm-workspaces, pnpm-workspaces or paths");
             }
             if (SuiteDefinition.MAVEN_MODULES.equals(selection) && !command.get(0).equals("mvn")) throw invalid(key + ": maven-modules selection needs an mvn command");
+            if (SuiteDefinition.GRADLE_PROJECTS.equals(selection) && (!Set.of("gradle", "./gradlew", "gradlew").contains(command.get(0)) || command.size() < 2
+                    || !command.get(command.size() - 1).matches("[A-Za-z][A-Za-z0-9]{0,59}"))) {
+                throw invalid(key + ": gradle-projects selection needs a gradle or ./gradlew command ending with the task name, for example [\"./gradlew\", \"test\"]");
+            }
+            if (SuiteDefinition.NPM_WORKSPACES.equals(selection) && !command.get(0).equals("npm")) throw invalid(key + ": npm-workspaces selection needs an npm command");
+            if (SuiteDefinition.PNPM_WORKSPACES.equals(selection) && !command.get(0).equals("pnpm")) throw invalid(key + ": pnpm-workspaces selection needs a pnpm command");
             List<String> paths = s.has("paths") ? strings(s.get("paths"), 20, 200, key + ": paths") : List.of();
             if (SuiteDefinition.PATHS.equals(selection) != !paths.isEmpty()) throw invalid(key + ": paths is required with, and only allowed with, selection paths");
             for (String path : paths) {

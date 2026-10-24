@@ -15,7 +15,7 @@ const REASONS: Record<string, string> = {
 /** Why a selective suite still ran in full. */
 const FULL_REASONS: Record<string, string> = {
   BUILD_CHANGED: 'build files changed', IMPACT_UNAVAILABLE: 'impact unavailable', TOO_MANY_CHANGES: 'too many changes',
-  TOO_MANY_MODULES: 'too many modules', ROOT_MODULE: 'root module changed', NOT_MAVEN: 'not a Maven build', PATHS_CHANGED: 'its paths changed',
+  TOO_MANY_MODULES: 'too many modules', ROOT_MODULE: 'root module changed', NOT_MAVEN: 'not a Maven build', NOT_GRADLE: 'not a Gradle build', NOT_WORKSPACES: 'no workspaces', PATHS_CHANGED: 'its paths changed',
 };
 
 function Scope({ row }: { row: PullRequestRun }) {
@@ -103,9 +103,10 @@ function ImpactView({ row }: { row: PullRequestRun }) {
         {i.truncated ? tr(' (list truncated)') : ''}; {tr(i.modules.length === 1 ? '{n} affected module' : '{n} affected modules', { n: i.modules.length })}; {tr('{n} test classes in scope.', { n: i.testClasses.length })}</p>
       {i.modules.length > 0 && (
         <table>
-          <thead><tr><th>{tr('Module')}</th><th>{tr('Why')}</th><th>{tr('Changed files')}</th><th>{tr('Test classes')}</th></tr></thead>
+          <thead><tr><th>{tr('Module')}</th><th>{tr('Build')}</th><th>{tr('Why')}</th><th>{tr('Changed files')}</th><th>{tr('Test classes')}</th></tr></thead>
           <tbody>{i.modules.map(m => (
-            <tr key={m.dir}><td><code>{m.dir}</code></td><td>{REASON[m.reason] ? tr(REASON[m.reason]) : m.reason}</td><td>{m.changedFiles}</td>
+            <tr key={(m.buildSystem ?? 'maven') + m.dir}><td><code>{m.dir || '/'}</code>{m.coordinates && m.coordinates !== m.dir && <div className="muted small">{m.coordinates}</div>}</td>
+              <td className="small">{m.buildSystem ?? 'maven'}</td><td>{REASON[m.reason] ? tr(REASON[m.reason]) : m.reason}</td><td>{m.changedFiles}</td>
               <td>{m.testClasses === 0 ? <span className="badge badge-warn">{tr('none')}</span> : m.testClasses}</td></tr>
           ))}</tbody>
         </table>

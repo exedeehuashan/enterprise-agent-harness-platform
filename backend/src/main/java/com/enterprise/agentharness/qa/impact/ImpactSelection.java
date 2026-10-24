@@ -16,21 +16,29 @@ public final class ImpactSelection {
 
     private ImpactSelection() {}
 
-    public static Decision decide(ChangeImpactAnalyzer.Impact impact, String suitesFile) {
+    public static Decision decide(ChangeImpactAnalyzer.Impact impact, String suitesFile) { return decide(impact, suitesFile, "maven"); }
+
+    /**
+     * For a selective suite of one build system (maven, gradle or npm): the modules of that build the change affects.
+     * The returned identifiers are what the runner passes on: Maven module directories, Gradle project paths (":core")
+     * or workspace package directories. Changes in other builds' modules do not concern the suite.
+     */
+    public static Decision decide(ChangeImpactAnalyzer.Impact impact, String suitesFile, String system) {
         if (impact == null) return Decision.full("IMPACT_UNAVAILABLE");
-        if (!impact.buildSystem().equals("maven")) return Decision.full("NOT_MAVEN");
+        if (!impact.has(system)) return Decision.full(switch (system) { case "gradle" -> "NOT_GRADLE"; case "npm" -> "NOT_WORKSPACES"; default -> "NOT_MAVEN"; });
         if (impact.truncated()) return Decision.full("TOO_MANY_CHANGES");
-        if (impact.wholeBuild()) return Decision.full("BUILD_CHANGED");
+        if (impact.wholeBuildOf(system)) return Decision.full("BUILD_CHANGED");
         for (String path : impact.filesOutsideModules()) {
-            if (affectsBuild(path, suitesFile)) return Decision.full("BUILD_CHANGED");
+            if (affectsBuild(path, suitesFile, system)) return Decision.full("BUILD_CHANGED");
         }
         // The listed outside files are capped; if some were cut off, they cannot be checked.
         if (impact.filesOutsideModules().size() >= ChangeImpactAnalyzer.MAX_LISTED) return Decision.full("TOO_MANY_CHANGES");
-        var modules = impact.modules().stream().map(ChangeImpactAnalyzer.AffectedModule::dir).toList();
-        if (modules.contains("")) return Decision.full("ROOT_MODULE");
-        if (modules.isEmpty()) return new Decision(Mode.NOT_AFFECTED, List.of(), "NO_MODULE_CHANGED");
-        if (modules.size() > MAX_MODULES) return Decision.full("TOO_MANY_MODULES");
-        return new Decision(Mode.MODULES, modules, "AFFECTED_MODULES");
+        var own = impact.modules().stream().filter(m -> m.system().equals(system)).toList();
+        if (own.stream().anyMatch(m -> m.dir().isEmpty())) return Decision.full("ROOT_MODULE");
+        if (own.isEmpty()) return new Decision(Mode.NOT_AFFECTED, List.of(), "NO_MODULE_CHANGED");
+        if (own.size() > MAX_MODULES) return Decision.full("TOO_MANY_MODULES");
+        var ids = own.stream().map(m -> system.equals("gradle") ? m.coordinates() : m.dir()).toList();
+        return new Decision(Mode.MODULES, ids, "AFFECTED_MODULES");
     }
 
     /**
@@ -56,9 +64,18 @@ public final class ImpactSelection {
     }
 
     /** Files outside the modules that still change how Maven builds or what the suite runs. */
-    static boolean affectsBuild(String path, String suitesFile) {
+    static boolean affectsBuild(String path, String suitesFile) { return affectsBuild(path, suitesFile, "maven"); }
+
+    /** Files outside the modules that still change how the given build works or what the suite runs. */
+    static boolean affectsBuild(String path, String suitesFile, String system) {
         String name = path.substring(path.lastIndexOf('/') + 1);
-        return name.equals("pom.xml") || path.startsWith(".mvn/") || name.equals("mvnw") || name.equals("mvnw.cmd")
-                || path.equals(suitesFile) || path.startsWith(".eahp/");
+        if (path.equals(suitesFile) || path.startsWith(".eahp/")) return true;
+        return switch (system) {
+            case "gradle" -> name.endsWith(".gradle") || name.endsWith(".gradle.kts") || name.equals("gradle.properties") || path.startsWith("gradle/")
+                    || path.startsWith("buildSrc/") || path.startsWith("build-logic/") || name.startsWith("gradlew");
+            case "npm" -> name.equals("package.json") || name.equals("package-lock.json") || name.equals("pnpm-lock.yaml") || name.equals("yarn.lock")
+                    || name.equals("pnpm-workspace.yaml") || name.equals(".npmrc") || name.startsWith("tsconfig");
+            default -> name.equals("pom.xml") || path.startsWith(".mvn/") || name.equals("mvnw") || name.equals("mvnw.cmd");
+        };
     }
 }
