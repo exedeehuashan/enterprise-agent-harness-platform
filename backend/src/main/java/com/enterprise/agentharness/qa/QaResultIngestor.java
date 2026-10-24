@@ -67,7 +67,7 @@ public class QaResultIngestor {
         String project = args.get("project").asText(), suite = args.get("suite").asText(), commit = args.get("commit").asText();
         Timestamp created = (Timestamp) run.get("created_at");
         String outcome = null, consoleTail = null;
-        byte[] coverage = null, performance = null;
+        byte[] coverage = null, performance = null, coverageLines = null;
         List<JUnitReports.TestCase> cases = new ArrayList<>();
         for (var a : artifacts.list(runId)) {
             if (a.expiredAt() != null) continue; // content removed by retention; nothing left to read
@@ -80,6 +80,7 @@ public class QaResultIngestor {
                 case "junit-reports.zip" -> cases.addAll(readZip(bytes));
                 case "coverage.json" -> coverage = bytes;
                 case "performance.json" -> performance = bytes;
+                case "coverage-lines.json" -> coverageLines = bytes;
                 default -> { }
             }
         }
@@ -106,6 +107,7 @@ public class QaResultIngestor {
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """, runId, project, suite, commit, run.get("status"), outcome, runCategory, cases.size(), failed);
         if (coverage != null) recordCoverage(runId, project, suite, commit, coverage);
+        if (coverageLines != null) recordCoverageLines(runId, coverageLines);
         if (performance != null) recordPerformance(runId, project, suite, commit, outcome, performance);
         // Makes the result an event like any other (for example for webhooks): code is the outcome.
         jdbc.update("INSERT INTO audit_events(actor,action,run_id,code) VALUES ('qa','QA_RESULT_INGESTED',?,?)", runId, outcome == null ? "NO_RESULT" : outcome);
@@ -134,6 +136,32 @@ public class QaResultIngestor {
         } catch (java.io.IOException ex) {
             log.warn("Unreadable coverage.json for run {}", runId);
         }
+    }
+
+    /** Stores line-level coverage; a malformed file loses only the line data. */
+    private void recordCoverageLines(UUID runId, byte[] json) {
+        try {
+            var rows = new ArrayList<Object[]>();
+            for (var f : mapper.readTree(json).path("files")) {
+                String module = f.path("module").asText(""), path = f.path("path").asText("");
+                if (path.isEmpty() || path.length() > 500 || module.length() > 300) continue;
+                rows.add(new Object[] { runId, module, path, ints(f.path("covered")), ints(f.path("missed")) });
+                if (rows.size() >= CoverageLines.MAX_FILES) break;
+            }
+            jdbc.batchUpdate("INSERT INTO qa_coverage_lines(run_id,module,path,covered,missed) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING", rows,
+                    500, (ps, row) -> {
+                        ps.setObject(1, row[0]); ps.setString(2, (String) row[1]); ps.setString(3, (String) row[2]);
+                        ps.setArray(4, ps.getConnection().createArrayOf("integer", (Integer[]) row[3]));
+                        ps.setArray(5, ps.getConnection().createArrayOf("integer", (Integer[]) row[4]));
+                    });
+        } catch (java.io.IOException ex) {
+            log.warn("Unreadable coverage-lines.json for run {}", runId);
+        }
+    }
+    private static Integer[] ints(com.fasterxml.jackson.databind.JsonNode array) {
+        var out = new ArrayList<Integer>();
+        for (var v : array) if (v.canConvertToInt() && v.intValue() > 0) out.add(v.intValue());
+        return out.toArray(Integer[]::new);
     }
 
     /** Stores the run's k6 results; a summary that reported an error (no or invalid file) records nothing. */

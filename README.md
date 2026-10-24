@@ -473,6 +473,13 @@ run. The Quality page shows the trend, and the release gate can enforce
 `maxP95Ms`, `maxErrorRate` and `maxP95IncreasePercent` (against the median of
 recent passing runs). See [P38 design notes](docs/p38-performance-trends.md).
 
+**Coverage trends and new-code coverage.** Coverage suites also keep per-line
+data. `GET /api/v1/qa/projects/{key}/new-code-coverage?base=&head=&suite=` reports
+how many of the lines a change adds or modifies are covered, and which are not.
+The release gate can require `minNewCodeCoverage` per suite (against the default
+branch), and the Quality page shows coverage over time. See
+[P39 design notes](docs/p39-coverage-trends-and-new-code.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

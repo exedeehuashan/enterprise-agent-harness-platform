@@ -87,6 +87,29 @@ public class GitMirror {
         return lines(project, List.of("diff", "--name-only", "--no-renames", base + "..." + head), base, head);
     }
 
+    /**
+     * Lines added or changed from the merge base of {@code base} and {@code head} to {@code head}, per path at head
+     * (new-code coverage, P39). Deleted files and pure deletions contribute nothing.
+     */
+    public java.util.Map<String, java.util.TreeSet<Integer>> changedLines(QaRegistry.Project project, String base, String head) throws IOException {
+        var result = new java.util.TreeMap<String, java.util.TreeSet<Integer>>();
+        String file = null;
+        for (String line : lines(project, List.of("diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff", base + "..." + head), base, head)) {
+            if (line.startsWith("+++ ")) {
+                file = line.equals("+++ /dev/null") ? null : line.startsWith("+++ b/") ? line.substring(6) : null;
+            } else if (line.startsWith("@@") && file != null) {
+                var m = HUNK.matcher(line);
+                if (!m.find()) continue;
+                int start = Integer.parseInt(m.group(1)), count = m.group(2) == null ? 1 : Integer.parseInt(m.group(2));
+                if (count == 0) continue;
+                var set = result.computeIfAbsent(file, f -> new java.util.TreeSet<>());
+                for (int i = start; i < start + Math.min(count, 100_000); i++) set.add(i);
+            }
+        }
+        return result;
+    }
+    private static final java.util.regex.Pattern HUNK = java.util.regex.Pattern.compile("^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,(\\d+))? @@");
+
     /** All file paths at {@code commit}. */
     public List<String> listFiles(QaRegistry.Project project, String commit) throws IOException {
         return lines(project, List.of("ls-tree", "-r", "--name-only", commit), commit);
