@@ -515,6 +515,12 @@ code paths against the configured model and are graded by deterministic checks.
 Start a run under Administration → AI evaluation (`POST /api/v1/admin/ai/evals`).
 claude-opus-5-5 scores 12/12. See [P44 design notes](docs/p44-ai-evaluation-set.md).
 
+**Gradle and workspace impact.** PR impact analysis now also understands Gradle
+multi-project builds and npm/pnpm/yarn workspaces, alongside Maven in the same
+repository. Suites can declare `gradle-projects`, `npm-workspaces` or
+`pnpm-workspaces` selection to test only the affected projects or packages. See
+[P45 design notes](docs/p45-gradle-and-workspace-impact.md).
+
 **Release gate and quality dashboard.** Each project lists the suites that must
 pass (`qa_quality_gates`). `GET /api/v1/qa/projects/{key}/gate?ref=` returns PASS,
 FAIL or PENDING for a commit with reasons, from recorded evidence only;

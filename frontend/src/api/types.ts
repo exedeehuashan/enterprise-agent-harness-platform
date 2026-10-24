@@ -108,7 +108,7 @@ export interface ChangeImpact {
   projectKey: string; prNumber: number; baseSha: string | null; headSha: string; computedAt: string | null; error: string | null;
   impact: {
     buildSystem: string; changedFileCount: number; changedFiles: string[]; truncated: boolean; wholeBuild: boolean;
-    modules: { dir: string; coordinates: string; reason: 'CHANGED' | 'DEPENDS_ON_CHANGED' | 'BUILD_CHANGED'; changedFiles: number; testClasses: number }[];
+    modules: { dir: string; coordinates: string; reason: 'CHANGED' | 'DEPENDS_ON_CHANGED' | 'BUILD_CHANGED'; changedFiles: number; testClasses: number; buildSystem?: string | null }[];
     testClasses: string[]; filesOutsideModules: string[]; notes: string[];
   } | null;
 }

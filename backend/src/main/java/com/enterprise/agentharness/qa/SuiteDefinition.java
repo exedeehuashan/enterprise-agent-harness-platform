@@ -17,6 +17,19 @@ public record SuiteDefinition(String source, String key, String name, String des
     public static final String REPOSITORY = "repository";
     /** The suite is a Maven build that may be narrowed to affected modules ({@code -pl ... -am}) for pull requests. */
     public static final String MAVEN_MODULES = "maven-modules";
+    /** P45: Gradle projects ({@code :a:test} per affected project; the command's last argument is the task). */
+    public static final String GRADLE_PROJECTS = "gradle-projects";
+    /** P45: npm workspaces ({@code --workspace=<dir>} per affected package). */
+    public static final String NPM_WORKSPACES = "npm-workspaces";
+    /** P45: pnpm workspaces ({@code --filter ./<dir>} per affected package). */
+    public static final String PNPM_WORKSPACES = "pnpm-workspaces";
+    /** The build system whose modules a selective suite is narrowed to: maven, gradle or npm; null when not selective by module. */
+    public String moduleSystem() {
+        if (MAVEN_MODULES.equals(selection)) return "maven";
+        if (GRADLE_PROJECTS.equals(selection)) return "gradle";
+        if (NPM_WORKSPACES.equals(selection) || PNPM_WORKSPACES.equals(selection)) return "npm";
+        return null;
+    }
     /** The suite only needs to run for pull requests that change a file under one of its {@code paths}. */
     public static final String PATHS = "paths";
 
