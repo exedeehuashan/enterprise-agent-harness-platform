@@ -319,6 +319,11 @@ describe('quality page', () => {
         suites: [], reasons: ['backend-unit failed (TESTS_FAILED, ENVIRONMENT_DOCKER).'], notes: ['Already failing in backend-unit: CatalogMigrationTest.'],
         policy: { requiredSuites: ['backend-unit'] } } }),
       'GET /qa/quarantines': () => ({ body: [] }),
+      'GET /qa/projects/online-shop/coverage': () => ({ body: [41.8, 42.1].map((v, i) => ({ runId: `c${i}`, suite: 'backend-unit', commit: `${i + 5}`.repeat(40),
+        outcome: 'PASSED', at: `2026-10-2${i}T02:00:00Z`, linePercent: v, branchPercent: 30.5, linesCovered: 421, linesMissed: 579 })) }),
+      'GET /qa/projects/online-shop/new-code-coverage': () => ({ body: { project: 'online-shop', suite: 'backend-unit', base: 'b'.repeat(40), head: 'h'.repeat(40),
+        status: 'COMPUTED', runId: 'c1', changedFiles: 3, covered: 8, missed: 4, percent: 66.6,
+        files: [{ path: 'backend/order-api/src/main/java/com/example/Order.java', covered: 2, missed: 4, uncoveredLines: [11, 12, 30, 31] }] } }),
       'GET /qa/projects/online-shop/performance': () => ({ body: [2.1, 2.4, 2.19].map((p95, i) => ({ runId: `p${i}`, suite: 'performance', commit: `${i}`.repeat(40),
         outcome: 'PASSED', at: `2026-10-2${i}T02:00:00Z`, requests: 57574, requestsPerSecond: 1279.4, avgMs: 1.1, p90Ms: 1.8, p95Ms: p95, maxMs: 94, errorRate: 0, checksRate: 1 })) }),
       'GET /qa/projects/online-shop/compare': () => ({ body: [
@@ -341,6 +346,16 @@ describe('quality page', () => {
     expect(screen.getByText('1.00 s')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'backend-unit daily pass rate' })).toBeInTheDocument();
     expect(screen.getByText('2026-10-23: 3 of 7 runs passed (43%)')).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'line coverage, oldest to newest' })).toBeInTheDocument();
+    expect(screen.getByText('42.1%')).toBeInTheDocument();
+    const coverage = screen.getByRole('heading', { name: 'Coverage' }).closest('section')!;
+    await userEvent.type(within(coverage).getByLabelText('Head'), 'feat/x');
+    await userEvent.click(within(coverage).getByRole('button', { name: 'Check changed lines' }));
+    expect(await screen.findByText('66.6%')).toBeInTheDocument();
+    expect(screen.getByText(/uncovered lines 11, 12, 30, 31/)).toBeInTheDocument();
+    expect(calls.find(c => c.path.startsWith('/qa/projects/online-shop/new-code-coverage'))?.path)
+      .toBe('/qa/projects/online-shop/new-code-coverage?base=main&head=feat%2Fx&suite=backend-unit');
+    await userEvent.clear(within(coverage).getByLabelText('Head'));
     expect(await screen.findByRole('img', { name: 'p95 latency, oldest to newest' })).toBeInTheDocument();
     expect(screen.getByText('2.19 ms')).toBeInTheDocument();
     expect(screen.getByText(/57,574 requests/)).toBeInTheDocument();
@@ -359,8 +374,9 @@ describe('quality page', () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('## EAHP QA report'));
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('Head'), 'feat/x');
-    await userEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    const compare = screen.getByRole('heading', { name: 'Compare commits' }).closest('section')!;
+    await userEvent.type(within(compare).getByLabelText('Head'), 'feat/x');
+    await userEvent.click(within(compare).getByRole('button', { name: 'Compare' }));
     expect(await screen.findByText(/1 new failure, 2 fixed, 0 still failing, 1 added, 0 removed/)).toBeInTheDocument();
     expect(within(screen.getByText('New failures (1)').parentElement!).getByText('OrderTest#creates')).toBeInTheDocument();
     expect(screen.getByText('src/cart.test.tsx#totals')).toBeInTheDocument();
@@ -459,7 +475,7 @@ describe('project administration', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save gate' }));
     await waitFor(() => expect(calls.some(c => c.method === 'PUT' && c.path.endsWith('/gate'))).toBe(true));
     expect(calls.find(c => c.method === 'PUT' && c.path.endsWith('/gate'))!.body).toEqual({ requiredSuites: ['backend-unit'], minLineCoverage: {},
-      performance: { 'backend-unit': { maxP95Ms: 500, maxErrorRate: 0.01, maxP95IncreasePercent: 50 } } });
+      performance: { 'backend-unit': { maxP95Ms: 500, maxErrorRate: 0.01, maxP95IncreasePercent: 50 } }, minNewCodeCoverage: {} });
     unmount();
 
     const admin2 = renderApp('/admin');

@@ -22,11 +22,12 @@ public class QaController {
     private final GitMirror git;
     private final QaReportService reports;
     private final QaComparison comparison;
+    private final NewCodeCoverage newCode;
     public QaController(QaRegistry registry, PullRequestTriggers pullRequests, QaSuiteResolver resolver, QaTriageService triageService,
             com.enterprise.agentharness.run.RunService runs, com.enterprise.agentharness.qa.impact.ChangeImpactService impacts,
-            QualityService quality, GitMirror git, QaReportService reports, QaComparison comparison) {
+            QualityService quality, GitMirror git, QaReportService reports, QaComparison comparison, NewCodeCoverage newCode) {
         this.registry = registry; this.pullRequests = pullRequests; this.resolver = resolver; this.triageService = triageService;
-        this.runs = runs; this.impacts = impacts; this.quality = quality; this.git = git; this.reports = reports; this.comparison = comparison;
+        this.runs = runs; this.impacts = impacts; this.quality = quality; this.git = git; this.reports = reports; this.comparison = comparison; this.newCode = newCode;
     }
 
     @GetMapping("/projects")
@@ -106,6 +107,30 @@ public class QaController {
         if (limit < 1 || limit > 500) throw new RunException(HttpStatus.BAD_REQUEST, "limit must be 1..500");
         registry.project(key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Project not found: " + key));
         return quality.performance(key, suite, limit);
+    }
+
+    /** Recorded coverage runs of the project's suites (or one suite), oldest first. */
+    @GetMapping("/projects/{key}/coverage")
+    public List<NewCodeCoverage.CoveragePoint> coverage(@org.springframework.web.bind.annotation.PathVariable String key,
+            @RequestParam(required = false) String suite, @RequestParam(defaultValue = "50") int limit) {
+        if (limit < 1 || limit > 500) throw new RunException(HttpStatus.BAD_REQUEST, "limit must be 1..500");
+        registry.project(key).orElseThrow(() -> new RunException(HttpStatus.NOT_FOUND, "Project not found: " + key));
+        return newCode.trend(key, suite, limit);
+    }
+
+    /** Coverage of the lines {@code head} changes against {@code base} (merge base), from the suite's latest run at head. */
+    @GetMapping("/projects/{key}/new-code-coverage")
+    public NewCodeCoverage.Result newCodeCoverage(@org.springframework.web.bind.annotation.PathVariable String key, @RequestParam String base,
+            @RequestParam String head, @RequestParam String suite) {
+        if (!suite.matches("[a-z0-9][a-z0-9-]{1,59}")) throw new RunException(HttpStatus.BAD_REQUEST, "Invalid suite");
+        try {
+            var project = resolver.enabledProject(key);
+            return newCode.compute(key, suite, git.resolve(project, base), git.resolve(project, head));
+        } catch (IllegalArgumentException ex) {
+            throw new RunException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        } catch (java.io.IOException ex) {
+            throw new RunException(HttpStatus.BAD_GATEWAY, "The changes between these commits could not be read.");
+        }
     }
 
     @GetMapping("/projects/{key}/dashboard")

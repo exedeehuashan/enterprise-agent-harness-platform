@@ -62,8 +62,8 @@ export function ProjectAdminPanel({ project, onChanged }: { project: QaProject; 
         })}
         {suiteKeys.length === 0 && <span className="muted small">No suites yet.</span>}
       </div>
-      <GateForm suites={a.gateSuites} coverage={a.gateCoverage ?? {}} performance={a.gatePerformance ?? {}} busy={action.busy}
-        onSave={(list, minimums, limits) => apply(() => list.length ? api.admin.gate(project.key, list, minimums, limits) : api.admin.removeGate(project.key))} />
+      <GateForm suites={a.gateSuites} coverage={a.gateCoverage ?? {}} newCode={a.gateNewCodeCoverage ?? {}} performance={a.gatePerformance ?? {}} busy={action.busy}
+        onSave={(list, minimums, limits, newCode) => apply(() => list.length ? api.admin.gate(project.key, list, minimums, limits, newCode) : api.admin.removeGate(project.key))} />
       <SuiteForm busy={action.busy} onSave={(key, body) => apply(() => api.admin.suite(project.key, key, body))} />
       <h3 className="subhead">Change history</h3>
       {events.data?.length === 0 && <Empty>No changes recorded.</Empty>}
@@ -128,33 +128,44 @@ function parseLimits(text: string): Record<string, PerformanceLimit> | string {
   return result;
 }
 
-function GateForm({ suites, coverage, performance, busy, onSave }: { suites: string[]; coverage: Record<string, number>;
-    performance: Record<string, PerformanceLimit>; busy: boolean;
-    onSave: (list: string[], minLineCoverage: Record<string, number>, performance: Record<string, PerformanceLimit>) => void }) {
+/** "backend-unit=70, frontend-unit=60" → percentages per suite, or an error message for the first malformed entry. */
+function parsePercentages(text: string): Record<string, number> | string {
+  const parsed: Record<string, number> = {};
+  for (const part of text.split(',').map(p => p.trim()).filter(Boolean)) {
+    const m = /^([a-z0-9][a-z0-9-]{1,59})\s*=\s*(\d+(?:\.\d+)?)$/.exec(part);
+    if (!m || Number(m[2]) > 100) return `"${part}" is not suite=percentage (0-100)`;
+    parsed[m[1]] = Number(m[2]);
+  }
+  return parsed;
+}
+
+function GateForm({ suites, coverage, newCode, performance, busy, onSave }: { suites: string[]; coverage: Record<string, number>;
+    newCode: Record<string, number>; performance: Record<string, PerformanceLimit>; busy: boolean;
+    onSave: (list: string[], minLineCoverage: Record<string, number>, performance: Record<string, PerformanceLimit>, minNewCodeCoverage: Record<string, number>) => void }) {
   const [value, setValue] = useState(suites.join(', '));
   const [minimums, setMinimums] = useState(Object.entries(coverage).map(([k, v]) => `${k}=${v}`).join(', '));
   const [limits, setLimits] = useState(formatLimits(performance));
+  const [newCodeMinimums, setNewCodeMinimums] = useState(Object.entries(newCode).map(([k, v]) => `${k}=${v}`).join(', '));
   const [invalid, setInvalid] = useState<string | null>(null);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     // "backend-unit=70, frontend-unit=60": minimum line coverage per required suite. A malformed entry stops the save
     // rather than being dropped, which would silently weaken the gate.
-    const parsed: Record<string, number> = {};
-    for (const part of minimums.split(',').map(p => p.trim()).filter(Boolean)) {
-      const m = /^([a-z0-9][a-z0-9-]{1,59})\s*=\s*(\d+(?:\.\d+)?)$/.exec(part);
-      if (!m || Number(m[2]) > 100) { setInvalid(`"${part}" is not suite=percentage (0-100)`); return; }
-      parsed[m[1]] = Number(m[2]);
-    }
+    const parsed = parsePercentages(minimums);
+    if (typeof parsed === 'string') { setInvalid(parsed); return; }
+    const parsedNewCode = parsePercentages(newCodeMinimums);
+    if (typeof parsedNewCode === 'string') { setInvalid(parsedNewCode); return; }
     const perf = parseLimits(limits);
     if (typeof perf === 'string') { setInvalid(perf); return; }
     setInvalid(null);
-    onSave(value.split(/[,\s]+/).filter(Boolean), parsed, perf);
+    onSave(value.split(/[,\s]+/).filter(Boolean), parsed, perf, parsedNewCode);
   };
   return (
     <form className="row" onSubmit={submit}>
       <h3 className="subhead">Release gate</h3>
       <label className="inline">Required suites<input value={value} onChange={e => setValue(e.target.value)} placeholder="empty removes the gate" /></label>
       <label className="inline">Minimum line coverage<input value={minimums} onChange={e => setMinimums(e.target.value)} placeholder="backend-unit=70" /></label>
+      <label className="inline">Minimum new-code coverage<input value={newCodeMinimums} onChange={e => setNewCodeMinimums(e.target.value)} placeholder="backend-unit=80" /></label>
       <label className="inline">Performance limits<input value={limits} onChange={e => setLimits(e.target.value)} placeholder="performance: p95=500, errors=0.01, increase=50" /></label>
       <button type="submit" className="secondary" disabled={busy}>Save gate</button>
       {invalid && <div className="error" role="alert">{invalid}</div>}

@@ -215,8 +215,12 @@ public class QaSuiteTools {
                 if (zip != null) evidence.add(new ToolResult.Artifact("junit-reports.zip", "application/zip", zip));
                 evidence.add(tail("console.log", consoleLog));
                 if (!suite.coverage().isEmpty()) {
-                    var coverage = CoverageReports.summarize(source, CoverageReports.find(source, suite.coverage()));
+                    var coverageReports = CoverageReports.find(source, suite.coverage());
+                    var coverage = CoverageReports.summarize(source, coverageReports);
                     evidence.add(new ToolResult.Artifact("coverage.json", "application/json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(coverage)));
+                    // Line-level data for new-code coverage (P39); left out when it would be too large to keep as evidence.
+                    byte[] lines = mapper.writeValueAsBytes(Map.of("files", CoverageLines.read(source, coverageReports)));
+                    if (lines.length <= MAX_REPORT_ZIP) evidence.add(new ToolResult.Artifact("coverage-lines.json", "application/json", lines));
                 }
                 if (suite.reportsPerformance()) {
                     evidence.add(new ToolResult.Artifact("performance.json", "application/json",

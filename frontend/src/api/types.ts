@@ -141,11 +141,20 @@ export interface QualityDashboard {
   flaky: { suite: string; testClass: string; testName: string; flakyCommits: number }[];
   slowest: { suite: string; testClass: string; testName: string; averageMs: number; runs: number }[];
   pullRequests: { prNumber: number; title: string; url: string; headSha: string; gate: string; affectedModules: number; impactNotes: number }[];
-  gate: { requiredSuites: string[]; performance?: Record<string, PerformanceLimit> } | null;
+  gate: { requiredSuites: string[]; performance?: Record<string, PerformanceLimit>; minNewCodeCoverage?: Record<string, number> } | null;
 }
 
 export interface ProjectAdmin { project: QaProject; triggers: { suite: string; enabled: boolean }[]; gateSuites: string[]; gateCoverage?: Record<string, number>;
-  gatePerformance?: Record<string, PerformanceLimit> }
+  gatePerformance?: Record<string, PerformanceLimit>; gateNewCodeCoverage?: Record<string, number> }
+export interface CoveragePoint {
+  runId: string; suite: string; commit: string; outcome: string | null; at: string; linePercent: number | null; branchPercent: number | null;
+  linesCovered: number; linesMissed: number;
+}
+export interface NewCodeCoverage {
+  project: string; suite: string; base: string; head: string; status: 'COMPUTED' | 'NO_RUN' | 'NO_LINE_DATA' | 'NO_CHANGED_LINES'; runId: string | null;
+  changedFiles: number; covered: number; missed: number; percent: number | null;
+  files: { path: string; covered: number; missed: number; uncoveredLines: number[] }[];
+}
 export interface PerformanceLimit { maxP95Ms?: number | null; maxErrorRate?: number | null; maxP95IncreasePercent?: number | null }
 export interface PerformancePoint {
   runId: string; suite: string; commit: string; outcome: string | null; at: string; requests: number; requestsPerSecond: number;

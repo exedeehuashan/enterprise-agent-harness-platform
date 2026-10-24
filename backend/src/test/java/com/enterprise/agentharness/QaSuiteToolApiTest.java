@@ -73,6 +73,8 @@ class QaSuiteToolApiTest {
     static volatile String coverageXml;
     /** A k6 --summary-export file the fake run writes to k6-summary.json, or null for none. */
     static volatile String k6Summary;
+    /** What the fake git prints for "git diff -U0" (new-code coverage). */
+    static volatile String diffText;
     /** Commit that "git ls-remote" reports for any branch. */
     static volatile String remoteSha;
     static final List<List<String>> calls = new CopyOnWriteArrayList<>();
@@ -92,6 +94,7 @@ class QaSuiteToolApiTest {
                 if (argv.contains("-p")) Files.writeString(logFile, repoFile);
                 return new Result(0,false,false);
             }
+            if (argv.get(0).equals("git") && argv.contains("-U0")) { Files.writeString(logFile, diffText == null ? "" : diffText); return new Result(0,false,false); }
             if (argv.get(0).equals("git") && argv.contains("archive")) { Files.writeString(Path.of(argv.get(argv.indexOf("-o")+1)), "tar"); return new Result(0,false,false); }
             if (argv.get(0).equals("tar")) { Files.writeString(Path.of(argv.get(argv.size()-1)).resolve("pom.xml"), "<project/>"); return new Result(0,false,false); }
             if (argv.get(0).equals("docker") && argv.get(1).equals("version")) {
@@ -151,7 +154,7 @@ class QaSuiteToolApiTest {
         repository.deleteAll();
         jdbc.update("UPDATE qa_test_suites SET enabled=TRUE");
         jdbc.update("UPDATE qa_projects SET enabled=TRUE");
-        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();coverageXml=null;k6Summary=null;
+        reportXml=PASS;dockerExit=0;cloneExit=0;duringRun=null;dockerAvailable=true;repoFile=null;consoleText="[INFO] BUILD output\n";remoteSha=MAIN_SHA;calls.clear();coverageXml=null;k6Summary=null;diffText=null;
         jdbc.update("DELETE FROM qa_schedules WHERE id<>'6b8c0f2e-7f3a-4c1e-9a54-3d2f0e5b7a10'");
         jdbc.update("UPDATE qa_schedules SET enabled=FALSE, last_commit=NULL, last_run_id=NULL, task_id=NULL, last_error=NULL");
         jdbc.update("DELETE FROM qa_test_results");jdbc.update("DELETE FROM qa_run_ingestions");jdbc.update("DELETE FROM qa_quarantines");
@@ -797,6 +800,47 @@ class QaSuiteToolApiTest {
         }
         repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"coverage\":[\"/etc/passwd.xml\"]}");
         mvc.perform(get("/api/v1/qa/projects/online-shop/suites").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.repositoryFile").value("invalid"));
+    }
+
+    @Test
+    void newCodeCoverageIsComputedFromChangedLinesAndEnforcedByTheGate() throws Exception {
+        repoFile=REPO_FILE.replace("\"timeoutSeconds\":1200}","\"timeoutSeconds\":1200,\"coverage\":[\"target/site/jacoco/jacoco.xml\"]}");
+        coverageXml=com.enterprise.agentharness.qa.CoverageLinesTest.JACOCO_LINES;
+        String file="backend/order-api/src/main/java/com/example/order/Order.java";
+        diffText="diff --git a/"+file+" b/"+file+"\n--- a/"+file+"\n+++ b/"+file+"\n@@ -9,0 +10,3 @@\n+a\n+b\n+c\n"
+                +"diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-x\n+y\n";
+        String head="c".repeat(40);
+        UUID run=runAt(task(),"ncc1",head,PASS,0);
+        assertThat(artifact(run,"coverage-lines.json")).isNotNull();
+        ingestor.runOnce();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM qa_coverage_lines WHERE run_id=?",Long.class,run)).isEqualTo(1);
+        mvc.perform(get("/api/v1/qa/projects/online-shop/new-code-coverage").param("base","main").param("head",head).param("suite","backend-unit")
+                .header("Authorization",auth(VIEWER))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPUTED"))
+                .andExpect(jsonPath("$.covered").value(2)).andExpect(jsonPath("$.missed").value(1)).andExpect(jsonPath("$.percent").value(66.6))
+                .andExpect(jsonPath("$.changedFiles").value(2)).andExpect(jsonPath("$.files[0].path").value(file)).andExpect(jsonPath("$.files[0].uncoveredLines[0]").value(11));
+        mvc.perform(get("/api/v1/qa/projects/online-shop/coverage").param("suite","backend-unit").header("Authorization",auth(VIEWER)))
+                .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].linePercent").value(66.7)).andExpect(jsonPath("$[0].commit").value(head));
+        try {
+            putGate("{\"requiredSuites\":[\"backend-unit\"],\"minNewCodeCoverage\":{\"backend-unit\":80}}").andExpect(jsonPath("$.gateNewCodeCoverage.backend-unit").value(80.0));
+            var low=gate(head);
+            assertThat(low.get("verdict").asText()).isEqualTo("FAIL");
+            assertThat(low.get("reasons").get(0).asText()).isEqualTo("backend-unit covers 66.6% of the lines changed against main (2 of 3); the gate requires 80.0%.");
+            putGate("{\"requiredSuites\":[\"backend-unit\"],\"minNewCodeCoverage\":{\"backend-unit\":60}}");
+            var ok=gate(head);
+            assertThat(ok.get("verdict").asText()).isEqualTo("PASS");
+            assertThat(ok.get("notes").toString()).contains("backend-unit covers 66.6% of the lines changed against main.");
+            diffText="+++ b/README.md\n@@ -1 +1 @@\n"; // nothing the reports know changed
+            assertThat(gate(head).get("notes").toString()).contains("New-code coverage of backend-unit was not checked");
+            assertThat(gate(head).get("verdict").asText()).isEqualTo("PASS");
+
+            coverageXml=com.enterprise.agentharness.qa.CoverageReportsTest.JACOCO; // totals only, no line data
+            String other="d".repeat(40);
+            runAt(task(),"ncc2",other,PASS,0);ingestor.runOnce();
+            assertThat(gate(other).get("reasons").get(0).asText()).isEqualTo("backend-unit reported no line coverage; the gate requires 60.0% of changed lines covered.");
+            putGate("{\"requiredSuites\":[\"backend-unit\"],\"minNewCodeCoverage\":{\"other\":60}}").andExpect(status().isBadRequest());
+        } finally {
+            jdbc.update("UPDATE qa_quality_gates SET min_new_code_coverage='{}'::jsonb");
+        }
     }
 
     static String k6(double p95, double failedRate) {

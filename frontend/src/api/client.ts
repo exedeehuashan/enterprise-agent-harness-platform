@@ -1,6 +1,6 @@
 import type {
   AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
-  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint,
+  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, CoveragePoint, NewCodeCoverage,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -97,8 +97,9 @@ export const api = {
     update: (key: string, body: Record<string, unknown>) => request<ProjectAdmin>(`/qa/admin/projects/${key}`, { method: 'PATCH', body }).then(r => r.data),
     suite: (key: string, suite: string, body: Record<string, unknown>) => request<ProjectAdmin>(`/qa/admin/projects/${key}/suites/${suite}`, { method: 'PUT', body }).then(r => r.data),
     trigger: (key: string, suite: string, enabled: boolean) => request<ProjectAdmin>(`/qa/admin/projects/${key}/triggers/${suite}`, { method: 'PUT', body: { enabled } }).then(r => r.data),
-    gate: (key: string, requiredSuites: string[], minLineCoverage: Record<string, number> = {}, performance: Record<string, PerformanceLimit> = {}) =>
-      request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'PUT', body: { requiredSuites, minLineCoverage, performance } }).then(r => r.data),
+    gate: (key: string, requiredSuites: string[], minLineCoverage: Record<string, number> = {}, performance: Record<string, PerformanceLimit> = {},
+      minNewCodeCoverage: Record<string, number> = {}) =>
+      request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'PUT', body: { requiredSuites, minLineCoverage, performance, minNewCodeCoverage } }).then(r => r.data),
     removeGate: (key: string) => request<ProjectAdmin>(`/qa/admin/projects/${key}/gate`, { method: 'DELETE' }).then(r => r.data),
     events: (project: string) => get<AdminEvent[]>(`/qa/admin/events${query({ project, limit: 20 })}`),
     createSchedule: (body: Record<string, unknown>) => post<QaSchedule>('/qa/admin/schedules', body),
@@ -115,6 +116,9 @@ export const api = {
   codeRepositories: () => get<CodeRepository[]>('/code-repositories'),
   putCodeRepository: (key: string, body: Record<string, unknown>) => request<CodeRepository>(`/admin/code-repositories/${key}`, { method: 'PUT', body }).then(r => r.data),
   deleteCodeRepository: (key: string) => request<null>(`/admin/code-repositories/${key}`, { method: 'DELETE' }).then(r => r.data),
+  coverageTrend: (project: string) => get<CoveragePoint[]>(`/qa/projects/${project}/coverage?limit=200`),
+  newCodeCoverage: (project: string, base: string, head: string, suite: string) =>
+    get<NewCodeCoverage>(`/qa/projects/${project}/new-code-coverage?${new URLSearchParams({ base, head, suite })}`),
   performance: (project: string) => get<PerformancePoint[]>(`/qa/projects/${project}/performance?limit=200`),
   environmentTemplates: (project: string) => get<EnvironmentTemplates>(`/qa/projects/${project}/environment-templates`),
   temporaryEnvironments: (project: string) => get<TemporaryEnvironment[]>(`/qa/temporary-environments?project=${encodeURIComponent(project)}&all=true`),

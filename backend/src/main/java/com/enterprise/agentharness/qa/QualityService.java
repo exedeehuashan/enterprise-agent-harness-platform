@@ -1,5 +1,7 @@
 package com.enterprise.agentharness.qa;
 
+import java.io.IOException;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -25,12 +27,17 @@ public class QualityService {
     private final ObjectMapper mapper;
     private final QaTriageService triage;
     private final QaQuarantines quarantines;
-    public QualityService(JdbcTemplate jdbc, ObjectMapper mapper, QaTriageService triage, QaQuarantines quarantines) {
-        this.jdbc = jdbc; this.mapper = mapper; this.triage = triage; this.quarantines = quarantines;
+    private final NewCodeCoverage newCode;
+    private final GitMirror git;
+    private final QaRegistry registry;
+    public QualityService(JdbcTemplate jdbc, ObjectMapper mapper, QaTriageService triage, QaQuarantines quarantines, NewCodeCoverage newCode, GitMirror git,
+            QaRegistry registry) {
+        this.jdbc = jdbc; this.mapper = mapper; this.triage = triage; this.quarantines = quarantines; this.newCode = newCode; this.git = git; this.registry = registry;
     }
 
     /** {@code minLineCoverage}: optional minimum line coverage (percent) per required suite, checked on full-scope runs. */
-    public record GatePolicy(List<String> requiredSuites, Map<String, Double> minLineCoverage, Map<String, PerformanceLimit> performance) {}
+    public record GatePolicy(List<String> requiredSuites, Map<String, Double> minLineCoverage, Map<String, PerformanceLimit> performance,
+            Map<String, Double> minNewCodeCoverage) {}
     /** Performance limits of a required suite (P38); each is optional. The increase compares p95 with the median of recent runs. */
     public record PerformanceLimit(Double maxP95Ms, Double maxErrorRate, Double maxP95IncreasePercent) {}
     /** One measured run of a performance suite. */
@@ -51,12 +58,13 @@ public class QualityService {
             List<FlakyTest> flaky, List<SlowTest> slowest, List<PullRequestStatus> pullRequests, GatePolicy gate) {}
 
     public GatePolicy policy(String project) {
-        var rows = jdbc.queryForList("SELECT required_suites::text AS suites, min_line_coverage::text AS coverage, performance::text AS performance FROM qa_quality_gates WHERE project_key=?", project);
+        var rows = jdbc.queryForList("SELECT required_suites::text AS suites, min_line_coverage::text AS coverage, performance::text AS performance, min_new_code_coverage::text AS new_code FROM qa_quality_gates WHERE project_key=?", project);
         if (rows.isEmpty()) return null;
         try {
             return new GatePolicy(mapper.readValue((String) rows.get(0).get("suites"), new TypeReference<List<String>>() {}),
                     mapper.readValue((String) rows.get(0).get("coverage"), new TypeReference<java.util.LinkedHashMap<String, Double>>() {}),
-                    mapper.readValue((String) rows.get(0).get("performance"), new TypeReference<java.util.LinkedHashMap<String, PerformanceLimit>>() {}));
+                    mapper.readValue((String) rows.get(0).get("performance"), new TypeReference<java.util.LinkedHashMap<String, PerformanceLimit>>() {}),
+                    mapper.readValue((String) rows.get(0).get("new_code"), new TypeReference<java.util.LinkedHashMap<String, Double>>() {}));
         } catch (Exception ex) {
             throw new IllegalStateException("Invalid gate policy", ex);
         }
@@ -97,6 +105,7 @@ public class QualityService {
             // Coverage and performance are requirements of their own: a passing (or waived) run can still fail them.
             String coverageFailure = coverageFailure(policy, suite, modules, exactLineCoverage(runId), lineCoverage, notes);
             if (coverageFailure == null) coverageFailure = performanceFailure(policy, project, suite, measured, notes);
+            if (coverageFailure == null) coverageFailure = newCodeFailure(policy, project, suite, commit, notes);
             if ("PASSED".equals(outcome) && coverageFailure != null) {
                 failed = true;
                 checks.add(new SuiteCheck(suite, "FAILED", runId, outcome, null, coverageFailure, modules, lineCoverage, p95));
@@ -267,6 +276,32 @@ public class QualityService {
         if (exact == null) return suite + " passed but reported no coverage; the gate requires at least " + min + "% line coverage.";
         if (exact < min) return suite + " line coverage " + display + "% is below the gate's " + min + "%.";
         return null;
+    }
+
+    /**
+     * The gate's new-code coverage minimum (P39): the lines this commit changes against the project's default branch
+     * (from their merge base) must be covered by the suite's run at this commit. Null when met or not configured.
+     */
+    private String newCodeFailure(GatePolicy policy, String project, String suite, String commit, List<String> notes) {
+        Double min = policy.minNewCodeCoverage().get(suite);
+        if (min == null) return null;
+        try {
+            var p = registry.project(project).orElseThrow();
+            String base = git.resolve(p, p.defaultRef());
+            var result = newCode.compute(project, suite, base, commit);
+            switch (result.status()) {
+                case "NO_CHANGED_LINES" -> { notes.add("New-code coverage of " + suite + " was not checked: no covered or missed line changed against " + p.defaultRef() + "."); return null; }
+                case "NO_LINE_DATA", "NO_RUN" -> { return suite + " reported no line coverage; the gate requires " + min + "% of changed lines covered."; }
+                default -> {
+                    if (result.exactPercent() < min) return suite + " covers " + result.percent() + "% of the lines changed against " + p.defaultRef()
+                            + " (" + result.covered() + " of " + (result.covered() + result.missed()) + "); the gate requires " + min + "%.";
+                    notes.add(suite + " covers " + result.percent() + "% of the lines changed against " + p.defaultRef() + ".");
+                    return null;
+                }
+            }
+        } catch (IOException | RuntimeException ex) {
+            return "New-code coverage of " + suite + " could not be computed for this commit.";
+        }
     }
 
     /** The performance suite's measured runs, oldest first (for trends). */

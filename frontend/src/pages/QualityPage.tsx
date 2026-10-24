@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import type { Gate, QaReport, QualityDashboard } from '../api/types';
 import { CompareCommits } from '../components/qaCompare';
 import { PerformancePanel } from '../components/qaPerformance';
+import { CoveragePanel } from '../components/qaCoverage';
 import { QuarantinePanel, testLabel as test } from '../components/qaQuarantines';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
@@ -67,6 +68,7 @@ export function QualityPage() {
               </article>
             ))}
           </Section>
+          <CoveragePanel project={project.key} defaultRef={project.defaultRef} minimums={d.gate?.minNewCodeCoverage ?? {}} />
           <PerformancePanel project={project.key} limits={d.gate?.performance ?? {}} />
           <Section title="Failing now">
             {d.failingNow.length === 0 ? <Empty>No test is currently failing.</Empty> : (
