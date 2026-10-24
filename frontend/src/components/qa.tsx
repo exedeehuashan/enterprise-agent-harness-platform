@@ -4,6 +4,7 @@ import type { Artifact, QaProject, QaSummary, Run } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Status, Time } from './ui';
 import { AiAnalysisPanel } from './aiAnalysis';
+import { AutoFixPanel } from './autoFix';
 
 /** Suites that need Docker access must use the approval-gated tool; the backend enforces the same split. */
 export const QA_TOOLS = { normal: 'QA_RUN_SUITE', privileged: 'QA_RUN_PRIVILEGED_SUITE', api: 'QA_RUN_API_TESTS' } as const;
@@ -175,6 +176,8 @@ export function QaEvidence({ run }: { run: Run }) {
       )}
     </Section>
     {summary.data && summary.data.outcome !== 'PASSED' && summary.data.outcome !== 'STOPPED' && <AiAnalysisPanel runId={run.id} />}
+    {summary.data && (summary.data.outcome === 'TESTS_FAILED' || summary.data.outcome === 'BUILD_FAILED') && (run.tool === 'QA_RUN_SUITE' || run.tool === 'QA_RUN_PRIVILEGED_SUITE')
+      && <AutoFixPanel runId={run.id} project={summary.data.project} />}
     </>
   );
 }

@@ -116,6 +116,7 @@ describe('QA console', () => {
 
   it('shows the test result and failing tests from summary.json', async () => {
     tokenStore.set(TOKEN);
+    const fixes: Record<string, unknown>[] = [];
     triageBody = { runId: 'run-12345678', ingested: true, outcome: 'TESTS_FAILED', category: 'ENVIRONMENT_DOCKER',
       explanation: 'The test needs Docker (Testcontainers) but ran in a suite without Docker access.', tests: 43, failed: 1, error: null,
       failures: [{ testClass: 'IdentityPersistenceTest', testName: '', status: 'ERROR', failureType: 'java.lang.IllegalStateException',
@@ -140,6 +141,13 @@ describe('QA console', () => {
       'GET /artifacts/sum/content': () => ({ body: summary }),
       'GET /qa/runs/run-12345678/triage': () => ({ body: triageBody }),
       'GET /qa/runs/run-12345678/ai-analysis': () => ({ status: 404, body: { message: 'No AI analysis' } }),
+      'GET /qa/auto-fixes': () => ({ body: fixes }),
+      'POST /qa/runs/run-12345678/auto-fix': () => {
+        fixes.push({ id: 'fx1', projectKey: 'online-shop', suiteKey: 'backend-unit', sourceRunId: 'run-12345678', sourceCommit: '39a6a0b'.padEnd(40, '0'), trigger: 'MANUAL',
+          status: 'CODING', codeTaskId: 't9', codeRunId: 'run-code', branch: null, pullRequestUrl: null, prNumber: null, verifyCommit: null, verifyRunId: null,
+          result: null, error: null, createdBy: 'operator', createdAt: '2026-10-25T00:00:00Z', updatedAt: '2026-10-25T00:00:00Z' });
+        return { body: fixes[0] };
+      },
       'POST /qa/runs/run-12345678/ai-analysis': () => ({ body: { id: 'an1', runId: 'run-12345678', provider: 'anthropic', model: 'claude-opus-5-5', inputTokens: 900,
         outputTokens: 120, createdBy: 'operator', createdAt: '2026-10-24T00:00:00Z', analysis: { summary: 'The persistence tests need Docker, which the runner lacks.',
           likelyCause: 'Testcontainers could not reach a Docker daemon.', category: 'ENVIRONMENT', confidence: 'high',
@@ -147,6 +155,9 @@ describe('QA console', () => {
     });
     renderApp('/runs/run-12345678');
     expect(await screen.findByText('TESTS FAILED')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Fix with code agent' }));
+    expect(await screen.findByText('code agent working (needs approval)')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'code agent run' })).toHaveAttribute('href', '/runs/run-code');
     expect(screen.getByRole('heading', { name: /online-shop\/backend-unit @ 39a6a0b/ })).toBeInTheDocument();
     expect(screen.getByText('43')).toBeInTheDocument();
     expect(await screen.findByText('Why it failed: environment docker')).toBeInTheDocument();

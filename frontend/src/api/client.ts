@@ -1,6 +1,6 @@
 import type {
   AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
-  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, BackupDrill, CoveragePoint, NewCodeCoverage,
+  TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, BackupDrill, AutoFix, CoveragePoint, NewCodeCoverage,
 } from './types';
 
 const TOKEN_KEY = 'eahp.token';
@@ -89,6 +89,10 @@ export const api = {
   qaSummary: async (artifactId: string): Promise<QaSummary> => (await artifactContent(artifactId)).json() as Promise<QaSummary>,
   qaProjects: () => get<QaProject[]>('/qa/projects'),
   storage: () => get<StorageReport>('/admin/storage'),
+  autoFixes: (project: string) => get<AutoFix[]>(`/qa/auto-fixes${query({ project })}`),
+  requestAutoFix: (runId: string) => post<AutoFix>(`/qa/runs/${runId}/auto-fix`, undefined),
+  autoFixSettings: (project: string) => get<{ enabled: boolean }>(`/qa/projects/${project}/auto-fix`),
+  setAutoFix: (project: string, enabled: boolean) => request<{ enabled: boolean }>(`/qa/admin/projects/${project}/auto-fix`, { method: 'PUT', body: { enabled } }).then(r => r.data),
   backupDrills: () => get<BackupDrill[]>('/admin/backup-drills'),
   runBackupDrill: () => post<BackupDrill>('/admin/backup-drills'),
   runRetention: () => post<StorageReport['lastRun']>('/admin/retention/run'),

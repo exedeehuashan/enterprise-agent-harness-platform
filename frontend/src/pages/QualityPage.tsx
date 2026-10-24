@@ -4,6 +4,7 @@ import type { Gate, QaReport, QualityDashboard } from '../api/types';
 import { CompareCommits } from '../components/qaCompare';
 import { PerformancePanel } from '../components/qaPerformance';
 import { CoveragePanel } from '../components/qaCoverage';
+import { AutoFixesSection } from '../components/autoFix';
 import { QuarantinePanel, testLabel as test } from '../components/qaQuarantines';
 import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
@@ -68,6 +69,7 @@ export function QualityPage() {
               </article>
             ))}
           </Section>
+          <AutoFixesSection project={project.key} />
           <CoveragePanel project={project.key} defaultRef={project.defaultRef} minimums={d.gate?.minNewCodeCoverage ?? {}} />
           <PerformancePanel project={project.key} limits={d.gate?.performance ?? {}} />
           <Section title="Failing now">
