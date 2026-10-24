@@ -60,7 +60,7 @@ export function RunApiTestsForm({ taskId, onStarted }: { taskId: string; onStart
       {catalog.data?.file === 'absent' && <p className="muted small">{tr('No API test file at this commit.')}</p>}
       {catalog.data?.file === 'invalid' && <div className="error" role="alert"><strong>{tr('The API test file is invalid at this commit:')}</strong> {catalog.data.error}</div>}
       {catalog.data && environments.length === 0 && <p className="muted small">No environment is registered for this project; an approver adds one on the Test projects page.</p>}
-      {environment && collection && <p className="muted small">Sends requests to {Object.entries(environment.services).map(([k, v]) => `${k} → ${v}`).join(', ')}.</p>}
+      {environment && collection && <p className="muted small">{tr('Sends requests to {targets}.', { targets: Object.entries(environment.services).map(([k, v]) => `${k} → ${v}`).join(', ') })}</p>}
       <ErrorBanner error={catalog.error ?? action.error} />
     </form>
   );

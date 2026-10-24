@@ -73,7 +73,7 @@ export function RunCodeAgentForm({ taskId, onStarted }: { taskId: string; onStar
       </div>
       <label>{tr('Instructions for Claude Code')}<textarea rows={4} value={form.instructions} onChange={e => setForm({ ...form, instructions: e.target.value })} minLength={10} maxLength={20000} required
         placeholder="For example: make OrderTotalsTest pass without changing the test; keep the change minimal." /></label>
-      <p className="muted small">The run waits for an approver. {repo.allowPush ? tr('Its change is pushed to a new branch with a draft pull request (if a write token is configured).') : tr('Only the diff is recorded.')}</p>
+      <p className="muted small">{tr('The run waits for an approver.')} {repo.allowPush ? tr('Its change is pushed to a new branch with a draft pull request (if a write token is configured).') : tr('Only the diff is recorded.')}</p>
       <div><button type="submit" disabled={action.busy}>{tr('Request code change')}</button></div>
       <ErrorBanner error={repos.error ?? action.error} />
     </form>

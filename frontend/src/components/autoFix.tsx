@@ -21,9 +21,9 @@ function FixLine({ fix }: { fix: AutoFix }) {
     <div className="small">
       <span className={`badge ${BADGE[fix.status]}`}>{tr(LABEL[fix.status])}</span>{' '}
       <Link to={`/runs/${fix.codeRunId}`}>{tr('code agent run')}</Link>
-      {fix.pullRequestUrl && <> · <a href={fix.pullRequestUrl} target="_blank" rel="noreferrer">draft PR #{fix.prNumber}</a></>}
+      {fix.pullRequestUrl && <> · <a href={fix.pullRequestUrl} target="_blank" rel="noreferrer">{tr('draft PR #{n}', { n: fix.prNumber ?? '' })}</a></>}
       {fix.verifyRunId && <> · <Link to={`/runs/${fix.verifyRunId}`}>{tr('verification run')}</Link></>}
-      {fix.result && fix.result.fixed !== undefined && <> · {fix.result.fixed} fixed, {fix.result.stillFailing} still failing, {fix.result.newFailures} new failures</>}
+      {fix.result && fix.result.fixed !== undefined && <> · {tr('{fixed} fixed, {still} still failing, {fresh} new failures', { fixed: fix.result.fixed, still: fix.result.stillFailing ?? 0, fresh: fix.result.newFailures ?? 0 })}</>}
       {fix.error && <div className="muted">{fix.error}</div>}
     </div>
   );

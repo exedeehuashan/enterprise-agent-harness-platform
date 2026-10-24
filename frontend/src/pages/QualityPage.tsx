@@ -37,7 +37,7 @@ export function QualityPage() {
           </label>
           <label className="inline">{tr('Period')}
             <select value={days} onChange={e => setDays(Number(e.target.value))}>
-              {[7, 14, 30, 90].map(n => <option key={n} value={n}>last {n} days</option>)}
+              {[7, 14, 30, 90].map(n => <option key={n} value={n}>{tr('last {n} days', { n })}</option>)}
             </select>
           </label>
         </div>
@@ -45,7 +45,7 @@ export function QualityPage() {
         <ErrorBanner error={dashboard.error} />
         {d && (
           <div className="stats">
-            <Tile label={tr('Pass rate')} value={percent(d.passRate)} detail={`${d.passed} of ${d.runs} runs`} />
+            <Tile label={tr('Pass rate')} value={percent(d.passRate)} detail={tr('{passed} of {runs} runs', { passed: d.passed, runs: d.runs })} />
             <Tile label={tr('Failing tests')} value={String(d.failingNow.length)} detail="in each suite's latest run" />
             <Tile label={tr('Flaky tests')} value={String(d.flaky.length)} detail="passed and failed on one commit" />
             <Tile label={tr('Gate')} value={d.gate ? d.gate.requiredSuites.join(', ') : tr('not configured')} detail="required suites" />
@@ -65,7 +65,7 @@ export function QualityPage() {
                 <div className="row spread">
                   <div className="row"><strong>{s.suite}</strong><Status value={s.lastOutcome} />
                     <span className="muted small">{tr('last at')} <code>{s.lastCommit.slice(0, 7)}</code>, <Time value={s.lastAt} /></span></div>
-                  <span className="muted small">{percent(s.passRate)} of {s.runs} runs passed</span>
+                  <span className="muted small">{tr('{rate} of {runs} runs passed', { rate: percent(s.passRate), runs: s.runs })}</span>
                 </div>
                 <PassRateTrend suite={s.suite} daily={s.daily} />
               </article>
@@ -80,7 +80,7 @@ export function QualityPage() {
                 <thead><tr><th>{tr('Test')}</th><th>{tr('Suite')}</th><th>{tr('Cause')}</th><th>{tr('Failing for')}</th><th>{tr('Since')}</th></tr></thead>
                 <tbody>{d.failingNow.map((f, i) => (
                   <tr key={i}><td className="wrap-cell"><code title={`${f.testClass}#${f.testName}`}>{test(f.testClass, f.testName)}</code></td><td>{f.suite}</td><td>{label(f.category)}</td>
-                    <td>{f.consecutiveFailures} run{f.consecutiveFailures === 1 ? '' : 's'}</td>
+                    <td>{tr(f.consecutiveFailures === 1 ? '{n} run' : '{n} runs', { n: f.consecutiveFailures })}</td>
                     <td>{f.failingSince && <code>{f.failingSince.slice(0, 7)}</code>} <Time value={f.failingSinceAt} /></td></tr>
                 ))}</tbody>
               </table></div>
@@ -145,7 +145,7 @@ function PassRateTrend({ suite, daily }: { suite: string; daily: QualityDashboar
             <g key={d.day} className="trend-hit">
               <rect x={x - gap / 2} y={0} width={bar + gap} height={height} fill="transparent" />
               <path className="trend-bar" d={`M${x},${height} V${height - h + 2} q0,-2 2,-2 h${bar - 4} q2,0 2,2 V${height} Z`} />
-              <title>{`${d.day}: ${d.passed} of ${d.runs} runs passed (${Math.round(rate * 100)}%)`}</title>
+              <title>{tr('{day}: {passed} of {runs} runs passed ({rate}%)', { day: d.day, passed: d.passed, runs: d.runs, rate: Math.round(rate * 100) })}</title>
             </g>
           );
         })}

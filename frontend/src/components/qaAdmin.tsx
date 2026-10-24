@@ -53,7 +53,7 @@ export function ProjectAdminPanel({ project, onChanged }: { project: QaProject; 
   const suiteKeys = Array.from(new Set([...a.project.suites.map(s => s.key), ...a.triggers.map(t => t.suite)])).sort();
   return (
     <details className="admin">
-      <summary>Administer {project.name}</summary>
+      <summary>{tr('Administer {name}', { name: project.name })}</summary>
       <ErrorBanner error={action.error} />
       <PolicyForm project={a.project} busy={action.busy} onSave={body => apply(() => api.admin.update(project.key, body))} />
       <h3 className="subhead">{tr('Pull request triggers')}</h3>

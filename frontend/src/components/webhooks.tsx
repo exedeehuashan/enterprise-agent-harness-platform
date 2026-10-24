@@ -56,7 +56,7 @@ export function WebhooksPanel() {
                 <div className="muted small wrap"><code>{h.format === 'email' ? h.url.replace(/^mailto:/, '') : h.url.replace(/([?&](access_token|key)=)[^&]+/, '$1…')}</code></div></td>
               <td className="small">{h.events.join(', ')}</td>
               <td className="small">{!h.enabled ? <span className="badge badge-muted">{tr('paused')}</span> : h.lastError ? <span className="badge badge-bad">{tr('failing')}</span> : <span className="badge badge-ok">{tr('ok')}</span>}
-                {h.lastError && <div className="muted">{h.lastError} · {h.consecutiveFailures} in a row</div>}
+                {h.lastError && <div className="muted">{h.lastError} · {tr('{n} in a row', { n: h.consecutiveFailures })}</div>}
                 {h.lastDeliveryAt && <div className="muted">{tr('last delivered')} <Time value={h.lastDeliveryAt} /></div>}
                 {tested[h.id] && <div role="status">{tested[h.id]}</div>}</td>
               <td className="row">

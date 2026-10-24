@@ -92,7 +92,7 @@ export function RunSuiteForm({ taskId, onStarted }: { taskId: string; onStarted:
           {catalog.data.repositoryFile === 'invalid' && <>{tr('registry suites only')}</>}
         </p>
       )}
-      {catalog.data?.repositoryError && <div className="error" role="alert"><strong>{project.suitesFile} is invalid at this commit:</strong> {catalog.data.repositoryError}</div>}
+      {catalog.data?.repositoryError && <div className="error" role="alert"><strong>{tr('{file} is invalid at this commit:', { file: project.suitesFile })}</strong> {catalog.data.repositoryError}</div>}
       <ErrorBanner error={catalog.error} />
       {suite?.description && <p className="muted small">{suite.description}</p>}
       {suite?.dockerAccess && (
@@ -173,7 +173,7 @@ export function QaEvidence({ run }: { run: Run }) {
             {summary.data.runnerImage && <><dt>{tr('Runner')}</dt><dd><code>{summary.data.runnerImage}</code>{summary.data.dockerAccess ? tr(' with Docker access') : ''}</dd></>}
             {summary.data.command && <><dt>{tr('Command')}</dt><dd><code className="wrap">{summary.data.command.join(' ')}</code></dd></>}
             {summary.data.environment && <><dt>{tr('Environment')}</dt><dd>{summary.data.environment}</dd></>}
-            <dt>{tr('Reports')}</dt><dd>{summary.data.reportFiles} files{summary.data.unreadableReportFiles ? `, ${summary.data.unreadableReportFiles} unreadable` : ''}{summary.data.reportsTruncated ? ', archive omitted (too large)' : ''}</dd>
+            <dt>{tr('Reports')}</dt><dd>{tr('{n} files', { n: summary.data.reportFiles })}{summary.data.unreadableReportFiles ? tr(', {n} unreadable', { n: summary.data.unreadableReportFiles }) : ''}{summary.data.reportsTruncated ? tr(', archive omitted (too large)') : ''}</dd>
           </dl>
           <TriageView run={run} fallback={summary.data.failedTests} />
         </>
@@ -211,7 +211,7 @@ function TriageView({ run, fallback }: { run: Run; fallback: QaSummary['failedTe
     <>
       {t.category && (
         <div className="triage">
-          <strong>Why it failed: {t.category.replace(/_/g, ' ').toLowerCase()}</strong>
+          <strong>{tr('Why it failed: {category}', { category: tr(t.category.replace(/_/g, ' ').toLowerCase()) })}</strong>
           <p>{t.explanation}</p>
         </div>
       )}
@@ -225,10 +225,10 @@ function TriageView({ run, fallback }: { run: Run; fallback: QaSummary['failedTe
               return (
                 <tr key={i}>
                   <td><code>{f.testClass}{f.testName ? `#${f.testName}` : ''}</code>{f.failureType && <div className="muted small">{f.failureType}</div>}</td>
-                  <td title={f.explanation ?? ''}>{f.category.replace(/_/g, ' ').toLowerCase()}</td>
+                  <td title={f.explanation ?? ''}>{tr(f.category.replace(/_/g, ' ').toLowerCase())}</td>
                   <td><span className={`badge badge-${h?.tone ?? 'muted'}`}>{h ? tr(h.text) : f.history.label}</span>
-                    <div className="muted small">{f.history.recentFailures}/{f.history.recentRuns} recent runs failed
-                      {f.history.lastPassedCommit ? <>; last passed at <code>{f.history.lastPassedCommit.slice(0, 7)}</code></> : ''}</div></td>
+                    <div className="muted small">{tr('{failed}/{runs} recent runs failed', { failed: f.history.recentFailures, runs: f.history.recentRuns })}
+                      {f.history.lastPassedCommit ? <>; {tr('last passed at')} <code>{f.history.lastPassedCommit.slice(0, 7)}</code></> : ''}</div></td>
                   <td className="wrap-cell">{f.message}</td>
                 </tr>
               );

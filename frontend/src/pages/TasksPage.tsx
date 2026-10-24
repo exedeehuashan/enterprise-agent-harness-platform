@@ -27,7 +27,7 @@ export function TasksPage() {
         </label>
       }>
         <ErrorBanner error={tasks.error} />
-        {tasks.data && tasks.data.items.length === 0 && <Empty>No tasks{status ? ` with status ${status}` : ''}.</Empty>}
+        {tasks.data && tasks.data.items.length === 0 && <Empty>{status ? tr('No tasks with status {status}.', { status: tr(status.replace(/_/g, ' ')) }) : tr('No tasks.')}</Empty>}
         {tasks.data && tasks.data.items.length > 0 && (
           <div className="table-wrap">
             <table>
@@ -48,7 +48,7 @@ export function TasksPage() {
         {tasks.data && tasks.data.totalPages > 1 && (
           <nav className="pager">
             <button className="secondary" disabled={page === 0} onClick={() => setPage(p => p - 1)}>{tr('Previous')}</button>
-            <span>Page {page + 1} of {tasks.data.totalPages}</span>
+            <span>{tr('Page {page} of {pages}', { page: page + 1, pages: tasks.data.totalPages })}</span>
             <button className="secondary" disabled={page + 1 >= tasks.data.totalPages} onClick={() => setPage(p => p + 1)}>{tr('Next')}</button>
           </nav>
         )}

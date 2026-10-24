@@ -27,7 +27,7 @@ export function QaProjectsPage() {
             <dt>{tr('Repository')}</dt><dd><code className="wrap">{p.repositoryUrl}</code></dd>
             <dt>{tr('Default ref')}</dt><dd>{p.defaultRef}</dd>
             <dt>{tr('Repository suites')}</dt><dd>{p.repositorySuitesEnabled ? <>{tr('read from')} <code>{p.suitesFile}</code> at each commit; these registry suites are the fallback</> : tr('not read; registry suites only')}</dd>
-            <dt>{tr('Policy')}</dt><dd>images {p.allowedImages.map(i => <code key={i}>{i} </code>)}· Docker access {p.allowDockerAccess ? tr('allowed (approval)') : tr('not allowed')} · network egress {p.allowNetworkEgress ? 'allowed' : tr('not allowed')} · max {Math.round(p.maxTimeoutSeconds / 60)} min</dd>
+            <dt>{tr('Policy')}</dt><dd>{tr('images')} {p.allowedImages.map(i => <code key={i}>{i} </code>)}· {tr('Docker access')} {p.allowDockerAccess ? tr('allowed (approval)') : tr('not allowed')} · {tr('network egress')} {p.allowNetworkEgress ? tr('allowed') : tr('not allowed')} · {tr('max {n} min', { n: Math.round(p.maxTimeoutSeconds / 60) })}</dd>
           </dl>
           <div className="table-wrap"><table>
             <thead><tr><th>{tr('Suite')}</th><th>{tr('Access')}</th><th>{tr('Network')}</th><th>{tr('Max time')}</th><th>{tr('Command')}</th></tr></thead>
@@ -36,7 +36,7 @@ export function QaProjectsPage() {
                 <td><strong>{s.name}</strong><div className="muted small"><code>{s.key}</code>{s.enabled ? '' : tr(' · disabled')}</div></td>
                 <td>{s.dockerAccess ? <span className="badge badge-warn">{tr('Docker · approval')}</span> : <span className="badge badge-ok">{tr('isolated')}</span>}</td>
                 <td>{s.network}</td>
-                <td>{Math.round(s.maxTimeoutSeconds / 60)} min</td>
+                <td>{tr('{n} min', { n: Math.round(s.maxTimeoutSeconds / 60) })}</td>
                 <td className="wrap-cell"><code>{s.command.join(' ')}</code></td>
               </tr>
             ))}</tbody>

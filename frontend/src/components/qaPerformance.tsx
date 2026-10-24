@@ -26,7 +26,7 @@ export function PerformancePanel({ project, limits }: { project: string; limits:
             <div className="row spread">
               <div className="row"><strong>{suite}</strong><Status value={last.outcome} />
                 <span className="muted small">{tr('last at')} <code>{last.commit.slice(0, 7)}</code>, <Time value={last.at} /></span></div>
-              <span className="small">p95 <strong>{ms(last.p95Ms)}</strong> · errors {rate(last.errorRate)} · {Math.round(last.requestsPerSecond)} req/s · {last.requests.toLocaleString()} requests</span>
+              <span className="small">p95 <strong>{ms(last.p95Ms)}</strong> · {tr('errors {rate}', { rate: rate(last.errorRate) })} · {Math.round(last.requestsPerSecond)} req/s · {tr('{n} requests', { n: last.requests.toLocaleString() })}</span>
             </div>
             <MetricTrend label={tr('p95 latency')} points={list.map(p => ({ key: p.runId, value: p.p95Ms,
               title: `${p.commit.slice(0, 7)} ${new Date(p.at).toISOString().slice(0, 16).replace('T', ' ')}: p95 ${ms(p.p95Ms)}, errors ${rate(p.errorRate)}, ${Math.round(p.requestsPerSecond)} req/s` }))}
