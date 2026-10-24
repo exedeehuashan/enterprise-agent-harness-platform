@@ -40,6 +40,11 @@ import org.springframework.transaction.annotation.Transactional;
  * after {@link #PAUSE_AFTER} consecutive failures the subscription pauses until an approver resumes it. Each request
  * is signed with HMAC-SHA256 over the body ({@code X-EAHP-Signature: sha256=<hex>}) using a secret shown once, at
  * creation. Only approvers register URLs; redirects are never followed.
+ *
+ * <p>Besides this signed JSON ({@code generic}), a subscription can deliver each event as a message (P41): to a Slack,
+ * DingTalk (钉钉), WeCom (企业微信) or Feishu (飞书) group robot, whose URL must be on that platform's webhook host and
+ * which may carry the robot's own signing secret, or by email over the configured SMTP server. Chat platforms report
+ * rejections in a 200 response, so their answer is checked too. All formats share the cursor, retry and pause logic.
  */
 @Service
 public class Webhooks {
@@ -51,9 +56,20 @@ public class Webhooks {
     private final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(5)).build();
     private final SecureRandom random = new SecureRandom();
 
-    public Webhooks(JdbcTemplate jdbc, ObjectMapper mapper) { this.jdbc = jdbc; this.mapper = mapper; }
+    static final Map<String, Set<String>> CHAT_HOSTS = Map.of("slack", Set.of("hooks.slack.com"), "dingtalk", Set.of("oapi.dingtalk.com"),
+            "wecom", Set.of("qyapi.weixin.qq.com"), "feishu", Set.of("open.feishu.cn", "open.larksuite.com"));
+    private final org.springframework.beans.factory.ObjectProvider<org.springframework.mail.javamail.JavaMailSender> mail;
+    private final String mailHost, mailFrom, publicUrl;
 
-    public record Subscription(UUID id, String name, String url, List<String> events, boolean enabled, long cursorId, int consecutiveFailures,
+    public Webhooks(JdbcTemplate jdbc, ObjectMapper mapper, org.springframework.beans.factory.ObjectProvider<org.springframework.mail.javamail.JavaMailSender> mail,
+            @org.springframework.beans.factory.annotation.Value("${spring.mail.host:}") String mailHost,
+            @org.springframework.beans.factory.annotation.Value("${eahp.notify.mail-from:}") String mailFrom,
+            @org.springframework.beans.factory.annotation.Value("${eahp.public-url:}") String publicUrl) {
+        this.jdbc = jdbc; this.mapper = mapper; this.mail = mail; this.mailHost = mailHost; this.mailFrom = mailFrom; this.publicUrl = publicUrl;
+    }
+
+    /** {@code url} is {@code mailto:a@x,b@y} for email subscriptions. */
+    public record Subscription(UUID id, String name, String format, String url, List<String> events, boolean enabled, long cursorId, int consecutiveFailures,
             Instant nextAttemptAt, Instant lastDeliveryAt, String lastError, String createdBy, Instant createdAt) {}
     /** Returned once, at creation: the only time the signing secret is shown. */
     public record Created(Subscription subscription, String secret) {}
@@ -67,23 +83,122 @@ public class Webhooks {
         return rows.get(0);
     }
 
-    /** {@code {"name": "...", "url": "https://...", "events": ["RUN_*", "APPROVAL_REQUESTED", "QA_*"]}}; starts after the current last event. */
+    /**
+     * {@code {"name": "...", "format": "generic", "url": "https://...", "events": ["RUN_*", "APPROVAL_REQUESTED", "QA_*"]}}; starts after the
+     * current last event. Chat formats take the robot's webhook URL and an optional {@code secret} (DingTalk and Feishu signing); email takes
+     * {@code recipients} instead of a URL. Only a generic subscription gets a generated signing secret, shown once.
+     */
     @Transactional
     @PreAuthorize("hasRole('APPROVER')")
     public Created create(JsonNode body) {
         if (body == null || !body.isObject()) throw bad("A JSON object is required");
-        for (var it = body.fieldNames(); it.hasNext(); ) if (!Set.of("name", "url", "events").contains(it.next())) throw bad("Unknown field");
+        for (var it = body.fieldNames(); it.hasNext(); ) if (!Set.of("name", "url", "events", "format", "secret", "recipients").contains(it.next())) throw bad("Unknown field");
         if (!body.path("name").isTextual() || body.get("name").textValue().isBlank() || body.get("name").textValue().length() > 120) throw bad("name is required text up to 120 characters");
-        String url = url(body.get("url"));
+        String format = body.path("format").asText("generic");
+        if (!Set.of("generic", "slack", "dingtalk", "wecom", "feishu", "email").contains(format)) throw bad("format must be generic, slack, dingtalk, wecom, feishu or email");
         List<String> events = events(body.get("events"));
-        byte[] raw = new byte[32];
-        random.nextBytes(raw);
-        String secret = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+        String url, secret;
+        if (format.equals("email")) {
+            if (body.has("url") || body.has("secret")) throw bad("email subscriptions take recipients, not a url or secret");
+            if (mailHost.isBlank()) throw bad("Email is not configured: set EAHP_SMTP_HOST (and sender) and redeploy");
+            url = "mailto:" + String.join(",", recipients(body.get("recipients")));
+            secret = "";
+        } else {
+            if (body.has("recipients")) throw bad("recipients are only for email subscriptions");
+            url = url(body.get("url"));
+            if (format.equals("generic")) {
+                if (body.has("secret")) throw bad("generic webhooks get a generated secret");
+                byte[] raw = new byte[32];
+                random.nextBytes(raw);
+                secret = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+            } else {
+                URI uri = URI.create(url);
+                if (!uri.getScheme().equals("https") || !CHAT_HOSTS.get(format).contains(uri.getHost().toLowerCase())) {
+                    throw bad(format + " webhooks must be https URLs on " + String.join(" or ", new java.util.TreeSet<>(CHAT_HOSTS.get(format))));
+                }
+                if (body.has("secret") && !format.equals("dingtalk") && !format.equals("feishu")) throw bad("only DingTalk and Feishu robots use a signing secret");
+                secret = body.has("secret") ? body.get("secret").asText("") : "";
+                if (secret.length() > 100 || secret.chars().anyMatch(Character::isISOControl)) throw bad("secret must be text up to 100 characters");
+            }
+        }
         UUID id = UUID.randomUUID();
         Long last = jdbc.queryForObject("SELECT COALESCE(max(id),0) FROM audit_events", Long.class);
-        jdbc.update("INSERT INTO webhook_subscriptions(id,name,url,secret,events,cursor_id,created_by) VALUES (?,?,?,?,?::jsonb,?,?)",
-                id, body.get("name").textValue().strip(), url, secret, json(events), last, AuditService.actor());
-        return new Created(get(id), secret);
+        jdbc.update("INSERT INTO webhook_subscriptions(id,name,format,url,secret,events,cursor_id,created_by) VALUES (?,?,?,?,?,?::jsonb,?,?)",
+                id, body.get("name").textValue().strip(), format, url, secret, json(events), last, AuditService.actor());
+        return new Created(get(id), format.equals("generic") ? secret : null);
+    }
+
+    /** Sends one test message (not an audit event) and records the attempt; returns null or the error. */
+    @PreAuthorize("hasRole('APPROVER')")
+    public Delivery test(UUID id) {
+        var s = get(id);
+        String secret = jdbc.queryForObject("SELECT secret FROM webhook_subscriptions WHERE id=?", String.class, id);
+        var event = new LinkedHashMap<String, Object>();
+        event.put("id", 0L); event.put("actor", AuditService.actor()); event.put("action", "EAHP_TEST"); event.put("code", null);
+        event.put("occurred_at", Timestamp.from(Instant.now()));
+        long started = System.nanoTime();
+        var result = deliver(s, secret, event);
+        jdbc.update("INSERT INTO webhook_deliveries(subscription_id,audit_event_id,action,status_code,error,duration_ms) VALUES (?,?,?,?,?,?)",
+                id, 0L, "EAHP_TEST", result.status(), result.error(), (int) ((System.nanoTime() - started) / 1_000_000));
+        return deliveries(id, 1).get(0);
+    }
+
+    private record Outcome(Integer status, String error) {}
+
+    /** Delivers one event in the subscription's format. */
+    private Outcome deliver(Subscription s, String secret, Map<String, Object> e) {
+        String action = (String) e.get("action");
+        try {
+            if (s.format().equals("email")) {
+                var sender = mail.getIfAvailable();
+                if (sender == null || mailHost.isBlank()) return new Outcome(null, "SMTP not configured");
+                var m = ChatMessages.summarize(e, publicUrl);
+                var message = new org.springframework.mail.SimpleMailMessage();
+                if (!mailFrom.isBlank()) message.setFrom(mailFrom);
+                message.setTo(s.url().substring("mailto:".length()).split(","));
+                // Mail clients show the subject in lists; the status emoji stays in chat messages only.
+                String title = m.title().replaceFirst("^[^\\p{L}\\p{N}]+", "");
+                message.setSubject("[EAHP] " + title);
+                message.setText(title + "\n\n" + m.body() + (m.link() == null ? "" : "\n\n" + m.link()) + "\n\n-- EAHP notification (" + s.name() + ")");
+                sender.send(message);
+                return new Outcome(null, null);
+            }
+            byte[] body;
+            String url = s.url();
+            var builder = HttpRequest.newBuilder().timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json").header("User-Agent", "EAHP-Webhooks/1");
+            if (s.format().equals("generic")) {
+                body = payload(e);
+                builder.header("X-EAHP-Event", action).header("X-EAHP-Delivery", s.id() + ":" + e.get("id")).header("X-EAHP-Signature", "sha256=" + sign(secret, body));
+            } else {
+                var m = ChatMessages.summarize(e, publicUrl);
+                body = ChatMessages.body(s.format(), m, secret, Instant.now().getEpochSecond());
+                url = ChatMessages.signedUrl(s.format(), url, secret, System.currentTimeMillis());
+            }
+            var response = client.send(builder.uri(URI.create(url)).POST(HttpRequest.BodyPublishers.ofByteArray(body)).build(), HttpResponse.BodyHandlers.ofInputStream());
+            String answer;
+            try (var in = response.body()) { answer = new String(in.readNBytes(64 * 1024), StandardCharsets.UTF_8); }
+            int status = response.statusCode();
+            String error = s.format().equals("generic") ? (status < 200 || status >= 300 ? "HTTP " + status : null) : ChatMessages.failure(s.format(), status, answer);
+            return new Outcome(status, error);
+        } catch (java.io.IOException ex) {
+            return new Outcome(null, ex.getClass().getSimpleName());
+        } catch (org.springframework.mail.MailException ex) {
+            return new Outcome(null, "mail: " + ex.getClass().getSimpleName());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return new Outcome(null, "interrupted");
+        }
+    }
+
+    static List<String> recipients(JsonNode value) {
+        if (value == null || !value.isArray() || value.isEmpty() || value.size() > 10) throw bad("recipients must list 1..10 email addresses");
+        List<String> list = new ArrayList<>();
+        for (JsonNode v : value) {
+            String a = v.asText("").strip();
+            if (!v.isTextual() || a.length() > 120 || !a.matches("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")) throw bad("invalid email address: " + (a.length() > 40 ? a.substring(0, 40) : a));
+            list.add(a);
+        }
+        return List.copyOf(list);
     }
 
     /** Pause or resume; resuming clears the failure count and retries the event the subscription stopped at. */
@@ -129,24 +244,11 @@ public class Webhooks {
             long eventId = ((Number) e.get("id")).longValue();
             String action = (String) e.get("action");
             if (!matches(s.events(), action)) { advance(s.id(), eventId, false); continue; }
-            byte[] body = payload(e);
             long started = System.nanoTime();
-            Integer status = null;
-            String error = null;
-            try {
-                var request = HttpRequest.newBuilder(URI.create(s.url())).timeout(Duration.ofSeconds(10))
-                        .header("Content-Type", "application/json").header("User-Agent", "EAHP-Webhooks/1")
-                        .header("X-EAHP-Event", action).header("X-EAHP-Delivery", s.id() + ":" + eventId)
-                        .header("X-EAHP-Signature", "sha256=" + sign(secret, body))
-                        .POST(HttpRequest.BodyPublishers.ofByteArray(body)).build();
-                status = client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
-                if (status < 200 || status >= 300) error = "HTTP " + status;
-            } catch (java.io.IOException ex) {
-                error = ex.getClass().getSimpleName();
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                return delivered;
-            }
+            var outcome = deliver(s, secret, e);
+            if (Thread.currentThread().isInterrupted()) return delivered;
+            Integer status = outcome.status();
+            String error = outcome.error();
             int ms = (int) ((System.nanoTime() - started) / 1_000_000);
             jdbc.update("INSERT INTO webhook_deliveries(subscription_id,audit_event_id,action,status_code,error,duration_ms) VALUES (?,?,?,?,?,?)",
                     s.id(), eventId, action, status, error, ms);
@@ -240,7 +342,7 @@ public class Webhooks {
     private Subscription map(ResultSet r, int i) throws SQLException {
         List<String> events;
         try { events = List.of(mapper.readValue(r.getString("events"), String[].class)); } catch (Exception ex) { events = List.of(); }
-        return new Subscription(r.getObject("id", UUID.class), r.getString("name"), r.getString("url"), events, r.getBoolean("enabled"),
+        return new Subscription(r.getObject("id", UUID.class), r.getString("name"), r.getString("format"), r.getString("url"), events, r.getBoolean("enabled"),
                 r.getLong("cursor_id"), r.getInt("consecutive_failures"), instant(r, "next_attempt_at"), instant(r, "last_delivery_at"),
                 r.getString("last_error"), r.getString("created_by"), instant(r, "created_at"));
     }

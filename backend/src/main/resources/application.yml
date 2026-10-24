@@ -11,9 +11,24 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+  # Email notifications (P41): only used by email subscriptions; empty host means email is not configured.
+  mail:
+    host: ${EAHP_SMTP_HOST:}
+    port: ${EAHP_SMTP_PORT:587}
+    username: ${EAHP_SMTP_USERNAME:}
+    password: ${EAHP_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${EAHP_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${EAHP_SMTP_STARTTLS:true}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
 server:
   port: ${PORT:8080}
 management:
+  health:
+    mail:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -25,6 +40,8 @@ management:
     tags:
       application: eahp
 eahp:
+  notify:
+    mail-from: ${EAHP_SMTP_FROM:}
   ai:
     provider: ${EAHP_AI_PROVIDER:mock}
     daily-token-budget: ${EAHP_AI_DAILY_TOKEN_BUDGET:500000}

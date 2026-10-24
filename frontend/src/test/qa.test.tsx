@@ -515,14 +515,25 @@ describe('project administration', () => {
     await waitFor(() => expect(calls.some(c => c.method === 'PUT' && c.path === '/admin/modules/qa/enabled')).toBe(true));
     await userEvent.click(screen.getByRole('button', { name: 'Apply retention now' }));
     await waitFor(() => expect(calls.some(c => c.method === 'POST' && c.path === '/admin/retention/run')).toBe(true));
-    const hooks = screen.getByRole('heading', { name: 'Webhooks' }).closest('section')!;
+    const hooks = screen.getByRole('heading', { name: 'Notifications' }).closest('section')!;
     await userEvent.type(within(hooks).getByLabelText('Name'), 'Team chat');
     await userEvent.type(within(hooks).getByLabelText('URL'), 'https://hooks.example.com/x');
     await userEvent.clear(within(hooks).getByLabelText('Events'));
     await userEvent.type(within(hooks).getByLabelText('Events'), 'RUN_*');
-    await userEvent.click(within(hooks).getByRole('button', { name: 'Add webhook' }));
+    await userEvent.click(within(hooks).getByRole('button', { name: 'Add' }));
     expect(await within(hooks).findByText('one-time-secret')).toBeInTheDocument();
-    expect(calls.find(c => c.method === 'POST' && c.path === '/admin/webhooks')!.body).toEqual({ name: 'Team chat', url: 'https://hooks.example.com/x', events: ['RUN_*'] });
+    expect(calls.find(c => c.method === 'POST' && c.path === '/admin/webhooks')!.body).toEqual({ name: 'Team chat', format: 'generic', url: 'https://hooks.example.com/x', events: ['RUN_*'] });
+    await userEvent.selectOptions(within(hooks).getByLabelText('Send to'), 'DingTalk 钉钉');
+    await userEvent.type(within(hooks).getByLabelText('Name'), 'QA 群');
+    await userEvent.type(within(hooks).getByLabelText('URL'), 'https://oapi.dingtalk.com/robot/send?access_token=t');
+    await userEvent.type(within(hooks).getByLabelText('Signing secret (optional)'), 'SECabc');
+    await userEvent.click(within(hooks).getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(calls.filter(c => c.method === 'POST' && c.path === '/admin/webhooks')).toHaveLength(2));
+    expect(calls.filter(c => c.method === 'POST' && c.path === '/admin/webhooks')[1].body).toEqual({ name: 'QA 群', format: 'dingtalk',
+      url: 'https://oapi.dingtalk.com/robot/send?access_token=t', secret: 'SECabc', events: ['RUN_*'] });
+    await userEvent.selectOptions(within(hooks).getByLabelText('Send to'), 'Email');
+    expect(within(hooks).queryByLabelText('URL')).not.toBeInTheDocument();
+    expect(within(hooks).getByLabelText('Recipients')).toBeInTheDocument();
     const tokenForm = screen.getByRole('heading', { name: 'API tokens' }).closest('section')!;
     await userEvent.type(within(tokenForm).getByLabelText('Name'), 'alice');
     await userEvent.click(within(tokenForm).getByLabelText('operator'));

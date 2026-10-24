@@ -22,5 +22,6 @@ public class WebhookController {
         return webhooks.setEnabled(id, body.get("enabled").booleanValue());
     }
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable UUID id) { webhooks.delete(id); return ResponseEntity.noContent().build(); }
+    @PostMapping("/{id}/test") public Webhooks.Delivery test(@PathVariable UUID id) { return webhooks.test(id); }
     @GetMapping("/{id}/deliveries") public List<Webhooks.Delivery> deliveries(@PathVariable UUID id, @RequestParam(defaultValue = "50") int limit) { return webhooks.deliveries(id, limit); }
 }
