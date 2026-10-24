@@ -36,7 +36,7 @@ public final class ChatMessages {
             case "QA_RESULT_INGESTED" -> {
                 boolean passed = "PASSED".equals(code);
                 title = (passed ? "✅ QA passed: " : "❌ QA " + label(code) + ": ") + target;
-                body = "Result of " + tool + " recorded by EAHP.";
+                body = tool == null ? "Result recorded by EAHP." : "Result of " + tool + " recorded by EAHP.";
             }
             case "QA_QUARANTINE_SUGGESTED" -> {
                 title = "⚠️ Flaky test suggested for quarantine: " + (project == null ? "" : project + "/") + code;
