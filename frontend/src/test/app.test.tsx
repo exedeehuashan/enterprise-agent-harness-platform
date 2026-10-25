@@ -173,6 +173,25 @@ describe('single sign-on', () => {
     expect(sessionStorage.getItem('eahp.sso.pending')).toBeNull();
   });
 
+  it('signing out also ends the provider session, so the next SSO sign-in asks again', async () => {
+    const { navigation } = await import('../sso');
+    const post = vi.fn();
+    navigation.post = post;
+    const endSession = `${IDP}/protocol/openid-connect/logout`;
+    sessionStorage.setItem('eahp.sso.pending', JSON.stringify({ verifier: 'v'.repeat(64), state: 'st4te', tokenEndpoint: discovery.token_endpoint, endSession, clientId: 'eahp-console' }));
+    window.history.pushState(null, '', '/auth/callback?code=abc123&state=st4te');
+    fakeApi({
+      [`POST ${discovery.token_endpoint}`]: () => ({ body: { access_token: 'header.payload.signature', id_token: 'id.token.value', token_type: 'Bearer' } }),
+      'GET /me': () => ({ body: { name: 'sso:alice', roles: ['VIEWER'] } }),
+      'GET /agent-tasks': () => ({ body: { items: [], page: 0, size: 20, totalElements: 0, totalPages: 0 } }),
+    });
+    renderApp('/');
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+    expect(post).toHaveBeenCalledWith(endSession, { client_id: 'eahp-console', post_logout_redirect_uri: `${window.location.origin}/`, id_token_hint: 'id.token.value' });
+    expect(sessionStorage.getItem('eahp.sso.logout')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+  });
+
   it('rejects a callback whose state does not match', async () => {
     sessionStorage.setItem('eahp.sso.pending', JSON.stringify({ verifier: 'v', state: 'expected', tokenEndpoint: discovery.token_endpoint, clientId: 'eahp-console' }));
     window.history.pushState(null, '', '/auth/callback?code=abc&state=forged');

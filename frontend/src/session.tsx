@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, tokenStore } from './api/client';
+import { endSsoSession } from './sso';
 import type { Identity, Role } from './api/types';
 
 interface Session {
@@ -26,7 +27,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     tokenStore.set(token);
     setIdentity(me);
   }, []);
-  const signOut = useCallback(() => { tokenStore.clear(); setIdentity(null); }, []);
+  const signOut = useCallback(() => { tokenStore.clear(); setIdentity(null); endSsoSession(); }, []);
   const can = useCallback((role: Role) => identity?.roles.includes(role) ?? false, [identity]);
 
   return <SessionContext.Provider value={{ identity, loading, signIn, signOut, can }}>{children}</SessionContext.Provider>;

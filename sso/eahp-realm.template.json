@@ -21,7 +21,7 @@
       "implicitFlowEnabled": false,
       "redirectUris": ["http://127.0.0.1:8088/auth/callback", "http://localhost:8088/auth/callback"],
       "webOrigins": ["http://127.0.0.1:8088", "http://localhost:8088"],
-      "attributes": {"pkce.code.challenge.method": "S256"},
+      "attributes": {"pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "http://127.0.0.1:8088/##http://localhost:8088/"},
       "protocolMappers": [
         {
           "name": "eahp-audience",
