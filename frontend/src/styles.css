@@ -110,3 +110,29 @@ th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
 }
 .report { white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow-y: auto; font-size: 12px; }
 .notice { background: var(--muted-bg); border-radius: 6px; padding: 8px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; word-break: break-all; }
+
+/* AI test drafts: header with actions, collapsible notes, and a cases table whose columns wrap. */
+.draft > * + * { margin-top: 6px; }
+.draft details > summary { cursor: pointer; color: var(--accent); }
+.draft .notes { margin: 6px 0 0; line-height: 1.5; white-space: pre-wrap; }
+.chips { gap: 6px; }
+table.cases { table-layout: fixed; min-width: 640px; }
+table.cases td { white-space: normal; vertical-align: top; }
+table.cases col.c-id { width: 80px; }
+table.cases col.c-name { width: 28%; }
+table.cases col.c-category { width: 88px; }
+table.cases .step .muted { white-space: nowrap; }
+table.cases .step { overflow-wrap: anywhere; }
+table.cases .step + .step { margin-top: 4px; }
+@media (max-width: 640px) {
+  /* On phones each case is a block: ID and category, then the name, then the steps. */
+  table.cases { min-width: 0; }
+  table.cases colgroup, table.cases thead { display: none; }
+  table.cases, table.cases tbody { display: block; }
+  table.cases tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  table.cases td { display: block; padding: 0; border: 0; }
+  table.cases td:nth-child(1) { order: 0; }
+  table.cases td:nth-child(3) { order: 1; }
+  table.cases td:nth-child(2) { order: 2; flex-basis: 100%; }
+  table.cases td:nth-child(4) { order: 3; flex-basis: 100%; }
+}
