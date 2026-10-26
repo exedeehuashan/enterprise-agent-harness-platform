@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestCaseRow, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, BackupDrill, AutoFix, AiEvalRun, CoveragePoint, NewCodeCoverage,
 } from './types';
 
@@ -140,6 +140,11 @@ export const api = {
   startEnvironmentRun: (project: string, environment: string, mode: 'test' | 'start') =>
     post<{ taskId: string; runId: string }>(`/qa/projects/${project}/environment-runs`, { environment, mode }),
   stopTemporaryEnvironment: (id: string) => post<{ stopped: boolean }>(`/qa/temporary-environments/${id}/stop`, {}),
+  aiTestCases: (p: { project?: string; category?: string; q?: string; page?: number; size?: number }) =>
+    get<Page<AiTestCaseRow>>(`/qa/ai/test-cases${query({ project: p.project, category: p.category, q: p.q, page: p.page ?? 0, size: p.size ?? 20 })}`),
+  aiDraftPage: (p: { project?: string; page?: number; size?: number }) =>
+    get<Page<AiTestDraft>>(`/qa/ai/drafts${query({ project: p.project, page: p.page ?? 0, size: p.size ?? 20 })}`),
+  aiDraft: (project: string, id: string) => get<AiTestDraft>(`/qa/projects/${project}/ai/api-tests/${id}`),
   aiDrafts: (project: string) => get<AiTestDraft[]>(`/qa/projects/${project}/ai/api-tests`),
   generateAiTests: (project: string, body: Record<string, unknown>) => post<AiTestDraft>(`/qa/projects/${project}/ai/api-tests`, body),
   runAiDraft: (project: string, id: string, environment: string) => post<{ runId: string }>(`/qa/projects/${project}/ai/api-tests/${id}/run`, { environment }),

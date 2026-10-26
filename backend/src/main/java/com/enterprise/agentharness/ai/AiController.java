@@ -23,6 +23,20 @@ public class AiController {
     @GetMapping("/qa/projects/{project}/ai/api-tests") public List<QaAiTestGeneration.Draft> drafts(@PathVariable String project) { return generation.list(project); }
     @GetMapping("/qa/projects/{project}/ai/api-tests/{id}") public QaAiTestGeneration.Draft draft(@PathVariable String project, @PathVariable UUID id) { return generation.get(project, id); }
 
+    /** The AI-generated test cases, paged and filtered; see {@link QaAiTestGeneration#cases}. */
+    @GetMapping("/qa/ai/test-cases")
+    public QaAiTestGeneration.Page<QaAiTestGeneration.CaseRow> cases(@RequestParam(required = false) String project, @RequestParam(required = false) String service,
+            @RequestParam(required = false) String category, @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return generation.cases(project, service, category, q, page, size);
+    }
+    /** Every generation, valid or not, paged. */
+    @GetMapping("/qa/ai/drafts")
+    public QaAiTestGeneration.Page<QaAiTestGeneration.Draft> allDrafts(@RequestParam(required = false) String project,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return generation.drafts(project, page, size);
+    }
+
     /** Runs a valid draft against an environment: {@code {"environment": "uat"}}. */
     @PostMapping("/qa/projects/{project}/ai/api-tests/{id}/run")
     public Map<String, UUID> runDraft(@PathVariable String project, @PathVariable UUID id, @RequestBody JsonNode body) {

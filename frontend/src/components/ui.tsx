@@ -56,6 +56,19 @@ export function Section({ title, actions, children }: { title: string; actions?:
   );
 }
 
+/** Previous / next paging for a list; hidden when everything fits on one page. */
+export function Pager({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (page: number) => void }) {
+  const tr = useT();
+  if (totalPages <= 1) return null;
+  return (
+    <nav className="pager">
+      <button className="secondary" disabled={page === 0} onClick={() => onPage(page - 1)}>{tr('Previous')}</button>
+      <span>{tr('Page {page} of {pages}', { page: page + 1, pages: totalPages })}</span>
+      <button className="secondary" disabled={page + 1 >= totalPages} onClick={() => onPage(page + 1)}>{tr('Next')}</button>
+    </nav>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="empty">{children}</p>;
 }

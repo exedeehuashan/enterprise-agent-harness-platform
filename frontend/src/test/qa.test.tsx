@@ -210,46 +210,78 @@ describe('QA console', () => {
 
   it('lists registered projects and marks Docker-access suites', async () => {
     tokenStore.set(TOKEN);
-    const aiDrafts: Record<string, unknown>[] = [{ id: 'd1', projectKey: 'online-shop', commitSha: 'c'.repeat(40), specPath: 'openapi/order-api.json', service: 'order-api',
-      instructions: null, collection: null, valid: false, error: 'invalid API test file: case path must be an absolute path', notes: null, provider: 'mock', model: 'mock-v1',
-      inputTokens: 10, outputTokens: 10, createdBy: 'operator', createdAt: '2026-10-24T00:00:00Z' }];
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }),
       'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://host.docker.internal:18081' }, enabled: true }] }),
-      'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }),
-      'GET /qa/projects/online-shop/ai/api-tests': () => ({ body: aiDrafts }),
-      'POST /qa/projects/online-shop/ai/api-tests': () => { aiDrafts.unshift({ ...aiDrafts[0], id: 'd2', valid: true, error: null, collection: { key: 'ai-orders', name: 'Orders by AI', service: 'order-api', cases: [
-        { id: 'TC-001', name: 'Create an order', category: 'happy-path', steps: [{ request: { method: 'POST', path: '/api/v1/orders' }, expect: { status: 201 } }] },
-        { id: 'TC-002', name: 'Reject an empty cart', category: 'validation', steps: [{ request: { method: 'POST', path: '/api/v1/orders' }, expect: { status: [400, 422] } }] },
-        { id: 'TC-003', name: 'Unknown order', category: 'not-found', steps: [{ request: { method: 'GET', path: '/api/v1/orders/x' }, expect: { status: 404 } }] }] } }); return { body: aiDrafts[0] }; },
-      'POST /qa/projects/online-shop/ai/api-tests/d2/run': () => ({ body: { runId: 'run-ai' } }) });
+      'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
     expect(await screen.findByText('Local UAT')).toBeInTheDocument();
     expect(screen.getByText('http://host.docker.internal:18081')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save environment' })).not.toBeInTheDocument();
     expect(await screen.findByText(/No write token is configured/)).toBeInTheDocument();
-    expect(await screen.findByText('invalid')).toBeInTheDocument();
-    expect(screen.getByText('invalid API test file: case path must be an absolute path')).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('OpenAPI file'), 'openapi/order-api.json');
-    await userEvent.type(screen.getByLabelText('Service'), 'order-api');
-    await userEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
-    expect(await screen.findByText('Orders by AI')).toBeInTheDocument();
-    expect(screen.getByText('3 cases')).toBeInTheDocument();
-    expect(screen.getByText('happy path · 1')).toBeInTheDocument();
-    expect(screen.getByText('validation · 1')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Show cases'));
-    const row = screen.getByText('Reject an empty cart').closest('tr')!;
-    expect(within(row).getByText('TC-002')).toBeInTheDocument();
-    expect(within(row).getByText('validation')).toBeInTheDocument();
-    expect(within(row).getByText('POST /api/v1/orders')).toBeInTheDocument();
-    expect(row).toHaveTextContent('→ 400/422');
-    await userEvent.click(screen.getByRole('button', { name: 'Run against uat' }));
-    expect(await screen.findByRole('link', { name: "the draft's run" })).toHaveAttribute('href', '/runs/run-ai');
+    // AI test generation and its cases live on their own pages; the project only links there.
+    expect(screen.getByRole('link', { name: "See this project's test cases" })).toHaveAttribute('href', '/qa/test-cases?project=online-shop');
+    expect(screen.getByRole('link', { name: 'Generate with AI' })).toHaveAttribute('href', '/qa/test-cases/generate?project=online-shop');
+    expect(screen.queryByLabelText('OpenAPI file')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Turn on' })).not.toBeInTheDocument();
     expect(screen.getByText('Docker · approval')).toBeInTheDocument();
     expect(screen.getByText('isolated')).toBeInTheDocument();
     expect(screen.getByText('enabled')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Test projects' })).toBeInTheDocument();
+  });
+
+  it('lists AI test cases on their own paged page, filtered by category', async () => {
+    tokenStore.set(TOKEN);
+    const row = (i: number, category: string | null) => ({ draftId: 'd2', projectKey: 'online-shop', service: 'order-api', collectionKey: 'ai-orders', collectionName: 'Orders by AI',
+      caseId: `TC-00${i}`, name: `Case ${i}`, category, steps: 1, model: 'mock-v1', createdBy: 'operator', createdAt: '2026-10-24T00:00:00Z' });
+    const calls = fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }),
+      'GET /qa/ai/test-cases': c => (c.path.includes('category=validation')
+        ? { body: { items: [row(2, 'validation')], page: 0, size: 20, totalElements: 1, totalPages: 1 } }
+        : { body: { items: [row(1, 'happy-path'), row(3, null)], page: c.path.includes('page=1') ? 1 : 0, size: 20, totalElements: 41, totalPages: 3 } }) });
+    renderApp('/qa/test-cases');
+    expect(await screen.findByText('Case 1')).toHaveAttribute('href', '/qa/test-cases/online-shop/drafts/d2#case-TC-001');
+    expect(screen.getByText('41 cases')).toBeInTheDocument();
+    expect(within(screen.getByText('Case 3').closest('tr')!).getByText('uncategorised')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Generate with AI' })).toHaveAttribute('href', '/qa/test-cases/generate');
+    expect(screen.getByRole('link', { name: 'Generation history' })).toHaveAttribute('href', '/qa/test-cases/drafts');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(calls.some(c => c.path.startsWith('/qa/ai/test-cases') && c.path.includes('page=1'))).toBe(true));
+    await userEvent.selectOptions(screen.getByLabelText('Category'), 'validation');
+    expect(await screen.findByText('Case 2')).toBeInTheDocument();
+    // Changing a filter starts again at the first page.
+    expect(calls.filter(c => c.path.startsWith('/qa/ai/test-cases')).at(-1)!.path).toBe('/qa/ai/test-cases?category=validation&page=0&size=20');
+  });
+
+  it('generates test cases on a separate page and opens the draft with its cases', async () => {
+    tokenStore.set(TOKEN);
+    const draft = { id: 'd2', projectKey: 'online-shop', commitSha: 'c'.repeat(40), specPath: 'openapi/order-api.json', service: 'order-api', instructions: 'Orders only',
+      valid: true, error: null, notes: 'Assumes a token is injected.', provider: 'mock', model: 'mock-v1', inputTokens: 10, outputTokens: 10, createdBy: 'operator',
+      createdAt: '2026-10-24T00:00:00Z', collection: { key: 'ai-orders', name: 'Orders by AI', service: 'order-api', cases: [
+        { id: 'TC-001', name: 'Create an order', category: 'happy-path', steps: [{ request: { method: 'POST', path: '/api/v1/orders' }, expect: { status: 201 } }] },
+        { id: 'TC-002', name: 'Reject an empty cart', category: 'validation', steps: [{ request: { method: 'POST', path: '/api/v1/orders' }, expect: { status: [400, 422] } }] },
+        { id: 'TC-003', name: 'Unknown order', category: 'not-found', steps: [{ request: { method: 'GET', path: '/api/v1/orders/x' }, expect: { status: 404 } }] }] } };
+    const calls = fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }),
+      'POST /qa/projects/online-shop/ai/api-tests': () => ({ body: draft }),
+      'GET /qa/projects/online-shop/ai/api-tests/d2': () => ({ body: draft }),
+      'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://x' }, enabled: true }] }),
+      'POST /qa/projects/online-shop/ai/api-tests/d2/run': () => ({ body: { runId: 'run-ai' } }) });
+    renderApp('/qa/test-cases/generate?project=online-shop');
+    await userEvent.type(await screen.findByLabelText('OpenAPI file'), 'openapi/order-api.json');
+    await userEvent.type(screen.getByLabelText('Service'), 'order-api');
+    await userEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
+    expect(await screen.findByRole('heading', { name: 'Orders by AI' })).toBeInTheDocument();
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual({ specPath: 'openapi/order-api.json', service: 'order-api', maxCases: 8 });
+    expect(screen.getByText('3 cases')).toBeInTheDocument();
+    expect(screen.getByText('happy path · 1')).toBeInTheDocument();
+    const caseRow = screen.getByText('Reject an empty cart').closest('tr')!;
+    expect(within(caseRow).getByText('TC-002')).toBeInTheDocument();
+    expect(within(caseRow).getByText('validation')).toBeInTheDocument();
+    expect(within(caseRow).getByText('POST /api/v1/orders')).toBeInTheDocument();
+    expect(caseRow).toHaveTextContent('→ 400/422');
+    expect(screen.getByText('Orders only')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(await screen.findByRole('link', { name: "the draft's run" })).toHaveAttribute('href', '/runs/run-ai');
+    expect(calls.find(c => c.path.endsWith('/run'))!.body).toEqual({ environment: 'uat' });
   });
 
   it('starts environment tests on a fresh stack and stops temporary environments', async () => {
