@@ -333,6 +333,23 @@ class QaApiTestApiTest {
         assertThat(run.arguments().get("suite").asText()).isEqualTo("ai-generated");
         assertThat(requests).anyMatch(r -> r.startsWith("GET /shop/"));
         mvc.perform(get("/api/v1/qa/projects/online-shop/ai/api-tests").header("Authorization", auth(VIEWER))).andExpect(jsonPath("$.length()").value(7));
+        // The paged case list: only valid drafts' cases, filtered by category or text, and every draft for the generation history.
+        String all = mvc.perform(get("/api/v1/qa/ai/test-cases?project=online-shop&size=100").header("Authorization", auth(VIEWER))).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long caseCount = mapper.readTree(all).get("totalElements").asLong();
+        assertThat(caseCount).isGreaterThanOrEqualTo(3);
+        mvc.perform(get("/api/v1/qa/ai/test-cases?project=online-shop&size=1&page=1").header("Authorization", auth(VIEWER)))
+                .andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.totalPages").value(caseCount));
+        mvc.perform(get("/api/v1/qa/ai/test-cases?category=not-found").header("Authorization", auth(VIEWER)))
+                .andExpect(jsonPath("$.items[0].category").value("not-found")).andExpect(jsonPath("$.items[0].caseId").value("T1"))
+                .andExpect(jsonPath("$.items[0].steps").value(1)).andExpect(jsonPath("$.items[0].projectKey").value("online-shop"));
+        mvc.perform(get("/api/v1/qa/ai/test-cases?q=tc-ai").header("Authorization", auth(VIEWER)))
+                .andExpect(jsonPath("$.items[0].caseId").value("TC-AI-001")).andExpect(jsonPath("$.items[0].collectionKey").value("ai-generated"));
+        mvc.perform(get("/api/v1/qa/ai/test-cases?q=50%25").header("Authorization", auth(VIEWER))).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/v1/qa/ai/test-cases?category=smoke").header("Authorization", auth(VIEWER))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/ai/test-cases?size=500").header("Authorization", auth(VIEWER))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/qa/ai/drafts?project=online-shop&size=2").header("Authorization", auth(VIEWER)))
+                .andExpect(jsonPath("$.items.length()").value(2)).andExpect(jsonPath("$.totalElements").value(7)).andExpect(jsonPath("$.totalPages").value(4));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_usage WHERE feature='qa-test-generation'", Long.class)).isGreaterThanOrEqualTo(3);
     }
 

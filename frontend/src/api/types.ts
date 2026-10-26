@@ -258,6 +258,12 @@ export interface AiAnalysis {
 export interface AiStatus { provider: string; model: string; dailyTokenBudget: number; usedToday: number }
 
 /** An API test collection drafted by the AI from an OpenAPI document; only valid drafts can run. */
+/** A case of a valid AI draft, as the paged test-case list shows it. */
+export interface AiTestCaseRow {
+  draftId: string; projectKey: string; service: string; collectionKey: string; collectionName: string; caseId: string; name: string;
+  category: string | null; steps: number; model: string; createdBy: string; createdAt: string;
+}
+
 /** One case of an API test collection; {@code category} says what it mainly checks. */
 export interface ApiTestCase {
   id: string; name: string; category?: string;

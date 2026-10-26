@@ -158,6 +158,63 @@ public class QaAiTestGeneration {
         return new Generated(collection, error, notes, answer);
     }
 
+    public record Page<T>(List<T> items, int page, int size, long totalElements, long totalPages) {}
+    /** One case of a valid draft, for the paged test-case list. */
+    public record CaseRow(UUID draftId, String projectKey, String service, String collectionKey, String collectionName, String caseId, String name,
+            String category, int steps, String model, String createdBy, Instant createdAt) {}
+
+    /**
+     * Cases of valid drafts, newest draft first and in draft order. Filters: project, service, category (one of
+     * {@link ApiCollections#CATEGORIES}, or "none" for unlabelled cases) and q (case id, name or service, case-insensitive).
+     */
+    public Page<CaseRow> cases(String project, String service, String category, String q, int page, int size) {
+        checkPage(page, size);
+        if (category != null && !category.isBlank() && !category.equals("none") && !ApiCollections.CATEGORIES.contains(category)) {
+            throw bad("category must be one of " + String.join(", ", ApiCollections.CATEGORIES) + " or none");
+        }
+        if (q != null && q.length() > 100) throw bad("q is up to 100 characters");
+        StringBuilder where = new StringBuilder(" WHERE d.valid");
+        List<Object> args = new java.util.ArrayList<>();
+        if (project != null && !project.isBlank()) { where.append(" AND d.project_key=?"); args.add(project); }
+        if (service != null && !service.isBlank()) { where.append(" AND d.service=?"); args.add(service); }
+        if (category != null && !category.isBlank()) {
+            if (category.equals("none")) where.append(" AND c.item->>'category' IS NULL");
+            else { where.append(" AND c.item->>'category'=?"); args.add(category); }
+        }
+        if (q != null && !q.isBlank()) {
+            String like = "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+            where.append(" AND (c.item->>'id' ILIKE ? OR c.item->>'name' ILIKE ? OR d.service ILIKE ?)");
+            args.add(like); args.add(like); args.add(like);
+        }
+        String from = " FROM qa_ai_test_drafts d CROSS JOIN LATERAL jsonb_array_elements(d.collection->'cases') WITH ORDINALITY AS c(item, pos)";
+        long total = jdbc.queryForObject("SELECT count(*)" + from + where, Long.class, args.toArray());
+        var pageArgs = new java.util.ArrayList<>(args);
+        pageArgs.add(size); pageArgs.add((long) page * size);
+        var items = jdbc.query("SELECT d.id, d.project_key, d.service, d.collection->>'key' AS ckey, d.collection->>'name' AS cname, c.item->>'id' AS case_id,"
+                + " c.item->>'name' AS case_name, c.item->>'category' AS category, jsonb_array_length(c.item->'steps') AS steps, d.model, d.created_by, d.created_at"
+                + from + where + " ORDER BY d.created_at DESC, d.id, c.pos LIMIT ? OFFSET ?",
+                (r, i) -> new CaseRow(r.getObject("id", UUID.class), r.getString("project_key"), r.getString("service"), r.getString("ckey"), r.getString("cname"),
+                        r.getString("case_id"), r.getString("case_name"), r.getString("category"), r.getInt("steps"), r.getString("model"), r.getString("created_by"),
+                        r.getTimestamp("created_at").toInstant()), pageArgs.toArray());
+        return new Page<>(items, page, size, total, (total + size - 1) / size);
+    }
+
+    /** Every draft, valid or not, newest first; optionally one project's. */
+    public Page<Draft> drafts(String project, int page, int size) {
+        checkPage(page, size);
+        boolean one = project != null && !project.isBlank();
+        long total = one ? jdbc.queryForObject("SELECT count(*) FROM qa_ai_test_drafts WHERE project_key=?", Long.class, project)
+                : jdbc.queryForObject("SELECT count(*) FROM qa_ai_test_drafts", Long.class);
+        var items = one ? jdbc.query("SELECT * FROM qa_ai_test_drafts WHERE project_key=? ORDER BY created_at DESC, id LIMIT ? OFFSET ?", this::map, project, size, (long) page * size)
+                : jdbc.query("SELECT * FROM qa_ai_test_drafts ORDER BY created_at DESC, id LIMIT ? OFFSET ?", this::map, size, (long) page * size);
+        return new Page<>(items, page, size, total, (total + size - 1) / size);
+    }
+
+    private static void checkPage(int page, int size) {
+        if (page < 0 || page > 10_000) throw bad("page must be 0..10000");
+        if (size < 1 || size > 100) throw bad("size must be 1..100");
+    }
+
     public List<Draft> list(String project) {
         return jdbc.query("SELECT * FROM qa_ai_test_drafts WHERE project_key=? ORDER BY created_at DESC LIMIT 50", this::map, project);
     }

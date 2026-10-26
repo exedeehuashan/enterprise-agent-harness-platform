@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { Empty, ErrorBanner, Section } from '../components/ui';
 import { usePolling } from '../hooks';
@@ -6,7 +7,6 @@ import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
 import { ProjectSchedules } from '../components/qaSchedules';
 import { ProjectEnvironments } from '../components/qaApiTests';
 import { GitHubWriteBackPanel } from '../components/githubWriteBack';
-import { AiTestsPanel } from '../components/aiTests';
 import { TemporaryEnvironmentsPanel } from '../components/qaEnvironments';
 import { useT } from '../i18n';
 
@@ -45,7 +45,8 @@ export function QaProjectsPage() {
           <ProjectEnvironments project={p} />
           <TemporaryEnvironmentsPanel project={p} />
           <GitHubWriteBackPanel project={p} />
-          <AiTestsPanel project={p} />
+          <h3 className="subhead">{tr('AI-generated API tests')}</h3>
+          <p className="small"><Link to={`/qa/test-cases?project=${p.key}`}>{tr('See this project\'s test cases')}</Link> · <Link to={`/qa/test-cases/generate?project=${p.key}`}>{tr('Generate with AI')}</Link></p>
           {can('APPROVER') && <ProjectAdminPanel project={p} onChanged={projects.reload} />}
         </Section>
       ))}

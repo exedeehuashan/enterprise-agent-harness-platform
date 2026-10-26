@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { TaskStatus } from '../api/types';
-import { Empty, ErrorBanner, Section, Status, Time } from '../components/ui';
+import { Empty, ErrorBanner, Pager, Section, Status, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
 import { useT } from '../i18n';
@@ -45,13 +45,7 @@ export function TasksPage() {
             </table>
           </div>
         )}
-        {tasks.data && tasks.data.totalPages > 1 && (
-          <nav className="pager">
-            <button className="secondary" disabled={page === 0} onClick={() => setPage(p => p - 1)}>{tr('Previous')}</button>
-            <span>{tr('Page {page} of {pages}', { page: page + 1, pages: tasks.data.totalPages })}</span>
-            <button className="secondary" disabled={page + 1 >= tasks.data.totalPages} onClick={() => setPage(p => p + 1)}>{tr('Next')}</button>
-          </nav>
-        )}
+        {tasks.data && <Pager page={page} totalPages={tasks.data.totalPages} onPage={setPage} />}
       </Section>
     </>
   );

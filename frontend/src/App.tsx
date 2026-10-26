@@ -9,6 +9,10 @@ import { LoginPage, SsoCallback } from './pages/LoginPage';
 import { RunPage } from './pages/RunPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { TasksPage } from './pages/TasksPage';
+import { TestCasesPage } from './pages/TestCasesPage';
+import { GenerateTestsPage } from './pages/GenerateTestsPage';
+import { AiDraftsPage } from './pages/AiDraftsPage';
+import { AiDraftPage } from './pages/AiDraftPage';
 import { useSession } from './session';
 import { LanguageSwitch, useT } from './i18n';
 
@@ -25,6 +29,7 @@ export function App() {
         <nav>
           <NavLink to="/" end>{tr('Tasks')}</NavLink>
           <NavLink to="/qa" end>{tr('Test projects')}</NavLink>
+          <NavLink to="/qa/test-cases">{tr('Test cases')}</NavLink>
           <NavLink to="/qa/pull-requests">{tr('Pull requests')}</NavLink>
           <NavLink to="/qa/quality">{tr('Quality')}</NavLink>
           {can('APPROVER') && <NavLink to="/approvals">{tr('Approvals')}</NavLink>}
@@ -43,6 +48,10 @@ export function App() {
           <Route path="/tasks/:id" element={<TaskDetailPage />} />
           <Route path="/runs/:id" element={<RunPage />} />
           <Route path="/qa" element={<QaProjectsPage />} />
+          <Route path="/qa/test-cases" element={<TestCasesPage />} />
+          <Route path="/qa/test-cases/generate" element={can('OPERATOR') ? <GenerateTestsPage /> : <Navigate to="/qa/test-cases" replace />} />
+          <Route path="/qa/test-cases/drafts" element={<AiDraftsPage />} />
+          <Route path="/qa/test-cases/:project/drafts/:id" element={<AiDraftPage />} />
           <Route path="/qa/pull-requests" element={<PullRequestsPage />} />
           <Route path="/qa/quality" element={<QualityPage />} />
           <Route path="/executions/:id" element={<ExecutionPage />} />
