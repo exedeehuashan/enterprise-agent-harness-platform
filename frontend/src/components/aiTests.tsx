@@ -30,19 +30,20 @@ function DraftCases({ cases }: { cases: ApiTestCase[] }) {
   const status = (s?: number | number[]) => (Array.isArray(s) ? s.join('/') : s ?? '');
   return (
     <>
-      <div className="row">{[...counts].map(([k, n]) => <span key={k} className="badge">{k} {n}</span>)}</div>
+      <div className="row chips">{[...counts].map(([k, n]) => <span key={k} className="badge badge-muted">{k} · {n}</span>)}</div>
       <details>
         <summary>{tr('Show cases')}</summary>
-        <div className="table-wrap"><table>
+        <div className="table-wrap"><table className="cases">
+          <colgroup><col className="c-id" /><col className="c-name" /><col className="c-category" /><col /></colgroup>
           <thead><tr><th>{tr('ID')}</th><th>{tr('Name')}</th><th>{tr('Category')}</th><th>{tr('Steps')}</th></tr></thead>
           <tbody>
             {cases.map(c => (
               <tr key={c.id}>
                 <td><code>{c.id}</code></td>
                 <td>{c.name}</td>
-                <td><span className="badge">{label(c.category)}</span></td>
+                <td><span className="badge badge-muted">{label(c.category)}</span></td>
                 <td>{(c.steps ?? []).map((s, i) => (
-                  <div key={i} className="wrap"><code>{s.request?.method} {s.request?.path}</code> → {status(s.expect?.status)}</div>
+                  <div key={i} className="step"><code>{s.request?.method} {s.request?.path}</code> <span className="muted">→ {status(s.expect?.status)}</span></div>
                 ))}</td>
               </tr>
             ))}
@@ -90,14 +91,10 @@ export function AiTestsPanel({ project }: { project: QaProject }) {
       )}
       {started && <p className="small">{tr('Started')} <Link to={`/runs/${started}`}>{tr('the draft\'s run')}</Link>.</p>}
       {drafts.data?.map(d => (
-        <article key={d.id} className="item small">
+        <article key={d.id} className="item small draft">
           <div className="row spread">
             <div className="fill"><strong>{d.collection?.name ?? tr('Invalid draft')}</strong> <code className="muted">{d.collection?.key}</code>{' '}
               <span className={`badge ${d.valid ? 'badge-ok' : 'badge-bad'}`}>{d.valid ? tr('{n} cases', { n: d.collection?.cases?.length ?? 0 }) : tr('invalid')}</span>
-              <div className="muted">{d.specPath} @ <code>{d.commitSha.slice(0, 7)}</code> → {d.service} · {d.provider}/{d.model} · <Time value={d.createdAt} /> {tr('by {who}', { who: d.createdBy })}</div>
-              {d.error && <div className="error">{d.error}</div>}
-              {d.notes && <div>{d.notes}</div>}
-              {d.valid && d.collection?.cases && <DraftCases cases={d.collection.cases} />}
             </div>
             {d.valid && <div className="row">
               <button className="secondary" onClick={() => download(d)}>{tr('Download')}</button>
@@ -105,6 +102,10 @@ export function AiTestsPanel({ project }: { project: QaProject }) {
                 {env ? tr('Run against {name}', { name: env.key }) : tr('No environment')}</button>}
             </div>}
           </div>
+          <div className="muted wrap">{d.specPath} @ <code>{d.commitSha.slice(0, 7)}</code> → {d.service} · {d.provider}/{d.model} · <Time value={d.createdAt} /> {tr('by {who}', { who: d.createdBy })}</div>
+          {d.error && <div className="error">{d.error}</div>}
+          {d.notes && <details><summary>{tr('Notes from the model')}</summary><p className="notes">{d.notes}</p></details>}
+          {d.valid && d.collection?.cases && <DraftCases cases={d.collection.cases} />}
         </article>
       ))}
     </>

@@ -580,4 +580,5 @@ export const ZH: Record<string, string> = {
   "ID": "编号",
   "{n} cases": "{n} 条用例",
   "Run against {name}": "在 {name} 上运行",
+  "Notes from the model": "模型说明",
 };

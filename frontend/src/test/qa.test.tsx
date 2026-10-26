@@ -235,8 +235,8 @@ describe('QA console', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
     expect(await screen.findByText('Orders by AI')).toBeInTheDocument();
     expect(screen.getByText('3 cases')).toBeInTheDocument();
-    expect(screen.getByText('happy path 1')).toBeInTheDocument();
-    expect(screen.getByText('validation 1')).toBeInTheDocument();
+    expect(screen.getByText('happy path · 1')).toBeInTheDocument();
+    expect(screen.getByText('validation · 1')).toBeInTheDocument();
     await userEvent.click(screen.getByText('Show cases'));
     const row = screen.getByText('Reject an empty cart').closest('tr')!;
     expect(within(row).getByText('TC-002')).toBeInTheDocument();
