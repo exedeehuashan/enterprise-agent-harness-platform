@@ -105,11 +105,14 @@ public class QaAiTestGeneration {
                 Put the collection, as a JSON string, in the "collection" field of your answer; put short notes for the reviewer in "notes".
                 The collection format (any other field is rejected):
                 {"key": "ai-<short-name>", "name": "...", "description": "...", "service": "%s", "variables": {"name": "text, may use {{$uuid}} {{$runId}}"},
-                 "cases": [{"id": "TC-001", "name": "...", "steps": [{"name": "...",
+                 "cases": [{"id": "TC-001", "name": "...", "category": "happy-path|validation|not-found|idempotency|concurrency|state-rule", "steps": [{"name": "...",
                    "request": {"method": "GET|POST|PUT|PATCH|DELETE|HEAD", "path": "/absolute/path?query", "headers": {"Name": "value"}, "json": <any JSON body>},
                    "expect": {"status": 201 or [200, 201], "headers": {"Location": {"exists": true}}, "maxMillis": 5000,
                               "json": [{"path": "$.field[0].sub", "equals": <JSON value> | "matches": "regex" | "exists": true | "type": "string|number|boolean|object|array|null" | "length": 2}]},
                    "capture": {"varName": "$.id", "etag": "header:ETag"}}]}]}
+                Every case has exactly one category for what it mainly checks: happy-path (a successful call), validation (rejected input),
+                not-found (a missing resource), idempotency (a repeated request), concurrency (simultaneous or conflicting updates) or state-rule
+                (an allowed or forbidden state change). Write the case name so a reviewer can tell what it checks without reading the steps.
                 Each check has a path and exactly one of equals, matches, exists, type or length. Paths start with "/" and never contain a host.
                 Use "{{varName}}" to insert a variable or a captured value. Headers Host, Content-Length, Connection, Transfer-Encoding, Upgrade and Expect
                 are not allowed. Only assert what the document states; do not invent fields.
@@ -137,6 +140,10 @@ public class QaAiTestGeneration {
             c.put("key", (key.startsWith("ai-") ? key : "ai-" + key).substring(0, Math.min(60, (key.startsWith("ai-") ? key : "ai-" + key).length())));
             if (c.path("cases").isArray() && c.get("cases").size() > maxCases) throw new IllegalArgumentException("the collection has more than " + maxCases + " cases");
             collection = ApiCollections.parse(mapper.writeValueAsString(mapper.createObjectNode().put("schemaVersion", 1).set("collections", mapper.createArrayNode().add(c)))).get(0);
+            // Hand-written files may leave a case unlabelled; a generated draft must say what each case checks.
+            for (JsonNode tc : collection.path("cases")) {
+                if (!tc.has("category")) { String id = tc.path("id").asText(); collection = null; throw new IllegalArgumentException("case " + id + " has no category"); }
+            }
             // The collection travels in the run's arguments, which are capped; a draft that cannot fit is not runnable.
             int size = collection.toString().length();
             if (size > MAX_RUNNABLE_CHARS) {

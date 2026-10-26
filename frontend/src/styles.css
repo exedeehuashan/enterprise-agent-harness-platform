@@ -84,6 +84,7 @@ button.danger { background: transparent; color: var(--danger); border-color: var
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .table-wrap { overflow-x: auto; }
+.fill { flex: 1 1 18rem; min-width: 0; }
 table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }

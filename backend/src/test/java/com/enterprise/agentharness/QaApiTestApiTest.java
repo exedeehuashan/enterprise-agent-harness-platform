@@ -300,11 +300,18 @@ class QaApiTestApiTest {
         String bad = mapper.readTree(generate(OPERATOR, body).andExpect(jsonPath("$.valid").value(false))
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("absolute path"))).andReturn().getResponse().getContentAsString()).get("id").asText();
         // Nested service overrides are removed, so a valid draft can only reach the requested service.
-        aiAnswer = "{\"collection\":\"{\\\"key\\\":\\\"x\\\",\\\"name\\\":\\\"Sneaky\\\",\\\"service\\\":\\\"order-api\\\",\\\"cases\\\":[{\\\"id\\\":\\\"T1\\\",\\\"name\\\":\\\"x\\\",\\\"service\\\":\\\"billing-api\\\",\\\"steps\\\":[{\\\"service\\\":\\\"billing-api\\\",\\\"request\\\":{\\\"method\\\":\\\"DELETE\\\",\\\"path\\\":\\\"/all\\\"},\\\"expect\\\":{\\\"status\\\":200}}]}]}\",\"notes\":\"\"}";
+        aiAnswer = "{\"collection\":\"{\\\"key\\\":\\\"x\\\",\\\"name\\\":\\\"Sneaky\\\",\\\"service\\\":\\\"order-api\\\",\\\"cases\\\":[{\\\"id\\\":\\\"T1\\\",\\\"name\\\":\\\"x\\\",\\\"category\\\":\\\"happy-path\\\",\\\"service\\\":\\\"billing-api\\\",\\\"steps\\\":[{\\\"service\\\":\\\"billing-api\\\",\\\"request\\\":{\\\"method\\\":\\\"DELETE\\\",\\\"path\\\":\\\"/all\\\"},\\\"expect\\\":{\\\"status\\\":200}}]}]}\",\"notes\":\"\"}";
         generate(OPERATOR, body).andExpect(jsonPath("$.valid").value(true)).andExpect(jsonPath("$.collection.cases[0].service").doesNotExist())
                 .andExpect(jsonPath("$.collection.cases[0].steps[0].service").doesNotExist());
+        // Every AI-generated case names its category; a missing or unknown one makes the draft invalid.
+        aiAnswer = "{\"collection\":\"{\\\"key\\\":\\\"x\\\",\\\"name\\\":\\\"Unlabelled\\\",\\\"service\\\":\\\"order-api\\\",\\\"cases\\\":[{\\\"id\\\":\\\"T1\\\",\\\"name\\\":\\\"x\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"/a\\\"},\\\"expect\\\":{\\\"status\\\":200}}]}]}\",\"notes\":\"\"}";
+        generate(OPERATOR, body).andExpect(jsonPath("$.valid").value(false)).andExpect(jsonPath("$.error").value("case T1 has no category"));
+        aiAnswer = aiAnswer.replace("\\\"name\\\":\\\"x\\\",", "\\\"name\\\":\\\"x\\\",\\\"category\\\":\\\"smoke\\\",");
+        generate(OPERATOR, body).andExpect(jsonPath("$.valid").value(false)).andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("category must be one of")));
+        aiAnswer = aiAnswer.replace("smoke", "not-found");
+        generate(OPERATOR, body).andExpect(jsonPath("$.valid").value(true)).andExpect(jsonPath("$.collection.cases[0].category").value("not-found"));
         // A draft too large to fit in a run's arguments is not marked runnable.
-        String bigCase = "{\\\"id\\\":\\\"T%d\\\",\\\"name\\\":\\\"" + "x".repeat(190) + "\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"/" + "y".repeat(500) + "\\\"},\\\"expect\\\":{\\\"status\\\":200}}]}";
+        String bigCase = "{\\\"id\\\":\\\"T%d\\\",\\\"name\\\":\\\"" + "x".repeat(190) + "\\\",\\\"category\\\":\\\"validation\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"/" + "y".repeat(500) + "\\\"},\\\"expect\\\":{\\\"status\\\":200}}]}";
         StringBuilder cases = new StringBuilder();
         for (int i = 0; i < 25; i++) cases.append(i == 0 ? "" : ",").append(String.format(bigCase, i));
         aiAnswer = "{\"collection\":\"{\\\"key\\\":\\\"big\\\",\\\"name\\\":\\\"Big\\\",\\\"service\\\":\\\"order-api\\\",\\\"cases\\\":[" + cases + "]}\",\"notes\":\"\"}";
@@ -325,7 +332,7 @@ class QaApiTestApiTest {
         assertThat(run.arguments().get("draft").asText()).isEqualTo(id);
         assertThat(run.arguments().get("suite").asText()).isEqualTo("ai-generated");
         assertThat(requests).anyMatch(r -> r.startsWith("GET /shop/"));
-        mvc.perform(get("/api/v1/qa/projects/online-shop/ai/api-tests").header("Authorization", auth(VIEWER))).andExpect(jsonPath("$.length()").value(4));
+        mvc.perform(get("/api/v1/qa/projects/online-shop/ai/api-tests").header("Authorization", auth(VIEWER))).andExpect(jsonPath("$.length()").value(7));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_usage WHERE feature='qa-test-generation'", Long.class)).isGreaterThanOrEqualTo(3);
     }
 
