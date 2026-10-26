@@ -1,8 +1,8 @@
 package com.enterprise.agentharness.code;
 
 import com.enterprise.agentharness.egress.EgressProxy;
-import com.enterprise.agentharness.qa.ProcessRunner;
-import com.enterprise.agentharness.qa.QaSettings;
+import com.enterprise.agentharness.runtime.ProcessRunner;
+import com.enterprise.agentharness.runtime.ContainerSettings;
 import com.enterprise.agentharness.tool.ToolContext;
 import com.enterprise.agentharness.tool.ToolExecutor;
 import com.enterprise.agentharness.tool.ToolResult;
@@ -61,7 +61,7 @@ public class CodeAgentTool implements ToolExecutor {
     static final String DEFAULT_EGRESS = "api.anthropic.com,repo.maven.apache.org,repo1.maven.org,registry.npmjs.org";
     private final CodeRepositories repositories;
     private final ProcessRunner runner;
-    private final QaSettings settings;
+    private final ContainerSettings settings;
     private final ObjectMapper mapper;
     private final String image, model, allowedTools, apiBase, writeToken;
     private final Supplier<String> anthropicKey;
@@ -72,7 +72,7 @@ public class CodeAgentTool implements ToolExecutor {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build();
 
     @Autowired
-    public CodeAgentTool(CodeRepositories repositories, ProcessRunner runner, QaSettings settings, ObjectMapper mapper,
+    public CodeAgentTool(CodeRepositories repositories, ProcessRunner runner, ContainerSettings settings, ObjectMapper mapper,
             @Value("${eahp.code-agent.image:eahp-code-agent:local}") String image, @Value("${eahp.code-agent.model:}") String model,
             @Value("${eahp.code-agent.allowed-tools:" + DEFAULT_TOOLS + "}") String allowedTools,
             @Value("${eahp.github.api:https://api.github.com}") String apiBase, @Value("${eahp.github.write-token:}") String writeToken,

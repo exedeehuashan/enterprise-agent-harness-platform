@@ -1,0 +1,48 @@
+package com.enterprise.agentharness.qa;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.web.bind.annotation.*;
+
+/** 方案 4's AI endpoints: failure analysis of a run and AI-generated API tests. Writing (asking the model) is an OPERATOR action. */
+@RestController
+@RequestMapping("/api/v1")
+public class QaAiController {
+    private final QaAiAnalysis analysis;
+    private final QaAiTestGeneration generation;
+    public QaAiController(QaAiAnalysis analysis, QaAiTestGeneration generation) { this.analysis = analysis; this.generation = generation; }
+
+    /** Drafts an API test collection from an OpenAPI document in the project's repository. */
+    @PostMapping("/qa/projects/{project}/ai/api-tests")
+    public QaAiTestGeneration.Draft generate(@PathVariable String project, @RequestBody JsonNode body) { return generation.generate(project, body); }
+    @GetMapping("/qa/projects/{project}/ai/api-tests") public List<QaAiTestGeneration.Draft> drafts(@PathVariable String project) { return generation.list(project); }
+    @GetMapping("/qa/projects/{project}/ai/api-tests/{id}") public QaAiTestGeneration.Draft draft(@PathVariable String project, @PathVariable UUID id) { return generation.get(project, id); }
+
+    /** The AI-generated test cases, paged and filtered; see {@link QaAiTestGeneration#cases}. */
+    @GetMapping("/qa/ai/test-cases")
+    public QaAiTestGeneration.Page<QaAiTestGeneration.CaseRow> cases(@RequestParam(required = false) String project, @RequestParam(required = false) String service,
+            @RequestParam(required = false) String category, @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return generation.cases(project, service, category, q, page, size);
+    }
+    /** Every generation, valid or not, paged. */
+    @GetMapping("/qa/ai/drafts")
+    public QaAiTestGeneration.Page<QaAiTestGeneration.Draft> allDrafts(@RequestParam(required = false) String project,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return generation.drafts(project, page, size);
+    }
+
+    /** Runs a valid draft against an environment: {@code {"environment": "uat"}}. */
+    @PostMapping("/qa/projects/{project}/ai/api-tests/{id}/run")
+    public Map<String, UUID> runDraft(@PathVariable String project, @PathVariable UUID id, @RequestBody JsonNode body) {
+        if (body == null || !body.path("environment").isTextual() || body.size() != 1) {
+            throw new com.enterprise.agentharness.run.RunException(org.springframework.http.HttpStatus.BAD_REQUEST, "Body must be {\"environment\": \"<key>\"}");
+        }
+        return Map.of("runId", generation.run(project, id, body.get("environment").asText()));
+    }
+
+    @GetMapping("/qa/runs/{runId}/ai-analysis") public QaAiAnalysis.Analysis latest(@PathVariable UUID runId) { return analysis.latest(runId); }
+    @PostMapping("/qa/runs/{runId}/ai-analysis") public QaAiAnalysis.Analysis analyze(@PathVariable UUID runId) { return analysis.analyze(runId); }
+}

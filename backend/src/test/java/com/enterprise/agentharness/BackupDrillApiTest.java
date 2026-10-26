@@ -1,7 +1,7 @@
 package com.enterprise.agentharness;
 
 import com.enterprise.agentharness.ops.BackupDrills;
-import com.enterprise.agentharness.qa.ProcessRunner;
+import com.enterprise.agentharness.runtime.ProcessRunner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;

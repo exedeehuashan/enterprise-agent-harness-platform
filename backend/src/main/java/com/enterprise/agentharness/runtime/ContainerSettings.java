@@ -1,16 +1,18 @@
-package com.enterprise.agentharness.qa;
+package com.enterprise.agentharness.runtime;
 
 import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Runner configuration. Test containers mount the whole work directory at the same path as this process sees it:
+ * Container runtime configuration shared by every module that starts containers (QA runs, the code agent, backup
+ * drills). Property names keep their original {@code eahp.qa.*} prefix so existing deployments need no change.
+ * Containers mount the whole work directory at the same path as this process sees it:
  * from a named Docker volume when {@code eahp.qa.volume} is set (portable, works with Docker Desktop and remote
  * daemons), otherwise by bind-mounting the work directory, which must then have the same path on the Docker host.
  */
 @Component
-public class QaSettings {
+public class ContainerSettings {
     private final Path workdir;
     private final String docker;
     private final String git;
@@ -20,7 +22,7 @@ public class QaSettings {
     private final String dockerSocket;
     private final String volume;
 
-    public QaSettings(@Value("${eahp.qa.workdir:${java.io.tmpdir}/eahp-qa}") String workdir,
+    public ContainerSettings(@Value("${eahp.qa.workdir:${java.io.tmpdir}/eahp-qa}") String workdir,
             @Value("${eahp.qa.docker:docker}") String docker, @Value("${eahp.qa.git:git}") String git,
             @Value("${eahp.qa.container-user:}") String containerUser, @Value("${eahp.qa.cpus:2}") String cpus,
             @Value("${eahp.qa.memory:4g}") String memory, @Value("${eahp.qa.docker-socket:/var/run/docker.sock}") String dockerSocket,

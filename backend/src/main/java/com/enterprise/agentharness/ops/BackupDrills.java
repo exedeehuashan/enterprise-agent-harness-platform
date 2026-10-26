@@ -1,8 +1,8 @@
 package com.enterprise.agentharness.ops;
 
 import com.enterprise.agentharness.governance.AuditService;
-import com.enterprise.agentharness.qa.ProcessRunner;
-import com.enterprise.agentharness.qa.QaSettings;
+import com.enterprise.agentharness.runtime.ProcessRunner;
+import com.enterprise.agentharness.runtime.ContainerSettings;
 import com.enterprise.agentharness.run.RunException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,14 +51,14 @@ public class BackupDrills {
     private static final Duration STEP = Duration.ofMinutes(10);
     private final JdbcTemplate jdbc;
     private final ProcessRunner runner;
-    private final QaSettings settings;
+    private final ContainerSettings settings;
     private final ObjectMapper mapper;
     private final boolean enabled;
     private final String network, image, dbUrl, dbUser, dbPassword;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> { var t = new Thread(r, "eahp-backup-drill"); t.setDaemon(true); return t; });
     private final SecureRandom random = new SecureRandom();
 
-    public BackupDrills(JdbcTemplate jdbc, ProcessRunner runner, QaSettings settings, ObjectMapper mapper,
+    public BackupDrills(JdbcTemplate jdbc, ProcessRunner runner, ContainerSettings settings, ObjectMapper mapper,
             @Value("${eahp.backup-drill.enabled:false}") boolean enabled, @Value("${eahp.backup-drill.network:}") String network,
             @Value("${eahp.backup-drill.image:postgres:16}") String image, @Value("${spring.datasource.url}") String dbUrl,
             @Value("${spring.datasource.username}") String dbUser, @Value("${spring.datasource.password:}") String dbPassword) {

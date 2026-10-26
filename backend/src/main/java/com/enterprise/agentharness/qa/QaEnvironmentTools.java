@@ -1,5 +1,6 @@
 package com.enterprise.agentharness.qa;
 
+import com.enterprise.agentharness.runtime.ContainerSettings;
 import com.enterprise.agentharness.qa.api.ApiCollections;
 import com.enterprise.agentharness.qa.api.ApiTestRunner;
 import com.enterprise.agentharness.tool.ToolContext;
@@ -37,13 +38,13 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class QaEnvironmentTools {
 
-    @Bean StartTool qaStartEnvironment(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, QaSettings settings, ObjectMapper mapper) {
+    @Bean StartTool qaStartEnvironment(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, ContainerSettings settings, ObjectMapper mapper) {
         return new StartTool(resolver, git, envs, settings, mapper);
     }
 
     @Bean ToolExecutor qaStopEnvironment(EphemeralEnvironments envs) { return new StopTool(envs); }
 
-    @Bean TestTool qaRunEnvironmentTests(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, QaSettings settings, ObjectMapper mapper) {
+    @Bean TestTool qaRunEnvironmentTests(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, ContainerSettings settings, ObjectMapper mapper) {
         return new TestTool(resolver, git, envs, settings, mapper, QaApiTestTool.httpTransport());
     }
 
@@ -88,7 +89,7 @@ public class QaEnvironmentTools {
         return mapper.convertValue(args.get("template"), EnvironmentTemplates.Template.class);
     }
 
-    private static Path runDir(QaSettings settings, ToolContext context) {
+    private static Path runDir(ContainerSettings settings, ToolContext context) {
         return settings.workdir().resolve("runs").resolve(context.run().id() + "-" + context.run().attemptCount());
     }
 
@@ -96,10 +97,10 @@ public class QaEnvironmentTools {
         private final QaSuiteResolver resolver;
         private final GitMirror git;
         private final EphemeralEnvironments envs;
-        private final QaSettings settings;
+        private final ContainerSettings settings;
         private final ObjectMapper mapper;
 
-        StartTool(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, QaSettings settings, ObjectMapper mapper) {
+        StartTool(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, ContainerSettings settings, ObjectMapper mapper) {
             this.resolver = resolver; this.git = git; this.envs = envs; this.settings = settings; this.mapper = mapper;
         }
 
@@ -177,11 +178,11 @@ public class QaEnvironmentTools {
         private final QaSuiteResolver resolver;
         private final GitMirror git;
         private final EphemeralEnvironments envs;
-        private final QaSettings settings;
+        private final ContainerSettings settings;
         private final ObjectMapper mapper;
         private final ApiTestRunner.Transport transport;
 
-        TestTool(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, QaSettings settings, ObjectMapper mapper, ApiTestRunner.Transport transport) {
+        TestTool(QaSuiteResolver resolver, GitMirror git, EphemeralEnvironments envs, ContainerSettings settings, ObjectMapper mapper, ApiTestRunner.Transport transport) {
             this.resolver = resolver; this.git = git; this.envs = envs; this.settings = settings; this.mapper = mapper; this.transport = transport;
         }
 

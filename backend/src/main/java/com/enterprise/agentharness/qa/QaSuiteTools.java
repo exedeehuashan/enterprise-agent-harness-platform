@@ -1,5 +1,7 @@
 package com.enterprise.agentharness.qa;
 
+import com.enterprise.agentharness.runtime.ContainerSettings;
+import com.enterprise.agentharness.runtime.ProcessRunner;
 import com.enterprise.agentharness.tool.ToolContext;
 import com.enterprise.agentharness.tool.ToolExecutor;
 import com.enterprise.agentharness.tool.ToolResult;
@@ -40,12 +42,12 @@ public class QaSuiteTools {
     /** Maven otherwise waits up to 30 minutes on a stalled download, silently consuming the whole suite deadline. */
     static final String MAVEN_NETWORK_TIMEOUTS = " -Daether.connector.connectTimeout=30000 -Daether.connector.requestTimeout=120000";
 
-    @Bean SuiteTool qaRunSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper,
+    @Bean SuiteTool qaRunSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, ContainerSettings settings, ObjectMapper mapper,
             QaEnvironments environments) {
         return new SuiteTool("QA_RUN_SUITE", false, registry, resolver, git, runner, settings, mapper, environments);
     }
 
-    @Bean SuiteTool qaRunPrivilegedSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, QaSettings settings, ObjectMapper mapper,
+    @Bean SuiteTool qaRunPrivilegedSuite(QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner, ContainerSettings settings, ObjectMapper mapper,
             QaEnvironments environments) {
         return new SuiteTool("QA_RUN_PRIVILEGED_SUITE", true, registry, resolver, git, runner, settings, mapper, environments);
     }
@@ -57,12 +59,12 @@ public class QaSuiteTools {
         private final QaSuiteResolver resolver;
         private final GitMirror git;
         private final ProcessRunner runner;
-        private final QaSettings settings;
+        private final ContainerSettings settings;
         private final ObjectMapper mapper;
         private final QaEnvironments environments;
 
         SuiteTool(String name, boolean privileged, QaRegistry registry, QaSuiteResolver resolver, GitMirror git, ProcessRunner runner,
-                QaSettings settings, ObjectMapper mapper, QaEnvironments environments) {
+                ContainerSettings settings, ObjectMapper mapper, QaEnvironments environments) {
             this.name = name; this.privileged = privileged; this.registry = registry; this.resolver = resolver; this.git = git;
             this.runner = runner; this.settings = settings; this.mapper = mapper; this.environments = environments;
         }
