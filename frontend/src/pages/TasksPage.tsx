@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { TaskStatus } from '../api/types';
 import { Empty, ErrorBanner, Pager, Section, Status, Time } from '../components/ui';
-import { useAction, usePolling } from '../hooks';
+import { usePolling } from '../hooks';
 import { useSession } from '../session';
 import { useT } from '../i18n';
 
@@ -17,15 +17,14 @@ export function TasksPage() {
   const tasks = usePolling(() => api.listTasks({ page, status }), [page, status], 5000);
 
   return (
-    <>
-      {can('OPERATOR') && <CreateTask />}
-      <Section title={tr('Tasks')} actions={
+    <Section title={tr('Tasks')} actions={<>
         <label className="inline">{tr('Status')}
           <select value={status} onChange={e => { setStatus(e.target.value as TaskStatus | ''); setPage(0); }}>
             {STATUSES.map(s => <option key={s} value={s}>{s || tr('All')}</option>)}
           </select>
         </label>
-      }>
+        {can('OPERATOR') && <Link className="button" to="/tasks/new">{tr('New task')}</Link>}
+      </>}>
         <ErrorBanner error={tasks.error} />
         {tasks.data && tasks.data.items.length === 0 && <Empty>{status ? tr('No tasks with status {status}.', { status: tr(status.replace(/_/g, ' ')) }) : tr('No tasks.')}</Empty>}
         {tasks.data && tasks.data.items.length > 0 && (
@@ -35,7 +34,7 @@ export function TasksPage() {
               <tbody>
                 {tasks.data.items.map(t => (
                   <tr key={t.id}>
-                    <td><Link to={`/tasks/${t.id}`}>{t.title}</Link></td>
+                    <td className="wrap-cell"><Link to={`/tasks/${t.id}`}>{t.title}</Link></td>
                     <td><Status value={t.status} /></td>
                     <td><Time value={t.createdAt} /></td>
                     <td><Time value={t.updatedAt} /></td>
@@ -46,32 +45,6 @@ export function TasksPage() {
           </div>
         )}
         {tasks.data && <Pager page={page} totalPages={tasks.data.totalPages} onPage={setPage} />}
-      </Section>
-    </>
-  );
-}
-
-function CreateTask() {
-  const tr = useT();
-  const navigate = useNavigate();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const action = useAction();
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    const task = await action.run(() => api.createTask(title.trim(), description.trim() || null));
-    if (task) navigate(`/tasks/${task.id}`);
-  };
-
-  return (
-    <Section title={tr('New task')}>
-      <form className="stack" onSubmit={submit}>
-        <label>{tr('Title')}<input value={title} onChange={e => setTitle(e.target.value)} maxLength={255} required /></label>
-        <label>{tr('Description')}<textarea value={description} onChange={e => setDescription(e.target.value)} maxLength={10000} rows={3} /></label>
-        <ErrorBanner error={action.error} />
-        <div><button type="submit" disabled={action.busy || !title.trim()}>{tr('Create task')}</button></div>
-      </form>
     </Section>
   );
 }

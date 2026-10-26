@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { api, newKey } from '../api/client';
 import type { QaProject } from '../api/types';
 import { useAction, usePolling } from '../hooks';
@@ -72,21 +73,11 @@ export function ProjectEnvironments({ project }: { project: QaProject }) {
   const { can } = useSession();
   const environments = usePolling(() => api.environments(project.key), [project.key], 0);
   const action = useAction();
-  const [form, setForm] = useState({ key: '', name: '', services: '' });
-  const change = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) { setForm({ key: '', name: '', services: '' }); void environments.reload(); } };
-  const save = (e: FormEvent) => {
-    e.preventDefault();
-    // One "service=base URL" per line.
-    const services: Record<string, string> = {};
-    for (const line of form.services.split('\n')) {
-      const i = line.indexOf('=');
-      if (i > 0) services[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-    }
-    void change(() => api.admin.putEnvironment(project.key, form.key.trim(), { name: form.name.trim(), services }));
-  };
+  const change = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) void environments.reload(); };
   return (
     <>
-      <h3 className="subhead">{tr('Environments')}</h3>
+      <div className="row spread subhead-row"><h3 className="subhead">{tr('Environments')}</h3>
+        {can('APPROVER') && <Link className="button secondary" to={`/qa/projects/${project.key}/environments/new`}>{tr('Add environment')}</Link>}</div>
       <ErrorBanner error={environments.error ?? action.error} />
       {environments.data?.length === 0 && <Empty>{tr('No test environment is registered.')}</Empty>}
       {environments.data?.map(env => (
@@ -98,15 +89,6 @@ export function ProjectEnvironments({ project }: { project: QaProject }) {
             onClick={() => window.confirm(`Delete environment ${env.key}?`) && change(() => api.admin.deleteEnvironment(project.key, env.key))}>{tr('Delete')}</button>}
         </div>
       ))}
-      {can('APPROVER') && (
-        <form className="row" onSubmit={save}>
-          <label className="inline">{tr('Key')}<input value={form.key} onChange={e => setForm({ ...form, key: e.target.value })} placeholder="uat" required /></label>
-          <label className="inline">{tr('Name')}<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
-          <label className="inline">{tr('Services')}<textarea rows={2} value={form.services} onChange={e => setForm({ ...form, services: e.target.value })}
-            placeholder="order-api=http://host:8081" required /></label>
-          <button type="submit" className="secondary" disabled={action.busy}>{tr('Save environment')}</button>
-        </form>
-      )}
     </>
   );
 }

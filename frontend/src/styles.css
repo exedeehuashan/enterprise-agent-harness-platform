@@ -50,6 +50,10 @@ pre { background: var(--muted-bg); padding: 8px 12px; border-radius: 6px; overfl
 .small { font-size: 0.85rem; }
 .empty { color: var(--muted); margin: 8px 0; }
 .subhead { font-size: 0.95rem; margin: 16px 0 6px; }
+.subhead-row { margin: 16px 0 6px; }
+.subhead-row .subhead { margin: 0; }
+.page-actions { justify-content: flex-end; margin-bottom: 12px; }
+.form-body { max-width: 640px; }
 .wrap-cell { white-space: normal; word-break: break-word; min-width: 160px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0 12px; }
 .stat { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }

@@ -1,4 +1,3 @@
-import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { QaProject } from '../api/types';
@@ -7,22 +6,17 @@ import { useSession } from '../session';
 import { ErrorBanner, Status, Time } from './ui';
 import { useT } from '../i18n';
 
-/** Scheduled runs of a project: everyone can see them; approvers can add, pause and remove them. */
+/** Scheduled runs of a project: everyone can see them; approvers pause and remove them here and add them on their own page. */
 export function ProjectSchedules({ project }: { project: QaProject }) {
   const tr = useT();
   const { can } = useSession();
   const schedules = usePolling(() => api.schedules(project.key), [project.key], 15000);
   const action = useAction();
-  const [form, setForm] = useState({ suite: project.suites[0]?.key ?? '', ref: project.defaultRef, kind: 'ON_CHANGE', cron: '0 0 2 * * *', environment: '' });
   const change = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) void schedules.reload(); };
-  const create = (e: FormEvent) => {
-    e.preventDefault();
-    void change(() => api.admin.createSchedule({ project: project.key, suite: form.suite.trim(), ref: form.ref.trim(), kind: form.kind,
-      ...(form.kind === 'CRON' ? { cron: form.cron.trim() } : {}), ...(form.environment.trim() ? { environment: form.environment.trim() } : {}) }));
-  };
   return (
     <>
-      <h3 className="subhead">{tr('Schedules')}</h3>
+      <div className="row spread subhead-row"><h3 className="subhead">{tr('Schedules')}</h3>
+        {can('APPROVER') && <Link className="button secondary" to={`/qa/projects/${project.key}/schedules/new`}>{tr('Add schedule')}</Link>}</div>
       <ErrorBanner error={schedules.error ?? action.error} />
       {schedules.data?.length === 0 && <p className="muted small">{tr('No scheduled runs.')}</p>}
       {schedules.data && schedules.data.length > 0 && (
@@ -42,17 +36,6 @@ export function ProjectSchedules({ project }: { project: QaProject }) {
             </tr>
           ))}</tbody>
         </table></div>
-      )}
-      {can('APPROVER') && (
-        <form className="row" onSubmit={create}>
-          <label className="inline">{tr('Suite or API collection')}<input value={form.suite} onChange={e => setForm({ ...form, suite: e.target.value })} required /></label>
-          <label className="inline">{tr('Environment')}<input value={form.environment} onChange={e => setForm({ ...form, environment: e.target.value })} placeholder={tr('for API tests only')} /></label>
-          <label className="inline">{tr('Ref')}<input value={form.ref} onChange={e => setForm({ ...form, ref: e.target.value })} required /></label>
-          <label className="inline">{tr('When')}<select value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}>
-            <option value="ON_CHANGE">{tr('when the ref changes')}</option><option value="CRON">{tr('on a schedule (UTC)')}</option></select></label>
-          {form.kind === 'CRON' && <label className="inline">{tr('Cron')}<input value={form.cron} onChange={e => setForm({ ...form, cron: e.target.value })} title={tr('second minute hour day month weekday')} /></label>}
-          <button type="submit" className="secondary" disabled={action.busy}>{tr('Add schedule')}</button>
-        </form>
       )}
     </>
   );

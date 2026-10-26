@@ -1,11 +1,12 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import type { WebhookCreated, WebhookFormat } from '../api/types';
+import type { WebhookFormat } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { Empty, ErrorBanner, Section, Time } from './ui';
 import { useT } from '../i18n';
 
-const FORMATS: { value: WebhookFormat; label: string; url: string; signing: boolean }[] = [
+export const FORMATS: { value: WebhookFormat; label: string; url: string; signing: boolean }[] = [
   { value: 'generic', label: 'Webhook (signed JSON)', url: 'https://hooks.example.com/eahp', signing: false },
   { value: 'slack', label: 'Slack', url: 'https://hooks.slack.com/services/…', signing: false },
   { value: 'dingtalk', label: 'DingTalk 钉钉', url: 'https://oapi.dingtalk.com/robot/send?access_token=…', signing: true },
@@ -19,33 +20,18 @@ export function WebhooksPanel() {
   const tr = useT();
   const hooks = usePolling(() => api.webhooks(), [], 15000);
   const action = useAction();
-  const [form, setForm] = useState({ name: '', format: 'generic' as WebhookFormat, url: '', secret: '', recipients: '', events: 'RUN_*, APPROVAL_REQUESTED, QA_RESULT_INGESTED' });
-  const [created, setCreated] = useState<WebhookCreated | null>(null);
   const [tested, setTested] = useState<Record<string, string>>({});
-  const format = FORMATS.find(f => f.value === form.format)!;
   const change = async (call: () => Promise<unknown>) => { if (await action.run(call) !== undefined) void hooks.reload(); };
-  const create = async (e: FormEvent) => {
-    e.preventDefault();
-    const events = form.events.split(',').map(s => s.trim()).filter(Boolean);
-    const body: Record<string, unknown> = { name: form.name.trim(), format: form.format, events };
-    if (form.format === 'email') body.recipients = form.recipients.split(',').map(s => s.trim()).filter(Boolean);
-    else body.url = form.url.trim();
-    if (format.signing && form.secret.trim()) body.secret = form.secret.trim();
-    const result = await action.run(() => api.createWebhook(body));
-    if (result) { setCreated(result.secret ? result : null); setForm({ ...form, name: '', url: '', secret: '', recipients: '' }); void hooks.reload(); }
-  };
   const test = async (id: string) => {
     const d = await action.run(() => api.testWebhook(id));
     if (d) { setTested({ ...tested, [id]: d.error ? `Test failed: ${d.error}` : tr('Test message sent') }); void hooks.reload(); }
   };
   return (
-    <Section title={tr('Notifications')}>
+    <Section title={tr('Notifications')} actions={<Link className="button secondary" to="/admin/notifications/new">{tr('Add notification')}</Link>}>
       <p className="muted small">{tr('EAHP sends each matching event (run lifecycle, approvals, QA results, quarantine suggestions) in order. A webhook receives JSON signed with')}
         <code> X-EAHP-Signature: sha256=HMAC(secret, body)</code>; Slack, DingTalk, WeCom and Feishu robots and email receive a short message with a link.
         Failed deliveries are retried with backoff; after 20 failures in a row a subscription pauses.</p>
       <ErrorBanner error={hooks.error ?? action.error} />
-      {created && <div className="notice" role="status">{tr('Secret for')} <strong>{created.subscription.name}</strong> {tr('(shown only now):')} <code>{created.secret}</code>
-        <button className="secondary" onClick={() => setCreated(null)}>{tr('Done')}</button></div>}
       {hooks.data?.length === 0 && <Empty>{tr('No notifications.')}</Empty>}
       {hooks.data && hooks.data.length > 0 && (
         <div className="table-wrap"><table>
@@ -68,17 +54,6 @@ export function WebhooksPanel() {
           ))}</tbody>
         </table></div>
       )}
-      <form className="row" onSubmit={create}>
-        <label className="inline">{tr('Name')}<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required maxLength={120} /></label>
-        <label className="inline">{tr('Send to')}<select value={form.format} onChange={e => setForm({ ...form, format: e.target.value as WebhookFormat })}>
-          {FORMATS.map(f => <option key={f.value} value={f.value}>{tr(f.label)}</option>)}</select></label>
-        {form.format === 'email'
-          ? <label className="inline">{tr('Recipients')}<input value={form.recipients} onChange={e => setForm({ ...form, recipients: e.target.value })} required placeholder="qa@example.com, lead@example.com" /></label>
-          : <label className="inline">URL<input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} required placeholder={format.url} /></label>}
-        {format.signing && <label className="inline">{tr('Signing secret (optional)')}<input value={form.secret} onChange={e => setForm({ ...form, secret: e.target.value })} placeholder="SEC…" /></label>}
-        <label className="inline">{tr('Events')}<input value={form.events} onChange={e => setForm({ ...form, events: e.target.value })} required /></label>
-        <button type="submit" className="secondary" disabled={action.busy}>{tr('Add')}</button>
-      </form>
     </Section>
   );
 }

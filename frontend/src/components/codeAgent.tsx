@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { api, newKey } from '../api/client';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
@@ -11,15 +12,8 @@ export function CodeRepositoriesPanel() {
   const { can } = useSession();
   const repos = usePolling(() => api.codeRepositories(), [], 0);
   const action = useAction();
-  const [form, setForm] = useState({ key: '', name: '', repositoryUrl: '', defaultRef: 'main', allowPush: false });
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    if (await action.run(() => api.putCodeRepository(form.key.trim(), { name: form.name.trim(), repositoryUrl: form.repositoryUrl.trim(), defaultRef: form.defaultRef.trim(), allowPush: form.allowPush }))) {
-      setForm({ key: '', name: '', repositoryUrl: '', defaultRef: 'main', allowPush: false }); void repos.reload();
-    }
-  };
   return (
-    <Section title={tr('Code agent repositories')}>
+    <Section title={tr('Code agent repositories')} actions={can('APPROVER') && <Link className="button secondary" to="/admin/code-repositories/new">{tr('Add repository')}</Link>}>
       <p className="muted small">Claude Code may only work on these repositories, and every run needs an approver. With pushing allowed and EAHP_GITHUB_WRITE_TOKEN set,
         EAHP pushes the agent's change to a new branch and opens a draft pull request; otherwise only the diff is recorded.</p>
       <ErrorBanner error={repos.error ?? action.error} />
@@ -31,16 +25,6 @@ export function CodeRepositoriesPanel() {
           {can('APPROVER') && <button className="danger" disabled={action.busy} onClick={() => window.confirm(`Remove ${r.key}?`) && action.run(() => api.deleteCodeRepository(r.key)).then(() => repos.reload())}>{tr('Remove')}</button>}
         </div>
       ))}
-      {can('APPROVER') && (
-        <form className="row" onSubmit={save}>
-          <label className="inline">{tr('Key')}<input value={form.key} onChange={e => setForm({ ...form, key: e.target.value })} required placeholder="online-shop" /></label>
-          <label className="inline">{tr('Name')}<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
-          <label className="inline">{tr('Repository URL')}<input value={form.repositoryUrl} onChange={e => setForm({ ...form, repositoryUrl: e.target.value })} required placeholder="https://github.com/owner/repo.git" /></label>
-          <label className="inline">{tr('Default ref')}<input value={form.defaultRef} onChange={e => setForm({ ...form, defaultRef: e.target.value })} required /></label>
-          <label className="inline"><input type="checkbox" checked={form.allowPush} onChange={e => setForm({ ...form, allowPush: e.target.checked })} />{tr('allow push')}</label>
-          <button type="submit" className="secondary" disabled={action.busy}>{tr('Save repository')}</button>
-        </form>
-      )}
     </Section>
   );
 }

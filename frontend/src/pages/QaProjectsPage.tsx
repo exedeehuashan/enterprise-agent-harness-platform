@@ -1,9 +1,10 @@
-import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { Empty, ErrorBanner, Section } from '../components/ui';
 import { usePolling } from '../hooks';
 import { useSession } from '../session';
-import { NewProjectForm, ProjectAdminPanel } from '../components/qaAdmin';
+import { ProjectAdminPanel } from '../components/qaAdmin';
 import { ProjectSchedules } from '../components/qaSchedules';
 import { ProjectEnvironments } from '../components/qaApiTests';
 import { GitHubWriteBackPanel } from '../components/githubWriteBack';
@@ -15,13 +16,16 @@ export function QaProjectsPage() {
   const tr = useT();
   const projects = usePolling(() => api.qaProjects(), [], 0);
   const { can } = useSession();
+  const { hash } = useLocation();
+  // Coming back from a form ("/qa#project-<key>") shows the project that was changed.
+  useEffect(() => { if (projects.data && hash) document.getElementById(hash.slice(1))?.scrollIntoView?.(); }, [projects.data, hash]);
   return (
     <>
-      {can('APPROVER') && <NewProjectForm onCreated={projects.reload} />}
+      {can('APPROVER') && <div className="row page-actions"><Link className="button" to="/qa/projects/new">{tr('Register a project')}</Link></div>}
       <ErrorBanner error={projects.error} />
       {projects.data?.length === 0 && <Empty>{tr('No test projects are registered.')}</Empty>}
       {projects.data?.map(p => (
-        <Section key={p.key} title={p.name} actions={<span className={`badge ${p.enabled ? 'badge-ok' : 'badge-muted'}`}>{p.enabled ? 'enabled' : 'disabled'}</span>}>
+        <Section key={p.key} id={`project-${p.key}`} title={p.name} actions={<span className={`badge ${p.enabled ? 'badge-ok' : 'badge-muted'}`}>{p.enabled ? 'enabled' : 'disabled'}</span>}>
           <dl className="meta">
             <dt>{tr('Key')}</dt><dd><code>{p.key}</code></dd>
             <dt>{tr('Repository')}</dt><dd><code className="wrap">{p.repositoryUrl}</code></dd>

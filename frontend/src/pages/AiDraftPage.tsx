@@ -23,7 +23,7 @@ export function AiDraftPage() {
 
   useEffect(() => { if (!env && runnable.length) setEnv(runnable[0].key); }, [env, runnable]);
   // A link to one case scrolls to it once the cases are on the page.
-  useEffect(() => { if (d && hash) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView(); }, [d, hash]);
+  useEffect(() => { if (d && hash) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.(); }, [d, hash]);
 
   const run = async () => {
     const r = await action.run(() => api.runAiDraft(project, id, env));
