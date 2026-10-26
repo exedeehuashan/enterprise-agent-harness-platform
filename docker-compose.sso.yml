@@ -1,6 +1,8 @@
 # Opt-in: a local Keycloak for single sign-on development (P46). Prepare it once with scripts/sso-dev.sh.
 # Usage: EAHP_SSO=on scripts/deploy.sh   (or add -f docker-compose.sso.yml to docker compose commands)
 # For a real identity provider, set EAHP_SSO_ISSUER / EAHP_SSO_JWKS_URI / EAHP_SSO_ORIGIN in .env instead.
+# EAHP_SSO_DEV_URL (in .env) is the address browsers use to reach this Keycloak; default http://127.0.0.1:8180. To sign in
+# from other devices, publish Keycloak there (for example https://<host>.ts.net:8443 with tailscale serve) and set it.
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.7
@@ -8,9 +10,10 @@ services:
     restart: unless-stopped
     env_file: [sso/generated/keycloak.env]
     environment:
-      # The issuer browsers and EAHP agree on; EAHP fetches keys over the internal network.
-      KC_HOSTNAME: http://127.0.0.1:8180
-      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # The issuer browsers and EAHP agree on. Every endpoint Keycloak advertises uses it, so behind an HTTPS proxy
+      # (tailscale serve) the token endpoint stays https; EAHP fetches keys over the internal network by its own URL.
+      KC_HOSTNAME: ${EAHP_SSO_DEV_URL:-http://127.0.0.1:8180}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "false"
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
     volumes:
@@ -28,8 +31,8 @@ services:
       keycloak:
         condition: service_healthy
     environment:
-      EAHP_SECURITY_OIDC_ISSUER: http://127.0.0.1:8180/realms/eahp
+      EAHP_SECURITY_OIDC_ISSUER: ${EAHP_SSO_DEV_URL:-http://127.0.0.1:8180}/realms/eahp
       EAHP_SECURITY_OIDC_JWKS_URI: http://keycloak:8080/realms/eahp/protocol/openid-connect/certs
   console:
     environment:
-      EAHP_CSP_CONNECT_EXTRA: http://127.0.0.1:8180
+      EAHP_CSP_CONNECT_EXTRA: ${EAHP_SSO_DEV_URL:-http://127.0.0.1:8180}
