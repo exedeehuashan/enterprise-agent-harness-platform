@@ -18,15 +18,18 @@ import java.util.Set;
  *
  * <pre>{"schemaVersion":1,"collections":[{"key":"order-api-smoke","name":"Order API smoke","service":"order-api",
  *   "variables":{"customerId":"eahp-{{$runId}}"},
- *   "cases":[{"id":"TC-001","name":"Create an order","steps":[{"name":"create",
+ *   "cases":[{"id":"TC-001","name":"Create an order","category":"happy-path","steps":[{"name":"create",
  *     "request":{"method":"POST","path":"/api/v1/customers/{{customerId}}/orders","headers":{"Idempotency-Key":"{{$uuid}}"},"json":{...}},
  *     "expect":{"status":201,"headers":{"Location":{"exists":true}},"json":[{"path":"$.status","equals":"DRAFT"}],"maxMillis":2000},
  *     "capture":{"orderId":"$.id","etag":"header:ETag"}}]}]}]}</pre>
+ * A case may name what it checks with {@code category}, one of {@link #CATEGORIES}; AI-generated drafts must.
  */
 public final class ApiCollections {
     public static final String FILE = ".eahp/api-tests.json";
     public static final int MAX_BYTES = 256 * 1024;
     static final Set<String> METHODS = Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD");
+    /** What a case checks: a successful call, input validation, a missing resource, idempotency, concurrency, or a state rule. */
+    public static final List<String> CATEGORIES = List.of("happy-path", "validation", "not-found", "idempotency", "concurrency", "state-rule");
     private static final ObjectMapper STRICT = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
@@ -54,11 +57,13 @@ public final class ApiCollections {
             if (cases == null || !cases.isArray() || cases.isEmpty() || cases.size() > 200) throw invalid(key + ": cases must list 1..200 cases");
             Set<String> ids = new HashSet<>();
             for (JsonNode tc : cases) {
-                fields(tc, Set.of("id", "name", "service", "steps"), "case");
+                fields(tc, Set.of("id", "name", "category", "service", "steps"), "case");
                 String id = text(tc, "id", 40, true);
                 if (!id.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,39}") || !ids.add(id)) throw invalid(key + ": case id '" + id + "' is invalid or repeated");
                 String where = key + "/" + id;
                 text(tc, "name", 200, true);
+                String category = text(tc, "category", 20, false);
+                if (category != null && !CATEGORIES.contains(category)) throw invalid(where + ": category must be one of " + String.join(", ", CATEGORIES));
                 service(tc, false, where);
                 var steps = tc.get("steps");
                 if (steps == null || !steps.isArray() || steps.isEmpty() || steps.size() > 20) throw invalid(where + ": steps must list 1..20 steps");

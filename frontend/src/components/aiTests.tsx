@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import type { AiTestDraft, QaProject } from '../api/types';
+import type { AiTestDraft, ApiTestCase, QaProject } from '../api/types';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
 import { ErrorBanner, Time } from './ui';
@@ -14,6 +14,43 @@ function download(draft: AiTestDraft) {
   const a = document.createElement('a');
   a.href = url; a.download = `${draft.collection?.key ?? 'ai-tests'}.api-tests.json`; a.click();
   URL.revokeObjectURL(url);
+}
+
+/** What a case checks, in the order the generator is asked to cover them. */
+export const CASE_CATEGORIES: Record<string, string> = {
+  'happy-path': 'happy path', validation: 'validation', 'not-found': 'not found', idempotency: 'idempotency', concurrency: 'concurrency', 'state-rule': 'state rule',
+};
+
+/** Per-category counts and, on demand, every case with its steps. */
+function DraftCases({ cases }: { cases: ApiTestCase[] }) {
+  const tr = useT();
+  const label = (c?: string) => tr(c && CASE_CATEGORIES[c] ? CASE_CATEGORIES[c] : 'uncategorised');
+  const counts = new Map<string, number>();
+  for (const c of cases) counts.set(label(c.category), (counts.get(label(c.category)) ?? 0) + 1);
+  const status = (s?: number | number[]) => (Array.isArray(s) ? s.join('/') : s ?? '');
+  return (
+    <>
+      <div className="row">{[...counts].map(([k, n]) => <span key={k} className="badge">{k} {n}</span>)}</div>
+      <details>
+        <summary>{tr('Show cases')}</summary>
+        <div className="table-wrap"><table>
+          <thead><tr><th>{tr('ID')}</th><th>{tr('Name')}</th><th>{tr('Category')}</th><th>{tr('Steps')}</th></tr></thead>
+          <tbody>
+            {cases.map(c => (
+              <tr key={c.id}>
+                <td><code>{c.id}</code></td>
+                <td>{c.name}</td>
+                <td><span className="badge">{label(c.category)}</span></td>
+                <td>{(c.steps ?? []).map((s, i) => (
+                  <div key={i} className="wrap"><code>{s.request?.method} {s.request?.path}</code> → {status(s.expect?.status)}</div>
+                ))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </details>
+    </>
+  );
 }
 
 /** AI-generated API tests: draft a collection from an OpenAPI document, review it, run it against an environment. */
@@ -55,16 +92,17 @@ export function AiTestsPanel({ project }: { project: QaProject }) {
       {drafts.data?.map(d => (
         <article key={d.id} className="item small">
           <div className="row spread">
-            <div><strong>{d.collection?.name ?? tr('Invalid draft')}</strong> <code className="muted">{d.collection?.key}</code>{' '}
-              <span className={`badge ${d.valid ? 'badge-ok' : 'badge-bad'}`}>{d.valid ? `${d.collection?.cases?.length ?? 0} cases` : tr('invalid')}</span>
+            <div className="fill"><strong>{d.collection?.name ?? tr('Invalid draft')}</strong> <code className="muted">{d.collection?.key}</code>{' '}
+              <span className={`badge ${d.valid ? 'badge-ok' : 'badge-bad'}`}>{d.valid ? tr('{n} cases', { n: d.collection?.cases?.length ?? 0 }) : tr('invalid')}</span>
               <div className="muted">{d.specPath} @ <code>{d.commitSha.slice(0, 7)}</code> → {d.service} · {d.provider}/{d.model} · <Time value={d.createdAt} /> {tr('by {who}', { who: d.createdBy })}</div>
               {d.error && <div className="error">{d.error}</div>}
               {d.notes && <div>{d.notes}</div>}
+              {d.valid && d.collection?.cases && <DraftCases cases={d.collection.cases} />}
             </div>
             {d.valid && <div className="row">
               <button className="secondary" onClick={() => download(d)}>{tr('Download')}</button>
-              {can('OPERATOR') && <button className="secondary" disabled={action.busy || !env} title={env ? `Run against ${env.name}` : tr('No environment registered')} onClick={() => void run(d.id)}>
-                {env ? `Run against ${env.key}` : tr('No environment')}</button>}
+              {can('OPERATOR') && <button className="secondary" disabled={action.busy || !env} title={env ? tr('Run against {name}', { name: env.name }) : tr('No environment registered')} onClick={() => void run(d.id)}>
+                {env ? tr('Run against {name}', { name: env.key }) : tr('No environment')}</button>}
             </div>}
           </div>
         </article>

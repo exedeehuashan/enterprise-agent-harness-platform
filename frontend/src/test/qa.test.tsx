@@ -217,7 +217,10 @@ describe('QA console', () => {
       'GET /qa/environments': () => ({ body: [{ projectKey: 'online-shop', key: 'uat', name: 'Local UAT', services: { 'order-api': 'http://host.docker.internal:18081' }, enabled: true }] }),
       'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }),
       'GET /qa/projects/online-shop/ai/api-tests': () => ({ body: aiDrafts }),
-      'POST /qa/projects/online-shop/ai/api-tests': () => { aiDrafts.unshift({ ...aiDrafts[0], id: 'd2', valid: true, error: null, collection: { key: 'ai-orders', name: 'Orders by AI', service: 'order-api', cases: [{}, {}, {}] } }); return { body: aiDrafts[0] }; },
+      'POST /qa/projects/online-shop/ai/api-tests': () => { aiDrafts.unshift({ ...aiDrafts[0], id: 'd2', valid: true, error: null, collection: { key: 'ai-orders', name: 'Orders by AI', service: 'order-api', cases: [
+        { id: 'TC-001', name: 'Create an order', category: 'happy-path', steps: [{ request: { method: 'POST', path: '/api/v1/orders' }, expect: { status: 201 } }] },
+        { id: 'TC-002', name: 'Reject an empty cart', category: 'validation', steps: [{ request: { method: 'POST', path: '/api/v1/orders' }, expect: { status: [400, 422] } }] },
+        { id: 'TC-003', name: 'Unknown order', category: 'not-found', steps: [{ request: { method: 'GET', path: '/api/v1/orders/x' }, expect: { status: 404 } }] }] } }); return { body: aiDrafts[0] }; },
       'POST /qa/projects/online-shop/ai/api-tests/d2/run': () => ({ body: { runId: 'run-ai' } }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
@@ -232,6 +235,14 @@ describe('QA console', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
     expect(await screen.findByText('Orders by AI')).toBeInTheDocument();
     expect(screen.getByText('3 cases')).toBeInTheDocument();
+    expect(screen.getByText('happy path 1')).toBeInTheDocument();
+    expect(screen.getByText('validation 1')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Show cases'));
+    const row = screen.getByText('Reject an empty cart').closest('tr')!;
+    expect(within(row).getByText('TC-002')).toBeInTheDocument();
+    expect(within(row).getByText('validation')).toBeInTheDocument();
+    expect(within(row).getByText('POST /api/v1/orders')).toBeInTheDocument();
+    expect(row).toHaveTextContent('→ 400/422');
     await userEvent.click(screen.getByRole('button', { name: 'Run against uat' }));
     expect(await screen.findByRole('link', { name: "the draft's run" })).toHaveAttribute('href', '/runs/run-ai');
     expect(screen.queryByRole('button', { name: 'Turn on' })).not.toBeInTheDocument();

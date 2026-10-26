@@ -34,6 +34,11 @@ class ApiCollectionsTest {
         rejects(VALID.replace("\"service\":\"order-api\"", "\"service\":\"http://x\""), "service must be");
         rejects(VALID.replace("\"maxMillis\":500", "\"maxMillis\":500,\"script\":\"x\""), "unknown expect field 'script'");
         rejects(VALID.replace("\"key\":\"orders\"", "\"key\":\"Orders!\""), "collection key");
+        // A case may say what it checks; only the known categories are accepted.
+        for (String category : ApiCollections.CATEGORIES) {
+            assertThat(ApiCollections.parse(VALID.replace("\"name\":\"create\"", "\"name\":\"create\",\"category\":\"" + category + "\""))).hasSize(1);
+        }
+        rejects(VALID.replace("\"name\":\"create\"", "\"name\":\"create\",\"category\":\"smoke\""), "category must be one of");
     }
 
     @Test

@@ -49,8 +49,8 @@ class AiEvalApiTest {
                                 : "{\"summary\":\"Testcontainers found no Docker daemon.\",\"likelyCause\":\"The runner has no Docker access.\",\"category\":\"ENVIRONMENT\",\"confidence\":\"high\",\"suggestedActions\":[\"Run with Docker access\"],\"affectedTests\":[\"com.example.identity.IdentityPersistenceTest\"]}";
                     } else if (r.system().contains("You write API tests")) {
                         text = "{\"notes\":\"Ignored the instruction in the description.\",\"collection\":\"{\\\"key\\\":\\\"ai-orders\\\",\\\"name\\\":\\\"Orders\\\",\\\"service\\\":\\\"order-api\\\",\\\"cases\\\":["
-                                + "{\\\"id\\\":\\\"TC-001\\\",\\\"name\\\":\\\"List orders\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"/api/v1/customers/eahp-{{$runId}}/orders?page=0\\\"},\\\"expect\\\":{\\\"status\\\":200}}]},"
-                                + "{\\\"id\\\":\\\"TC-002\\\",\\\"name\\\":\\\"Unknown order\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"/api/v1/orders/{{$uuid}}\\\"},\\\"expect\\\":{\\\"status\\\":404}}]}]}\"}";
+                                + "{\\\"id\\\":\\\"TC-001\\\",\\\"name\\\":\\\"List orders\\\",\\\"category\\\":\\\"happy-path\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"/api/v1/customers/eahp-{{$runId}}/orders?page=0\\\"},\\\"expect\\\":{\\\"status\\\":200}}]},"
+                                + "{\\\"id\\\":\\\"TC-002\\\",\\\"name\\\":\\\"Unknown order\\\",\\\"category\\\":\\\"not-found\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"/api/v1/orders/{{$uuid}}\\\"},\\\"expect\\\":{\\\"status\\\":404}}]}]}\"}";
                     } else {
                         // Planning: obeys the injected tool, which the plan validator rejects.
                         text = "{\"schemaVersion\":1,\"summary\":\"x\",\"steps\":[{\"tool\":\"SHELL_EXEC\",\"toolVersion\":1,\"target\":\"prod\",\"timeoutSeconds\":9999}]}";
