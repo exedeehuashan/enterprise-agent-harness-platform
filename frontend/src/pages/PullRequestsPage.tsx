@@ -30,6 +30,20 @@ function Scope({ row }: { row: PullRequestRun }) {
   return null;
 }
 
+/** The impact analysis' notes come from the server in English; each known shape is translated with its values. */
+function noteText(tr: (key: string, values?: Record<string, string | number>) => string, note: string) {
+  let m = note.match(/^(\d+) changed file\(s\) are outside the (Maven|build) modules \(for example frontend, CI or docs\); backend suites do not cover them\.$/);
+  if (m) return tr(m[2] === 'Maven' ? '{n} changed file(s) are outside the Maven modules (for example frontend, CI or docs); backend suites do not cover them.'
+    : '{n} changed file(s) are outside the build modules (for example frontend, CI or docs); backend suites do not cover them.', { n: m[1] });
+  m = note.match(/^(.+) changed but has no test classes of its own; it is only covered through dependent modules, if at all\.$/);
+  if (m) return tr('{dir} changed but has no test classes of its own; it is only covered through dependent modules, if at all.', { dir: m[1] });
+  m = note.match(/^(.+) changed but has no tests of its own; it is only covered through dependent modules, if at all\.$/);
+  if (m) return tr('{dir} changed but has no tests of its own; it is only covered through dependent modules, if at all.', { dir: m[1] === 'The root project' ? tr('The root project') : m[1] });
+  m = note.match(/^A build-wide (Gradle|workspace) file changed, so every (\w+) module is affected\.$/);
+  if (m) return tr('A build-wide {kind} file changed, so every {system} module is affected.', { kind: m[1] === 'Gradle' ? 'Gradle' : tr('workspace'), system: m[2] });
+  return tr(note);
+}
+
 /** What the GitHub poller saw for each pull request head commit, and what EAHP did about it. */
 export function PullRequestsPage() {
   const tr = useT();
@@ -56,7 +70,8 @@ export function PullRequestsPage() {
         <ErrorBanner error={rows.error} />
         {rows.data?.length === 0 && <Empty>{tr('No pull requests have been seen yet.')}</Empty>}
         {rows.data && rows.data.length > 0 && (
-          <div className="table-wrap"><table>
+          <div className="table-wrap"><table className="pr-runs">
+            <colgroup><col className="c-pr" /><col className="c-commit" /><col className="c-suite" /><col /><col className="c-run" /><col className="c-seen" /><col className="c-action" /></colgroup>
             <thead><tr><th>{tr('Pull request')}</th><th>{tr('Commit')}</th><th>{tr('Suite')}</th><th>{tr('Trigger')}</th><th>{tr('Run')}</th><th>{tr('Seen')}</th><th /></tr></thead>
             <tbody>{rows.data.map(r => (
               <Fragment key={r.id}>
@@ -102,16 +117,16 @@ function ImpactView({ row }: { row: PullRequestRun }) {
       <p className="small"><code>{(d.baseSha ?? '').slice(0, 7)}…{d.headSha.slice(0, 7)}</code>: {tr(i.changedFileCount === 1 ? '{n} changed file' : '{n} changed files', { n: i.changedFileCount })}
         {i.truncated ? tr(' (list truncated)') : ''}; {tr(i.modules.length === 1 ? '{n} affected module' : '{n} affected modules', { n: i.modules.length })}; {tr('{n} test classes in scope.', { n: i.testClasses.length })}</p>
       {i.modules.length > 0 && (
-        <table>
+        <div className="table-wrap"><table>
           <thead><tr><th>{tr('Module')}</th><th>{tr('Build')}</th><th>{tr('Why')}</th><th>{tr('Changed files')}</th><th>{tr('Test classes')}</th></tr></thead>
           <tbody>{i.modules.map(m => (
             <tr key={(m.buildSystem ?? 'maven') + m.dir}><td><code>{m.dir || '/'}</code>{m.coordinates && m.coordinates !== m.dir && <div className="muted small">{m.coordinates}</div>}</td>
               <td className="small">{m.buildSystem ?? 'maven'}</td><td>{REASON[m.reason] ? tr(REASON[m.reason]) : m.reason}</td><td>{m.changedFiles}</td>
               <td>{m.testClasses === 0 ? <span className="badge badge-warn">{tr('none')}</span> : m.testClasses}</td></tr>
           ))}</tbody>
-        </table>
+        </table></div>
       )}
-      {i.notes.map((n, k) => <p key={k} className="muted small">⚠ {n}</p>)}
+      {i.notes.map((n, k) => <p key={k} className="muted small">⚠ {noteText(tr, n)}</p>)}
       <details><summary className="small">{tr('Changed files')}</summary><ul className="small">{i.changedFiles.map(f => <li key={f}><code>{f}</code></li>)}</ul></details>
     </div>
   );

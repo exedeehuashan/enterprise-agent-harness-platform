@@ -140,6 +140,15 @@ table.case-list col.c-category { width: 88px; }
 table.case-list col.c-service { width: 110px; }
 table.case-list col.c-draft { width: 22%; }
 table.case-list col.c-time { width: 120px; }
+table.pr-runs { table-layout: fixed; min-width: 760px; }
+table.pr-runs > tbody > tr > td { white-space: normal; vertical-align: top; overflow-wrap: anywhere; }
+table.pr-runs col.c-pr { width: 24%; }
+table.pr-runs col.c-commit { width: 82px; }
+table.pr-runs col.c-suite { width: 112px; }
+table.pr-runs col.c-run { width: 120px; }
+table.pr-runs col.c-seen { width: 112px; }
+table.pr-runs col.c-action { width: 136px; }
+table.pr-runs button { white-space: nowrap; }
 @media (max-width: 640px) {
   /* On phones each case is a block: ID and category, then the name, then the steps. */
   table.cases { min-width: 0; }
@@ -161,4 +170,12 @@ table.case-list col.c-time { width: 120px; }
   table.case-list td:nth-child(3) { order: 1; }
   table.case-list td:nth-child(2) { order: 2; flex-basis: 100%; }
   table.case-list td:nth-child(n+4) { order: 3; font-size: 0.85rem; color: var(--muted); }
+  /* Pull request runs: one block per run; the impact view keeps its own scrolling table. */
+  table.pr-runs { min-width: 0; }
+  table.pr-runs colgroup, table.pr-runs > thead { display: none; }
+  table.pr-runs, table.pr-runs > tbody { display: block; }
+  table.pr-runs > tbody > tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  table.pr-runs > tbody > tr > td { display: block; padding: 0; border: 0; }
+  table.pr-runs > tbody > tr > td:first-child { flex-basis: 100%; }
+  table.pr-runs > tbody > tr > td[colspan] { flex-basis: 100%; min-width: 0; }
 }
