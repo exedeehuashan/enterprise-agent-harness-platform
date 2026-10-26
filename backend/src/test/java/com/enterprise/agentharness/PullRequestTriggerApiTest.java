@@ -72,16 +72,16 @@ class PullRequestTriggerApiTest {
         }
 
         /** Fake git for the repository suites file and module poms; nothing else is executed. */
-        @Bean @Primary com.enterprise.agentharness.qa.ProcessRunner fakeGit() {
+        @Bean @Primary com.enterprise.agentharness.runtime.ProcessRunner fakeGit() {
             return (argv, logFile, timeout, stop, onStop) -> {
                 String last = argv.get(argv.size() - 1);
                 if (argv.contains("clone")) java.nio.file.Files.createDirectories(java.nio.file.Path.of(last));
                 if (argv.contains("cat-file") && last.contains(":")) {
                     String content = last.endsWith(":.eahp/qa-suites.json") ? suitesJson : last.endsWith("/pom.xml") ? "<project/>" : null;
-                    if (content == null) return new com.enterprise.agentharness.qa.ProcessRunner.Result(128, false, false);
+                    if (content == null) return new com.enterprise.agentharness.runtime.ProcessRunner.Result(128, false, false);
                     if (argv.contains("-p")) java.nio.file.Files.writeString(logFile, content);
                 }
-                return new com.enterprise.agentharness.qa.ProcessRunner.Result(0, false, false);
+                return new com.enterprise.agentharness.runtime.ProcessRunner.Result(0, false, false);
             };
         }
 

@@ -1,7 +1,7 @@
 package com.enterprise.agentharness;
 
 import com.enterprise.agentharness.qa.EphemeralEnvironments;
-import com.enterprise.agentharness.qa.ProcessRunner;
+import com.enterprise.agentharness.runtime.ProcessRunner;
 import com.enterprise.agentharness.qa.QaResultIngestor;
 import com.enterprise.agentharness.run.RunService;
 import com.enterprise.agentharness.run.RunWorker;

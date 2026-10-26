@@ -1,5 +1,7 @@
 package com.enterprise.agentharness.qa;
 
+import com.enterprise.agentharness.runtime.ContainerSettings;
+import com.enterprise.agentharness.runtime.ProcessRunner;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,8 +20,8 @@ public class GitMirror {
     private static final Duration NETWORK = Duration.ofMinutes(5);
     private static final Duration LOCAL = Duration.ofMinutes(2);
     private final ProcessRunner runner;
-    private final QaSettings settings;
-    public GitMirror(ProcessRunner runner, QaSettings settings) { this.runner = runner; this.settings = settings; }
+    private final ContainerSettings settings;
+    public GitMirror(ProcessRunner runner, ContainerSettings settings) { this.runner = runner; this.settings = settings; }
 
     /** A full commit hash is used as-is; a branch or tag name is resolved on the remote. */
     public String resolve(QaRegistry.Project project, String ref) {

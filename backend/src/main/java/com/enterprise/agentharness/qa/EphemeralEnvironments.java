@@ -1,5 +1,7 @@
 package com.enterprise.agentharness.qa;
 
+import com.enterprise.agentharness.runtime.ContainerSettings;
+import com.enterprise.agentharness.runtime.ProcessRunner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -47,12 +49,12 @@ public class EphemeralEnvironments {
     private final JdbcTemplate jdbc;
     private final GitMirror git;
     private final ProcessRunner runner;
-    private final QaSettings settings;
+    private final ContainerSettings settings;
     private final QaEnvironments environments;
     private final ObjectMapper mapper;
     private final String selfContainer;
 
-    public EphemeralEnvironments(JdbcTemplate jdbc, GitMirror git, ProcessRunner runner, QaSettings settings, QaEnvironments environments, ObjectMapper mapper,
+    public EphemeralEnvironments(JdbcTemplate jdbc, GitMirror git, ProcessRunner runner, ContainerSettings settings, QaEnvironments environments, ObjectMapper mapper,
             @Value("${eahp.qa.self-container:}") String selfContainer) {
         this.jdbc = jdbc; this.git = git; this.runner = runner; this.settings = settings; this.environments = environments; this.mapper = mapper;
         this.selfContainer = selfContainer;

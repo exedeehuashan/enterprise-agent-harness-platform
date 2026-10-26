@@ -8,8 +8,11 @@ change can be compared on the same footing before it reaches users.
 
 ## Architecture Explanation
 
-- **The set.** `backend/src/main/resources/ai-evals/cases.json` (version 2) has 12
-  synthetic cases:
+- **The set.** 12 synthetic cases (version 2), contributed by the modules that own each feature: every module
+  registers `AiEvalFeature` beans with their own cases file, and the platform's runner (`AiEvals`) only reads
+  those files and hands each case to its feature. Failure analysis and test generation come from 方案 4
+  (`qa/QaAiEvals.java`, `ai-evals/qa.json`); planning comes from the platform (`ai/eval/PlanningEval.java`,
+  `ai-evals/planning.json`). The set's version is the highest version of the files:
 
   | Feature | Cases | Graded on |
   | --- | --- | --- |
