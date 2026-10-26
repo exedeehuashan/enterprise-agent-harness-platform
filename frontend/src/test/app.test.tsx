@@ -36,7 +36,7 @@ describe('console', () => {
     expect(await screen.findByText('operator')).toBeInTheDocument();
     expect(tokenStore.get()).toBe(TOKEN);
     expect(screen.queryByRole('link', { name: 'Approvals' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'New task' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New task' })).toHaveAttribute('href', '/tasks/new');
   });
 
   it('hides write actions from viewers and shows approvals to approvers', async () => {
@@ -44,7 +44,7 @@ describe('console', () => {
     fakeApi({ 'GET /me': () => ({ body: { name: 'viewer', roles: ['VIEWER'] } }), 'GET /agent-tasks': () => ({ body: emptyPage }) });
     const { unmount } = renderApp();
     expect(await screen.findByText('No tasks.')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'New task' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'New task' })).not.toBeInTheDocument();
     unmount();
 
     fakeApi({ 'GET /me': () => ({ body: { name: 'admin', roles: ['APPROVER', 'OPERATOR', 'VIEWER'] } }), 'GET /agent-tasks': () => ({ body: emptyPage }) });

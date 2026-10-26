@@ -543,6 +543,8 @@ describe('project administration', () => {
         events: ['RUN_*'], enabled: true, cursorId: 0, consecutiveFailures: 0, nextAttemptAt: null, lastDeliveryAt: null, lastError: null, createdBy: 'admin', createdAt: '2026-10-24T00:00:00Z' } } }),
     });
     const { unmount } = renderApp('/qa');
+    // Registering is a page of its own; the list only links to it.
+    await userEvent.click(await screen.findByRole('link', { name: 'Register a project' }));
     const form = (await screen.findByRole('heading', { name: 'Register a project' })).closest('section')!;
     await userEvent.type(within(form).getByLabelText('Key'), 'billing');
     await userEvent.type(within(form).getByLabelText('Name'), 'Billing');
@@ -552,7 +554,7 @@ describe('project administration', () => {
     expect(calls.find(c => c.method === 'POST')!.body).toEqual({ key: 'billing', name: 'Billing', repositoryUrl: 'https://github.com/example/billing.git',
       defaultRef: 'main', allowedImages: ['maven:3.9.11-eclipse-temurin-17'] });
 
-    await userEvent.click(screen.getByText('Administer Online Shop'));
+    await userEvent.click(await screen.findByText('Administer Online Shop'));
     await userEvent.click(await screen.findByRole('checkbox', { name: 'backend-integration' }));
     await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
     expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ enabled: true });
@@ -582,38 +584,94 @@ describe('project administration', () => {
     expect(await screen.findByRole('button', { name: 'Drill running…' })).toBeDisabled();
     expect(screen.getByText('11 / 12')).toBeInTheDocument();
     expect(screen.getByText('PL-03 Injected tool request: no SHELL_EXEC step (tools [SHELL_EXEC])')).toBeInTheDocument();
-    const hooks = screen.getByRole('heading', { name: 'Notifications' }).closest('section')!;
-    await userEvent.type(within(hooks).getByLabelText('Name'), 'Team chat');
-    await userEvent.type(within(hooks).getByLabelText('URL'), 'https://hooks.example.com/x');
-    await userEvent.clear(within(hooks).getByLabelText('Events'));
-    await userEvent.type(within(hooks).getByLabelText('Events'), 'RUN_*');
-    await userEvent.click(within(hooks).getByRole('button', { name: 'Add' }));
-    expect(await within(hooks).findByText('one-time-secret')).toBeInTheDocument();
+    // Notifications and tokens are added on their own pages, which show a one-time secret before going back.
+    await userEvent.click(screen.getByRole('link', { name: 'Add notification' }));
+    await userEvent.type(await screen.findByLabelText('Name'), 'Team chat');
+    await userEvent.type(screen.getByLabelText('URL'), 'https://hooks.example.com/x');
+    await userEvent.clear(screen.getByLabelText('Events'));
+    await userEvent.type(screen.getByLabelText('Events'), 'RUN_*');
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText('one-time-secret')).toBeInTheDocument();
     expect(calls.find(c => c.method === 'POST' && c.path === '/admin/webhooks')!.body).toEqual({ name: 'Team chat', format: 'generic', url: 'https://hooks.example.com/x', events: ['RUN_*'] });
-    await userEvent.selectOptions(within(hooks).getByLabelText('Send to'), 'DingTalk 钉钉');
-    await userEvent.type(within(hooks).getByLabelText('Name'), 'QA 群');
-    await userEvent.type(within(hooks).getByLabelText('URL'), 'https://oapi.dingtalk.com/robot/send?access_token=t');
-    await userEvent.type(within(hooks).getByLabelText('Signing secret (optional)'), 'SECabc');
-    await userEvent.click(within(hooks).getByRole('button', { name: 'Add' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await userEvent.click(await screen.findByRole('link', { name: 'Add notification' }));
+    await userEvent.selectOptions(await screen.findByLabelText('Send to'), 'DingTalk 钉钉');
+    await userEvent.type(screen.getByLabelText('Name'), 'QA 群');
+    await userEvent.type(screen.getByLabelText('URL'), 'https://oapi.dingtalk.com/robot/send?access_token=t');
+    await userEvent.type(screen.getByLabelText('Signing secret (optional)'), 'SECabc');
+    await userEvent.clear(screen.getByLabelText('Events'));
+    await userEvent.type(screen.getByLabelText('Events'), 'RUN_*');
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(calls.filter(c => c.method === 'POST' && c.path === '/admin/webhooks')).toHaveLength(2));
     expect(calls.filter(c => c.method === 'POST' && c.path === '/admin/webhooks')[1].body).toEqual({ name: 'QA 群', format: 'dingtalk',
       url: 'https://oapi.dingtalk.com/robot/send?access_token=t', secret: 'SECabc', events: ['RUN_*'] });
-    await userEvent.selectOptions(within(hooks).getByLabelText('Send to'), 'Email');
-    expect(within(hooks).queryByLabelText('URL')).not.toBeInTheDocument();
-    expect(within(hooks).getByLabelText('Recipients')).toBeInTheDocument();
-    const tokenForm = screen.getByRole('heading', { name: 'API tokens' }).closest('section')!;
-    await userEvent.type(within(tokenForm).getByLabelText('Name'), 'alice');
-    await userEvent.click(within(tokenForm).getByLabelText('operator'));
-    await userEvent.click(within(tokenForm).getByRole('button', { name: 'Issue token' }));
-    expect(await within(tokenForm).findByText('eahp_issued-once')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Done' }));
+    await userEvent.click(await screen.findByRole('link', { name: 'Add notification' }));
+    await userEvent.selectOptions(await screen.findByLabelText('Send to'), 'Email');
+    expect(screen.queryByLabelText('URL')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Recipients')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('link', { name: '← Administration' }));
+    await userEvent.click(await screen.findByRole('link', { name: 'Issue token' }));
+    await userEvent.type(await screen.findByLabelText('Name'), 'alice');
+    await userEvent.click(screen.getByLabelText('operator'));
+    await userEvent.click(screen.getByRole('button', { name: 'Issue token' }));
+    expect(await screen.findByText('eahp_issued-once')).toBeInTheDocument();
     expect(calls.find(c => c.method === 'POST' && c.path === '/admin/tokens')!.body).toEqual({ name: 'alice', description: null, roles: ['OPERATOR'], expiresInDays: 90 });
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(await screen.findByRole('heading', { name: 'API tokens' })).toBeInTheDocument();
     admin2.unmount();
 
     fakeApi({ 'GET /me': () => ({ body: operator }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }) });
     renderApp('/qa');
     expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Register a project' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Register a project' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add schedule' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add environment' })).not.toBeInTheDocument();
     expect(screen.queryByText('Administer Online Shop')).not.toBeInTheDocument();
+  });
+});
+
+describe('form pages', () => {
+  const admin = { name: 'admin', roles: ['APPROVER', 'OPERATOR', 'VIEWER'] };
+
+  it('adds schedules and environments on their own pages and returns to the project', async () => {
+    tokenStore.set(TOKEN);
+    const calls = fakeApi({ 'GET /me': () => ({ body: admin }), 'GET /qa/projects': () => ({ body: projects }), 'GET /qa/schedules': () => ({ body: [] }),
+      'GET /qa/environments': () => ({ body: [] }), 'GET /qa/admin/projects/online-shop': () => ({ body: { project: projects[0], triggers: [], gateSuites: [] } }),
+      'GET /qa/admin/events': () => ({ body: [] }),
+      'GET /qa/projects/online-shop/github-write-back': () => ({ body: { settings: { project: 'online-shop', enabled: false, tokenConfigured: false, changedBy: null }, recent: [] } }),
+      'POST /qa/admin/schedules': () => ({ status: 201, body: { id: 's2' } }),
+      'PUT /qa/admin/projects/online-shop/environments/uat': () => ({ body: { key: 'uat' } }) });
+    renderApp('/qa');
+    await userEvent.click(await screen.findByRole('link', { name: 'Add schedule' }));
+    expect(await screen.findByRole('heading', { name: 'New schedule for Online Shop' })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('When'), 'CRON');
+    await userEvent.click(screen.getByRole('button', { name: 'Add schedule' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'POST')).toBe(true));
+    expect(calls.find(c => c.method === 'POST')!.body).toEqual({ project: 'online-shop', suite: 'backend-integration', ref: 'main', kind: 'CRON', cron: '0 0 2 * * *' });
+    expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('link', { name: 'Add environment' }));
+    await userEvent.type(await screen.findByLabelText('Key'), 'uat');
+    await userEvent.type(screen.getByLabelText('Name'), 'UAT');
+    await userEvent.type(screen.getByLabelText(/^Services/), 'order-api=http://host:8081{enter}catalog-api=http://host:8082');
+    await userEvent.click(screen.getByRole('button', { name: 'Save environment' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
+    expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ name: 'UAT', services: { 'order-api': 'http://host:8081', 'catalog-api': 'http://host:8082' } });
+    expect(await screen.findByRole('heading', { name: 'Online Shop' })).toBeInTheDocument();
+  });
+
+  it('registers a code agent repository on its own page', async () => {
+    tokenStore.set(TOKEN);
+    const calls = fakeApi({ 'GET /me': () => ({ body: admin }), 'PUT /admin/code-repositories/shop': () => ({ body: { key: 'shop' } }) });
+    renderApp('/admin/code-repositories/new');
+    await userEvent.type(await screen.findByLabelText('Key'), 'shop');
+    await userEvent.type(screen.getByLabelText('Name'), 'Shop');
+    await userEvent.type(screen.getByLabelText('Repository URL'), 'https://github.com/example/shop.git');
+    await userEvent.click(screen.getByLabelText('allow push'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save repository' }));
+    await waitFor(() => expect(calls.some(c => c.method === 'PUT')).toBe(true));
+    expect(calls.find(c => c.method === 'PUT')!.body).toEqual({ name: 'Shop', repositoryUrl: 'https://github.com/example/shop.git', defaultRef: 'main', allowPush: true });
   });
 });
 

@@ -598,4 +598,13 @@ export const ZH: Record<string, string> = {
   "Nothing has been generated yet.": "还没有生成记录。",
   "Focus": "重点",
   "See this project's test cases": "查看本项目的测试用例",
+  "Add notification": "添加通知",
+  "Add repository": "添加仓库",
+  "Add environment": "添加环境",
+  "New schedule for {name}": "为 {name} 添加计划",
+  "New environment for {name}": "为 {name} 添加环境",
+  "No such project: {key}": "没有这个项目：{key}",
+  "One service per line, as name=base URL.": "每行一个服务，格式为 名称=基础地址。",
+  "Copy it now and hand it over securely; it cannot be shown again.": "请现在复制并安全地交给使用者，之后无法再次显示。",
+  "With pushing allowed and a GitHub write token configured, the agent's change goes to a new branch with a draft pull request; otherwise only the diff is recorded.": "允许推送且配置了 GitHub 写权限令牌时，智能体的修改会推到新分支并开草稿 PR；否则只记录 diff。",
 };

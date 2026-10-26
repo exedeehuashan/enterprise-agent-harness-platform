@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useT } from '../i18n';
 
@@ -47,12 +48,22 @@ export function ShortId({ id }: { id: string | null | undefined }) {
   return <code title={id}>{id.slice(0, 8)}</code>;
 }
 
-export function Section({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+export function Section({ id, title, actions, children }: { id?: string; title: string; actions?: ReactNode; children: ReactNode }) {
   return (
-    <section className="card">
+    <section className="card" id={id}>
       <header className="card-head"><h2>{title}</h2>{actions && <div className="actions">{actions}</div>}</header>
       {children}
     </section>
+  );
+}
+
+/** A page that holds one form, with a link back to the list it adds to. */
+export function FormPage({ back, backLabel, title, children }: { back: string; backLabel: string; title: string; children: ReactNode }) {
+  return (
+    <>
+      <p><Link to={back}>← {backLabel}</Link></p>
+      <Section title={title}><div className="form-body">{children}</div></Section>
+    </>
   );
 }
 

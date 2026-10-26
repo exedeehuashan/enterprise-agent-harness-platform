@@ -10,6 +10,13 @@ import { RunPage } from './pages/RunPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { TasksPage } from './pages/TasksPage';
 import { TestCasesPage } from './pages/TestCasesPage';
+import { NewTaskPage } from './pages/NewTaskPage';
+import { NewProjectPage } from './pages/NewProjectPage';
+import { NewSchedulePage } from './pages/NewSchedulePage';
+import { NewEnvironmentPage } from './pages/NewEnvironmentPage';
+import { NewTokenPage } from './pages/NewTokenPage';
+import { NewNotificationPage } from './pages/NewNotificationPage';
+import { NewCodeRepositoryPage } from './pages/NewCodeRepositoryPage';
 import { GenerateTestsPage } from './pages/GenerateTestsPage';
 import { AiDraftsPage } from './pages/AiDraftsPage';
 import { AiDraftPage } from './pages/AiDraftPage';
@@ -45,9 +52,13 @@ export function App() {
       <main className="content">
         <Routes>
           <Route path="/" element={<TasksPage />} />
+          <Route path="/tasks/new" element={can('OPERATOR') ? <NewTaskPage /> : <Navigate to="/" replace />} />
           <Route path="/tasks/:id" element={<TaskDetailPage />} />
           <Route path="/runs/:id" element={<RunPage />} />
           <Route path="/qa" element={<QaProjectsPage />} />
+          <Route path="/qa/projects/new" element={can('APPROVER') ? <NewProjectPage /> : <Navigate to="/qa" replace />} />
+          <Route path="/qa/projects/:project/schedules/new" element={can('APPROVER') ? <NewSchedulePage /> : <Navigate to="/qa" replace />} />
+          <Route path="/qa/projects/:project/environments/new" element={can('APPROVER') ? <NewEnvironmentPage /> : <Navigate to="/qa" replace />} />
           <Route path="/qa/test-cases" element={<TestCasesPage />} />
           <Route path="/qa/test-cases/generate" element={can('OPERATOR') ? <GenerateTestsPage /> : <Navigate to="/qa/test-cases" replace />} />
           <Route path="/qa/test-cases/drafts" element={<AiDraftsPage />} />
@@ -57,6 +68,9 @@ export function App() {
           <Route path="/executions/:id" element={<ExecutionPage />} />
           <Route path="/approvals" element={can('APPROVER') ? <ApprovalsPage /> : <Navigate to="/" replace />} />
           <Route path="/admin" element={can('APPROVER') ? <AdminPage /> : <Navigate to="/" replace />} />
+          <Route path="/admin/tokens/new" element={can('APPROVER') ? <NewTokenPage /> : <Navigate to="/" replace />} />
+          <Route path="/admin/notifications/new" element={can('APPROVER') ? <NewNotificationPage /> : <Navigate to="/" replace />} />
+          <Route path="/admin/code-repositories/new" element={can('APPROVER') ? <NewCodeRepositoryPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
