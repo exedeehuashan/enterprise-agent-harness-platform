@@ -152,7 +152,7 @@ export function QaEvidence({ run }: { run: Run }) {
     <Section title={tr('Test result')} actions={summary.data && <Status value={summary.data.outcome === 'PASSED' ? 'COMPLETED' : summary.data.outcome === 'STOPPED' ? 'CANCELLED' : 'FAILED'} />}>
       <dl className="meta">
         <dt>{tr('Project / suite')}</dt><dd>{String(a.project)} / {String(a.suite)}</dd>
-        <dt>{tr('Ref')}</dt><dd>{String(a.ref)} → <code className="wrap">{String(a.commit)}</code></dd>
+        <dt>{tr('Ref')}</dt><dd className="wrap">{String(a.ref)} → <code className="wrap">{String(a.commit)}</code></dd>
       </dl>
       <ErrorBanner error={artifacts.error ?? summary.error} />
       {!summary.data && <p className="muted">{['QUEUED', 'RUNNING', 'WAITING_APPROVAL'].includes(run.status) ? tr('Waiting for the suite to finish.') : tr('No test summary was produced; see the run error and artifacts.')}</p>}
