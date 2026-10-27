@@ -66,7 +66,7 @@ export function PullRequestsPage() {
         ))}
       </Section>
       <Section title={tr('Pull request runs')}>
-        <p className="muted small">{tr('Each new head commit of a same-repository pull request runs the project\'s enabled trigger suites. A newer push supersedes the previous commit\'s run. Suites that declare')} <code>{tr('maven-modules')}</code> selection run only the affected modules; <code>{tr('paths')}</code> {tr('suites run only when their files change. Results are not posted back to GitHub.')}</p>
+        <p className="muted small">{tr('Each new commit of a pull request from the same repository runs the project\'s trigger suites; a newer push supersedes the previous run. Module-aware suites run only the affected modules, and path suites run only when their files change. Open View results for a run\'s tests, failure categories and history; with GitHub write-back on, results also appear on the pull request.')}</p>
         <ErrorBanner error={rows.error} />
         {rows.data?.length === 0 && <Empty>{tr('No pull requests have been seen yet.')}</Empty>}
         {rows.data && rows.data.length > 0 && (
@@ -83,8 +83,11 @@ export function PullRequestsPage() {
                 <td>{r.runId ? <Link to={`/runs/${r.runId}`}><Status value={r.runStatus} /></Link> : <span className="muted">—</span>}
                   {r.runErrorCode && <div className="muted small">{r.runErrorCode}</div>}</td>
                 <td><Time value={r.createdAt} /></td>
-                <td><button className="secondary" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>
-                  {open === r.id ? tr('Hide impact') : tr('Impact')}</button></td>
+                <td><div className="row-actions">
+                  {r.runId && <Link className="button" to={`/runs/${r.runId}`}>{tr('View results')}</Link>}
+                  <button className="secondary" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>
+                    {open === r.id ? tr('Hide impact') : tr('Impact')}</button>
+                </div></td>
               </tr>
               {open === r.id && <tr><td colSpan={7}><ImpactView row={r} /></td></tr>}
               </Fragment>

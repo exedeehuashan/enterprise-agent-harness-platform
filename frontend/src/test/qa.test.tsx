@@ -345,6 +345,9 @@ describe('pull request runs', () => {
     expect(screen.getByRole('link', { name: 'COMPLETED' })).toHaveAttribute('href', '/runs/run-1');
     expect(screen.getByRole('link', { name: 'Pull requests' })).toBeInTheDocument();
 
+    // Every row with a run links to its results; skipped rows have none.
+    expect(screen.getAllByRole('link', { name: 'View results' }).map(l => l.getAttribute('href'))).toContain('/runs/run-4');
+    expect(screen.getAllByRole('link', { name: 'View results' })).toHaveLength(screen.getAllByRole('button', { name: 'Impact' }).length - 2);
     await userEvent.click(screen.getAllByRole('button', { name: 'Impact' })[0]);
     expect(await screen.findByText(/2 changed files; 2 affected modules; 1 test classes in scope/)).toBeInTheDocument();
     expect(screen.getByText('depends on a change')).toBeInTheDocument();
