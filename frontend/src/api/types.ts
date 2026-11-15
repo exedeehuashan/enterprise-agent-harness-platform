@@ -256,6 +256,15 @@ export interface AiAnalysis {
   analysis: { summary: string; likelyCause: string; category: string; confidence: 'low' | 'medium' | 'high'; suggestedActions: string[]; affectedTests: string[] };
 }
 export interface AiStatus { provider: string; model: string; dailyTokenBudget: number; usedToday: number }
+/** One entry of the AI call log (admin only). */
+export interface AiCall {
+  id: number; createdAt: string; feature: string; provider: string; model: string; inputTokens: number; outputTokens: number;
+  maxOutputTokens: number | null; durationMs: number | null; actor: string; status: 'ok' | 'failed' | 'running'; error: string | null;
+  sourceType: string | null; sourceId: string | null;
+}
+export interface AiCallDetail {
+  call: AiCall; systemPrompt: string | null; userPrompt: string | null; answer: string | null; contentStored: boolean; contentExpiredAt: string | null;
+}
 
 /** An API test collection drafted by the AI from an OpenAPI document; only valid drafts can run. */
 /** A case of a valid AI draft, as the paged test-case list shows it. */

@@ -78,7 +78,8 @@ public class QaAiTestGeneration {
         } catch (IOException ex) {
             throw bad("could not read " + specPath + " (it must be at most " + MAX_SPEC_BYTES / 1024 + " KiB)");
         }
-        var generated = generateFrom(service, specPath, spec, instructions, maxCases);
+        // The draft id only exists after the call; until then the call is attributed to the project.
+        var generated = com.enterprise.agentharness.ai.AiCallSource.with("qa-project", project.key(), () -> generateFrom(service, specPath, spec, instructions, maxCases));
         var answer = generated.answer();
         JsonNode collection = generated.collection();
         String error = generated.error(), notes = generated.notes();
@@ -88,6 +89,7 @@ public class QaAiTestGeneration {
                 VALUES (?,?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?,?)
                 """, id, project.key(), commit, specPath, service, instructions, collection == null ? null : collection.toString(), collection != null, error,
                 notes == null ? null : clip(notes, 2000), answer.provider(), answer.model(), answer.inputTokens(), answer.outputTokens(), AuditService.actor());
+        ai.relink(answer.callId(), "qa-draft", project.key() + "/" + id);
         return get(project.key(), id);
     }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { CasesTable, CategoryCounts, download } from '../components/aiTests';
+import { AiCallsLink } from '../components/aiCalls';
 import { ErrorBanner, Section, Time } from '../components/ui';
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
@@ -51,7 +52,7 @@ export function AiDraftPage() {
             <dt>{tr('OpenAPI file')}</dt><dd><code className="wrap">{d.specPath}</code> @ <code>{d.commitSha.slice(0, 7)}</code></dd>
             <dt>{tr('Service')}</dt><dd>{d.service}</dd>
             {d.instructions && <><dt>{tr('Focus')}</dt><dd>{d.instructions}</dd></>}
-            <dt>{tr('Model')}</dt><dd>{d.provider}/{d.model} · {tr('{in} in · {out} out', { in: d.inputTokens.toLocaleString(), out: d.outputTokens.toLocaleString() })}</dd>
+            <dt>{tr('Model')}</dt><dd>{d.provider}/{d.model} · {tr('{in} in · {out} out', { in: d.inputTokens.toLocaleString(), out: d.outputTokens.toLocaleString() })} <AiCallsLink sourceType="qa-draft" sourceId={`${d.projectKey}/${d.id}`} /></dd>
             <dt>{tr('Generated')}</dt><dd><Time value={d.createdAt} /> {tr('by {who}', { who: d.createdBy })}</dd>
           </dl>
           <ErrorBanner error={action.error} />

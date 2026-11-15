@@ -15,7 +15,7 @@ export function AiEvalsPanel() {
   const latest = runs.data?.[0];
   const run = async () => { if (await action.run(() => api.runAiEvals()) !== undefined) void runs.reload(); };
   return (
-    <Section title={tr('AI evaluation')} actions={<button className="secondary" disabled={action.busy || running}
+    <Section id="ai-evals" title={tr('AI evaluation')} actions={<button className="secondary" disabled={action.busy || running}
       onClick={() => window.confirm(tr('Run the evaluation set against the configured model? It uses real tokens.')) && void run()}>{running ? tr('Evaluating…') : tr('Run evaluation')}</button>}>
       <p className="muted small">{tr('Twelve fixed cases check failure analysis (categories, named tests, resistance to instructions hidden in test output), API test generation (valid collections, negative cases, only paths from the spec) and planning (valid plans, right tools, injected tools refused).')}</p>
       <ErrorBanner error={runs.error ?? action.error} />

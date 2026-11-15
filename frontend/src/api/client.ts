@@ -1,5 +1,5 @@
 import type {
-  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiStatus, AiTestCaseRow, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
+  AdminEvent, Approval, QaSchedule, StorageReport, Artifact, AuditEvent, ChangeImpact, ProjectAdmin, Gate, GitHubPoll, QualityDashboard, Identity, Invocation, ModelCall, Page, PlanExecution, PullRequestRun, QaProject, QaReport, Quarantine, SuiteDiff, QaEnvironment, ApiTestCatalog, Webhook, WebhookCreated, WebhookDelivery, ApiToken, ApiTokenIssued, DomainModuleInfo, GitHubWriteBackView, AiAnalysis, AiCall, AiCallDetail, AiStatus, AiTestCaseRow, AiTestDraft, CodeRepository, QaSummary, Run, SuiteCatalog, Task, Triage,
   TaskStatus, Tool, EnvironmentTemplates, TemporaryEnvironment, PerformanceLimit, PerformancePoint, QuarantineSuggestion, BackupDrill, AutoFix, AiEvalRun, CoveragePoint, NewCodeCoverage,
 } from './types';
 
@@ -149,6 +149,10 @@ export const api = {
   generateAiTests: (project: string, body: Record<string, unknown>) => post<AiTestDraft>(`/qa/projects/${project}/ai/api-tests`, body),
   runAiDraft: (project: string, id: string, environment: string) => post<{ runId: string }>(`/qa/projects/${project}/ai/api-tests/${id}/run`, { environment }),
   aiStatus: () => get<AiStatus>('/ai/status'),
+  aiCalls: (p: { feature?: string; status?: string; sourceType?: string; sourceId?: string; page?: number; size?: number }) =>
+    get<Page<AiCall>>(`/admin/ai/calls${query({ feature: p.feature, status: p.status, sourceType: p.sourceType, sourceId: p.sourceId, page: p.page ?? 0, size: p.size ?? 20 })}`),
+  aiCall: (id: string) => get<AiCallDetail>(`/admin/ai/calls/${id}`),
+  aiCallFeatures: () => get<string[]>('/admin/ai/calls/features'),
   aiAnalysis: (runId: string) => get<AiAnalysis>(`/qa/runs/${runId}/ai-analysis`),
   analyzeRun: (runId: string) => post<AiAnalysis>(`/qa/runs/${runId}/ai-analysis`, undefined),
   githubWriteBack: (project: string) => get<GitHubWriteBackView>(`/qa/projects/${project}/github-write-back`),

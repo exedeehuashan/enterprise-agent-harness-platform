@@ -9,6 +9,7 @@ import { Empty, ErrorBanner, Section, ShortId, Status, Time } from '../component
 import { useAction, usePolling } from '../hooks';
 import { useSession } from '../session';
 import { useT } from '../i18n';
+import { AiCallsLink } from '../components/aiCalls';
 
 export function TaskDetailPage() {
   const tr = useT();
@@ -166,7 +167,7 @@ function Plans({ taskId, executions }: { taskId: string; executions: ExecutionsS
 
   return (
     <Section title={tr('Plans')} actions={can('OPERATOR') && <button onClick={plan} disabled={action.busy}>{tr('Request plan')}</button>}>
-      <p className="muted small">Plans come from the configured model provider. A validated plan is a proposal only; executing it runs each step through the normal run and approval path.</p>
+      <p className="muted small">Plans come from the configured model provider. A validated plan is a proposal only; executing it runs each step through the normal run and approval path. <AiCallsLink sourceType="task" sourceId={taskId} /></p>
       <ErrorBanner error={action.error ?? plans.error} />
       {plans.data && plans.data.items.length === 0 && <Empty>{tr('No plans yet.')}</Empty>}
       {plans.data?.items.map(call => (

@@ -11,7 +11,8 @@ public class ModelGateway {
     public ModelGateway(ModelProvider provider,@Qualifier("modelExecutor") ExecutorService executor) {this.provider=provider;this.executor=executor;}
     public ModelProvider.Result generate(ModelProvider.Input input,int maxOutputTokens,int timeoutMillis) {
         Future<ModelProvider.Result> future;
-        try {future=executor.submit(()->provider.generate(input,maxOutputTokens));}
+        // The call runs on the model executor; it keeps the caller's AI call source for the call log.
+        try {future=executor.submit(com.enterprise.agentharness.ai.AiCallSource.propagate(()->provider.generate(input,maxOutputTokens)));}
         catch(RejectedExecutionException ex) {throw new ModelFailure("PROVIDER_BUSY");}
         try {
             var result=future.get(timeoutMillis,TimeUnit.MILLISECONDS);

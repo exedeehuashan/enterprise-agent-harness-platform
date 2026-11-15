@@ -69,7 +69,7 @@ public class QaAiAnalysis {
                     .append(clip(f.message(), 500)).append('\n');
         }
         evidence.append("\nEnd of the console log:\n").append(consoleTail(runId));
-        var evaluated = analyzeEvidence(evidence.toString());
+        var evaluated = com.enterprise.agentharness.ai.AiCallSource.with("qa-run", runId.toString(), () -> analyzeEvidence(evidence.toString()));
         var answer = evaluated.answer();
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO qa_ai_analyses(id,run_id,provider,model,analysis,input_tokens,output_tokens,created_by) VALUES (?,?,?,?,?::jsonb,?,?,?)",

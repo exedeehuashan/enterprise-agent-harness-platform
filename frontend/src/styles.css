@@ -134,6 +134,9 @@ table.cases .step { overflow-wrap: anywhere; }
 table.cases .step + .step { margin-top: 4px; }
 table.cases tr:target { background: var(--active-bg); }
 table.case-list { table-layout: fixed; min-width: 720px; }
+/* AI call log: the prompt and answer wrap and scroll inside their card. */
+pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow-y: auto; font-size: 12px; line-height: 1.45; }
+table.ai-calls td { vertical-align: top; }
 table.case-list td { white-space: normal; vertical-align: top; overflow-wrap: anywhere; }
 table.case-list col.c-id { width: 96px; }
 table.case-list col.c-category { width: 88px; }
@@ -172,6 +175,16 @@ table.pr-runs button, table.pr-runs a.button { white-space: nowrap; }
   table.case-list td:nth-child(3) { order: 1; }
   table.case-list td:nth-child(2) { order: 2; flex-basis: 100%; }
   table.case-list td:nth-child(n+4) { order: 3; font-size: 0.85rem; color: var(--muted); }
+  /* AI calls: the feature first, then time, result and source, then tokens, duration and who in small print. */
+  table.ai-calls thead { display: none; }
+  table.ai-calls, table.ai-calls tbody { display: block; }
+  table.ai-calls tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  table.ai-calls td { display: block; padding: 0; border: 0; }
+  table.ai-calls td:nth-child(2) { order: 0; flex-basis: 100%; }
+  table.ai-calls td:nth-child(1) { order: 1; }
+  table.ai-calls td:nth-child(4) { order: 2; }
+  table.ai-calls td:nth-child(3) { order: 3; }
+  table.ai-calls td:nth-child(n+5) { order: 4; font-size: 0.85rem; color: var(--muted); }
   /* Pull request runs: one block per run; the impact view keeps its own scrolling table. */
   table.pr-runs { min-width: 0; }
   table.pr-runs colgroup, table.pr-runs > thead { display: none; }

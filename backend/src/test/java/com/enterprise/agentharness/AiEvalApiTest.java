@@ -104,6 +104,9 @@ class AiEvalApiTest {
         assertThat(run.get("total").asInt()).isEqualTo(4);
         assertThat(run.get("passed").asInt()).isEqualTo(2);
         assertThat(run.get("inputTokens").asLong()).isEqualTo(400);
+        // Each case's model call is logged against the evaluation run, including the planning call.
+        mvc.perform(get("/api/v1/admin/ai/calls").param("sourceType", "ai-eval").param("sourceId", id).header("Authorization", "Bearer " + ADMIN))
+                .andExpect(jsonPath("$.totalElements").value(4));
 
         assertThat(result(run, "FA-02").get("passed").asBoolean()).isTrue();
         var injected = result(run, "FA-06");
