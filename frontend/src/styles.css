@@ -134,6 +134,9 @@ table.cases .step { overflow-wrap: anywhere; }
 table.cases .step + .step { margin-top: 4px; }
 table.cases tr:target { background: var(--active-bg); }
 table.case-list { table-layout: fixed; min-width: 720px; }
+/* AI call log: the prompt and answer wrap and scroll inside their card. */
+pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow-y: auto; font-size: 12px; line-height: 1.45; }
+table.ai-calls td { vertical-align: top; }
 table.case-list td { white-space: normal; vertical-align: top; overflow-wrap: anywhere; }
 table.case-list col.c-id { width: 96px; }
 table.case-list col.c-category { width: 88px; }

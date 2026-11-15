@@ -14,20 +14,22 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Keeps storage bounded without losing the evidence trail. Artifact content older than the retention window is
  * removed but its metadata and SHA-256 stay, so a run still shows what it produced; the artifacts of the latest QA
- * run for each project, suite and ref are always kept. Per-test history older than its window is deleted.
+ * run for each project, suite and ref are always kept. Per-test history older than its window is deleted. The prompts and
+ * answers in the AI call log are cleared after their window; each call's feature, source, tokens and outcome stay.
  */
 @Service
 public class RetentionService {
     static final List<String> TABLES = List.of("run_artifacts", "qa_test_results", "agent_runs", "run_steps", "audit_events", "qa_run_ingestions",
-            "qa_pr_runs", "qa_change_impacts", "model_calls", "agent_tasks");
+            "qa_pr_runs", "qa_change_impacts", "model_calls", "agent_tasks", "ai_usage");
     private final JdbcTemplate jdbc;
     private final int artifactDays;
     private final int testResultDays;
+    private final int aiLogDays;
 
     public RetentionService(JdbcTemplate jdbc, @Value("${eahp.retention.artifact-days:30}") int artifactDays,
-            @Value("${eahp.retention.test-result-days:180}") int testResultDays) {
-        if (artifactDays < 1 || testResultDays < 1) throw new IllegalStateException("Retention windows must be at least one day");
-        this.jdbc = jdbc; this.artifactDays = artifactDays; this.testResultDays = testResultDays;
+            @Value("${eahp.retention.test-result-days:180}") int testResultDays, @Value("${eahp.retention.ai-log-days:30}") int aiLogDays) {
+        if (artifactDays < 1 || testResultDays < 1 || aiLogDays < 1) throw new IllegalStateException("Retention windows must be at least one day");
+        this.jdbc = jdbc; this.artifactDays = artifactDays; this.testResultDays = testResultDays; this.aiLogDays = aiLogDays;
     }
 
     public record Result(long id, String actor, Instant startedAt, int artifactDays, int testResultDays, int artifactsExpired, long bytesFreed, int testResultsDeleted) {}
@@ -47,6 +49,11 @@ public class RetentionService {
                 RETURNING size_bytes
                 """, Integer.class, artifactDays);
         long bytes = expired.stream().mapToLong(Integer::longValue).sum();
+        jdbc.update("""
+                UPDATE ai_usage SET system_prompt = NULL, user_prompt = NULL, answer_text = NULL, content_expired_at = clock_timestamp()
+                WHERE content_expired_at IS NULL AND (system_prompt IS NOT NULL OR answer_text IS NOT NULL)
+                AND created_at < clock_timestamp() - (? * interval '1 day')
+                """, aiLogDays);
         int deleted = jdbc.update("DELETE FROM qa_test_results WHERE run_created_at < clock_timestamp() - (? * interval '1 day')", testResultDays);
         Long id = jdbc.queryForObject("""
                 INSERT INTO retention_runs(actor, artifact_days, test_result_days, artifacts_expired, bytes_freed, test_results_deleted)

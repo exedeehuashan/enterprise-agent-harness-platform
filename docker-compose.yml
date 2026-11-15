@@ -51,6 +51,8 @@ services:
       # AI model (P33): mock (default), anthropic (Claude) or deepseek, with that provider's API key.
       EAHP_AI_PROVIDER: ${EAHP_AI_PROVIDER:-mock}
       EAHP_AI_DAILY_TOKEN_BUDGET: ${EAHP_AI_DAILY_TOKEN_BUDGET:-500000}
+      EAHP_AI_LOG_STORE_PROMPTS: ${EAHP_AI_LOG_STORE_PROMPTS:-true}
+      EAHP_RETENTION_AI_LOG_DAYS: ${EAHP_RETENTION_AI_LOG_DAYS:-30}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
       ANTHROPIC_EFFORT: ${ANTHROPIC_EFFORT:-medium}

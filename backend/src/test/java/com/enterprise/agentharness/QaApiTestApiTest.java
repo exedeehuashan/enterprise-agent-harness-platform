@@ -294,6 +294,9 @@ class QaApiTestApiTest {
                 .andExpect(jsonPath("$.collection.key").value("ai-generated")).andExpect(jsonPath("$.collection.service").value("order-api"))
                 .andExpect(jsonPath("$.commitSha").value(SHA)).andExpect(jsonPath("$.notes").value("Mock draft: one smoke case."))
                 .andReturn().getResponse().getContentAsString()).get("id").asText();
+        // The AI call log points at the draft the call produced.
+        assertThat(jdbc.queryForObject("SELECT source_type || ' ' || source_id FROM ai_usage WHERE feature='qa-test-generation' ORDER BY id DESC LIMIT 1", String.class))
+                .isEqualTo("qa-draft online-shop/" + id);
 
         // A draft that tries to reach another host, or targets another service, is stored as invalid and cannot run.
         aiAnswer = "{\"collection\":\"{\\\"key\\\":\\\"x\\\",\\\"name\\\":\\\"Evil\\\",\\\"service\\\":\\\"elsewhere\\\",\\\"cases\\\":[{\\\"id\\\":\\\"T1\\\",\\\"name\\\":\\\"x\\\",\\\"steps\\\":[{\\\"request\\\":{\\\"method\\\":\\\"GET\\\",\\\"path\\\":\\\"http://evil.example/steal\\\"},\\\"expect\\\":{\\\"status\\\":200}}]}]}\",\"notes\":\"\"}";

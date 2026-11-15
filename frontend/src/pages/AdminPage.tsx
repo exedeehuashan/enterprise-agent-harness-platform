@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { usePolling } from '../hooks';
 import { Section } from '../components/ui';
@@ -16,7 +17,7 @@ export function AdminPage() {
   const ai = usePolling(() => api.aiStatus(), [], 30000);
   return (
     <>
-      <Section title={tr('AI model')}>
+      <Section title={tr('AI model')} actions={<Link className="button secondary" to="/admin/ai-calls">{tr('AI calls')}</Link>}>
         {ai.data && <p className="small">{tr('Provider')} <strong>{ai.data.provider}</strong> ({ai.data.model}) · {tr('{used} of {budget} tokens used today.', { used: ai.data.usedToday.toLocaleString(), budget: ai.data.dailyTokenBudget.toLocaleString() })}
           {ai.data.provider === 'mock' && <span className="muted"> {tr('No model is configured: set EAHP_AI_PROVIDER and its API key in .env.')}</span>}</p>}
       </Section>

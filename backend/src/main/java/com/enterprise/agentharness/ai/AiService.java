@@ -15,10 +15,13 @@ import org.springframework.stereotype.Service;
 /**
  * The one gate every AI feature calls through: enforces the daily token budget, redacts secrets from prompts, records
  * usage per feature, and parses the answer strictly as a JSON object. The answer is untrusted data; each feature
- * validates its content before storing or using it.
+ * validates its content before storing or using it. Every call is also an entry of the AI call log ({@link AiCallLog}):
+ * what it was for ({@link AiCallSource}) and, unless {@code eahp.ai.log.store-prompts} is false, the redacted prompt and
+ * answer, so administrators can see exactly what EAHP sent to the model and what came back.
  */
 @Service
 public class AiService {
+    static final int MAX_STORED_CHARS = 200_000;
     /** Common credential shapes: bearer tokens, key=value secrets, provider keys, private keys, JWTs, basic-auth URLs. */
     static final Pattern SECRETS = Pattern.compile(
             "(?i)(\"(?:password|passwd|secret|token|access_token|refresh_token|api[_-]?key|apikey|authorization|client_secret)\"\\s*:\\s*\")[^\"]*(?=\")"
@@ -31,16 +34,18 @@ public class AiService {
     private final LlmProvider provider;
     private final JdbcTemplate jdbc;
     private final long dailyBudget;
+    private final boolean storePrompts;
     private final org.springframework.transaction.support.TransactionTemplate tx;
     private final ObjectMapper strict = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     public AiService(LlmProvider provider, JdbcTemplate jdbc, org.springframework.transaction.support.TransactionTemplate tx,
-            @Value("${eahp.ai.daily-token-budget:500000}") long dailyBudget) {
-        this.provider = provider; this.jdbc = jdbc; this.tx = tx; this.dailyBudget = dailyBudget;
+            @Value("${eahp.ai.daily-token-budget:500000}") long dailyBudget, @Value("${eahp.ai.log.store-prompts:true}") boolean storePrompts) {
+        this.provider = provider; this.jdbc = jdbc; this.tx = tx; this.dailyBudget = dailyBudget; this.storePrompts = storePrompts;
     }
 
     public record Status(String provider, String model, long dailyTokenBudget, long usedToday) {}
-    public record Answer(JsonNode json, String provider, String model, long inputTokens, long outputTokens) {}
+    /** {@code callId} is the call's entry in the AI call log. */
+    public record Answer(JsonNode json, String provider, String model, long inputTokens, long outputTokens, long callId) {}
 
     public Status status() { return new Status(provider.id(), provider.model(), dailyBudget, usedToday()); }
 
@@ -53,36 +58,62 @@ public class AiService {
     public Answer complete(String feature, LlmProvider.Request request) {
         var safe = new LlmProvider.Request(redact(request.system()), redact(request.user()), request.schema(), request.maxOutputTokens());
         long reserve = (safe.system().length() + safe.user().length() + request.schema().toString().length()) / 3 + request.maxOutputTokens();
+        var source = AiCallSource.current();
+        String sourceType = source == null ? null : source.type(), sourceId = source == null ? null : source.id();
         Long reservation = tx.execute(status -> {
             jdbc.queryForList("SELECT pg_advisory_xact_lock(724001)");
             if (usedToday() + reserve > dailyBudget) return null;
-            return jdbc.queryForObject("INSERT INTO ai_usage(feature,provider,model,input_tokens,output_tokens,actor,error) VALUES (?,?,?,?,0,?,'RESERVED') RETURNING id",
-                    Long.class, feature, provider.id(), provider.model(), reserve, AuditService.actor());
+            return jdbc.queryForObject("""
+                    INSERT INTO ai_usage(feature,provider,model,input_tokens,output_tokens,actor,error,source_type,source_id,max_output_tokens,system_prompt,user_prompt)
+                    VALUES (?,?,?,?,0,?,'RESERVED',?,?,?,?,?) RETURNING id
+                    """, Long.class, feature, provider.id(), provider.model(), reserve, AuditService.actor(), sourceType, sourceId, request.maxOutputTokens(),
+                    storePrompts ? bounded(safe.system()) : null, storePrompts ? bounded(safe.user()) : null);
         });
-        if (reservation == null) throw new RunException(HttpStatus.TOO_MANY_REQUESTS, "AI_BUDGET_EXHAUSTED: the daily AI token budget does not cover this request");
+        if (reservation == null) {
+            // A refused call stays in the log too: it shows who asked when the budget ran out.
+            jdbc.update("""
+                    INSERT INTO ai_usage(feature,provider,model,input_tokens,output_tokens,actor,error,source_type,source_id,max_output_tokens,duration_ms)
+                    VALUES (?,?,?,0,0,?,'AI_BUDGET_EXHAUSTED',?,?,?,0)
+                    """, feature, provider.id(), provider.model(), AuditService.actor(), sourceType, sourceId, request.maxOutputTokens());
+            throw new RunException(HttpStatus.TOO_MANY_REQUESTS, "AI_BUDGET_EXHAUSTED: the daily AI token budget does not cover this request");
+        }
+        long started = System.nanoTime();
         LlmProvider.Completion completion;
         try {
             completion = provider.complete(safe);
         } catch (LlmProvider.LlmException ex) {
-            settle(reservation, ex.inputTokens(), ex.outputTokens(), ex.code());
+            settle(reservation, ex.inputTokens(), ex.outputTokens(), ex.code(), null, started);
             throw new RunException(ex.code().equals("AI_RATE_LIMITED") ? HttpStatus.TOO_MANY_REQUESTS : HttpStatus.BAD_GATEWAY, ex.code() + ": " + ex.getMessage());
         } catch (RuntimeException ex) {
-            settle(reservation, 0, 0, "AI_UNAVAILABLE");
+            settle(reservation, 0, 0, "AI_UNAVAILABLE", null, started);
             throw new RunException(HttpStatus.BAD_GATEWAY, "AI_UNAVAILABLE: the model provider failed");
         }
-        settle(reservation, completion.inputTokens(), completion.outputTokens(), null);
         JsonNode json;
         try {
             json = strict.readTree(completion.text().strip());
         } catch (Exception ex) {
-            throw new RunException(HttpStatus.BAD_GATEWAY, "AI_INVALID_ANSWER: the model did not return valid JSON");
+            json = null;
         }
-        if (json == null || !json.isObject()) throw new RunException(HttpStatus.BAD_GATEWAY, "AI_INVALID_ANSWER: the model did not return a JSON object");
-        return new Answer(json, provider.id(), provider.model(), completion.inputTokens(), completion.outputTokens());
+        settle(reservation, completion.inputTokens(), completion.outputTokens(), json != null && json.isObject() ? null : "AI_INVALID_ANSWER", completion.text(), started);
+        if (json == null) throw new RunException(HttpStatus.BAD_GATEWAY, "AI_INVALID_ANSWER: the model did not return valid JSON");
+        if (!json.isObject()) throw new RunException(HttpStatus.BAD_GATEWAY, "AI_INVALID_ANSWER: the model did not return a JSON object");
+        return new Answer(json, provider.id(), provider.model(), completion.inputTokens(), completion.outputTokens(), reservation);
     }
 
-    private void settle(long reservation, long in, long out, String error) {
-        jdbc.update("UPDATE ai_usage SET input_tokens=?, output_tokens=?, error=? WHERE id=?", in, out, error, reservation);
+    /** Points a finished call at what it produced, when that only exists afterwards (a test-generation draft). */
+    public void relink(long callId, String sourceType, String sourceId) {
+        jdbc.update("UPDATE ai_usage SET source_type=?, source_id=? WHERE id=?", sourceType, sourceId, callId);
+    }
+
+    private void settle(long reservation, long in, long out, String error, String answer, long startedNanos) {
+        jdbc.update("UPDATE ai_usage SET input_tokens=?, output_tokens=?, error=?, answer_text=?, duration_ms=? WHERE id=?", in, out, error,
+                storePrompts && answer != null ? bounded(redact(answer)) : null, (System.nanoTime() - startedNanos) / 1_000_000, reservation);
+    }
+
+    /** Stored prompts and answers are capped: an OpenAPI document can be large, and the log must stay bounded. */
+    static String bounded(String text) {
+        if (text == null || text.length() <= MAX_STORED_CHARS) return text;
+        return text.substring(0, MAX_STORED_CHARS) + "\n…[" + (text.length() - MAX_STORED_CHARS) + " more characters not stored]";
     }
 
     static String redact(String text) {

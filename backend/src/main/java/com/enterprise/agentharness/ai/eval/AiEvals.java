@@ -113,7 +113,7 @@ public class AiEvals {
                     var checks = new EvalChecks(result.putArray("checks"));
                     var feature = features.get(c.path("feature").asText());
                     if (feature == null) throw new IllegalArgumentException("unknown feature " + c.path("feature").asText());
-                    long[] tokens = feature.evaluate(c, checks, result);
+                    long[] tokens = evaluate(feature, c, checks, result, id);
                     in += tokens[0]; out += tokens[1];
                     boolean ok = checks.allPassed();
                     result.put("passed", ok);
@@ -132,6 +132,11 @@ public class AiEvals {
             log.warn("AI evaluation {} failed", id, ex);
             jdbc.update("UPDATE ai_eval_runs SET status='FAILED', error=?, finished_at=clock_timestamp() WHERE id=?", "internal error", id);
         }
+    }
+
+    /** Runs one case with the evaluation run as its AI call source, so the call log links each call to the run. */
+    private static long[] evaluate(AiEvalFeature feature, JsonNode c, EvalChecks checks, com.fasterxml.jackson.databind.node.ObjectNode result, UUID run) throws Exception {
+        return com.enterprise.agentharness.ai.AiCallSource.call("ai-eval", run.toString(), () -> feature.evaluate(c, checks, result));
     }
 
     private EvalRun map(ResultSet r, int i) throws SQLException {

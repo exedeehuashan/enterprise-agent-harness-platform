@@ -980,12 +980,34 @@ class QaSuiteToolApiTest {
         mvc.perform(get("/api/v1/ai/status").header("Authorization",auth(VIEWER))).andExpect(jsonPath("$.provider").value("mock"))
                 .andExpect(jsonPath("$.usedToday").value(org.hamcrest.Matchers.greaterThan(0)));
         assertThat(jdbc.queryForObject("SELECT feature FROM ai_usage ORDER BY id DESC LIMIT 1",String.class)).isEqualTo("qa-failure-analysis");
+        // The call log links the call to its run and keeps the redacted prompt and the answer; only approvers read it.
+        mvc.perform(get("/api/v1/admin/ai/calls").param("sourceType","qa-run").param("sourceId",failed.toString()).header("Authorization",auth(OPERATOR))).andExpect(status().isForbidden());
+        var calls=mapper.readTree(mvc.perform(get("/api/v1/admin/ai/calls").param("sourceType","qa-run").param("sourceId",failed.toString()).header("Authorization",auth(ADMIN)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(calls.get("totalElements").asLong()).isEqualTo(1);
+        var call=calls.get("items").get(0);
+        assertThat(call.get("feature").asText()).isEqualTo("qa-failure-analysis");
+        assertThat(call.get("status").asText()).isEqualTo("ok");
+        assertThat(call.get("actor").asText()).isEqualTo("operator");
+        assertThat(call.get("durationMs").isNumber()).isTrue();
+        var detail=mapper.readTree(mvc.perform(get("/api/v1/admin/ai/calls/"+call.get("id").asLong()).header("Authorization",auth(ADMIN)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(detail.get("systemPrompt").asText()).contains("analysing why an automated test run failed");
+        assertThat(detail.get("userPrompt").asText()).contains("expected: <1> but was: <2>").contains("[REDACTED]").doesNotContain("supersecrettokenvalue123");
+        assertThat(detail.get("answer").asText()).contains("PRODUCT_DEFECT");
+        assertThat(detail.get("contentStored").asBoolean()).isTrue();
+        mvc.perform(get("/api/v1/admin/ai/calls/features").header("Authorization",auth(ADMIN))).andExpect(jsonPath("$[0]").value("qa-failure-analysis"));
+        mvc.perform(get("/api/v1/admin/ai/calls").param("status","maybe").header("Authorization",auth(ADMIN))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/admin/ai/calls").param("unknown","1").header("Authorization",auth(ADMIN))).andExpect(status().isBadRequest());
         assertThat(runs.get(failed).errorCode()).isEqualTo("TESTS_FAILED"); // the analysis changes nothing about the run
         // The budget is reserved before the call: a request that does not fit is refused without contacting the model.
         jdbc.update("INSERT INTO ai_usage(feature,provider,model,input_tokens,output_tokens,actor) VALUES ('test','mock','mock-v1',499500,0,'test')");
         try {
             mvc.perform(post("/api/v1/qa/runs/"+failed+"/ai-analysis").header("Authorization",auth(OPERATOR))).andExpect(status().isTooManyRequests())
                     .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("AI_BUDGET_EXHAUSTED")));
+            // A refused call is logged too, with no prompt sent anywhere.
+            mvc.perform(get("/api/v1/admin/ai/calls").param("status","failed").header("Authorization",auth(ADMIN)))
+                    .andExpect(jsonPath("$.items[0].error").value("AI_BUDGET_EXHAUSTED")).andExpect(jsonPath("$.items[0].sourceId").value(failed.toString()));
         } finally {
             jdbc.update("DELETE FROM ai_usage");
         }

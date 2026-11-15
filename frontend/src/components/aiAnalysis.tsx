@@ -4,6 +4,7 @@ import type { AiAnalysis } from '../api/types';
 import { useAction } from '../hooks';
 import { useSession } from '../session';
 import { ErrorBanner, Section, Time } from './ui';
+import { AiCallsLink } from './aiCalls';
 import { useT } from '../i18n';
 
 const CATEGORY: Record<string, string> = {
@@ -36,7 +37,7 @@ export function AiAnalysisPanel({ runId }: { runId: string }) {
           <p>{a.summary}</p>
           <p className="small"><strong>{tr('Likely cause:')}</strong> {a.likelyCause}</p>
           {a.suggestedActions.length > 0 && <><strong className="small">{tr('Suggested next steps')}</strong><ul className="small">{a.suggestedActions.map((s, i) => <li key={i}>{s}</li>)}</ul></>}
-          <p className="muted small">{analysis.provider} / {analysis.model} · {tr('{n} tokens', { n: analysis.inputTokens + analysis.outputTokens })} · <Time value={analysis.createdAt} /> {tr('by {who}', { who: analysis.createdBy })}. {tr('Advisory only: check it against the evidence.')}</p>
+          <p className="muted small">{analysis.provider} / {analysis.model} · {tr('{n} tokens', { n: analysis.inputTokens + analysis.outputTokens })} · <Time value={analysis.createdAt} /> {tr('by {who}', { who: analysis.createdBy })}. {tr('Advisory only: check it against the evidence.')} <AiCallsLink sourceType="qa-run" sourceId={runId} /></p>
         </div>
       )}
     </Section>

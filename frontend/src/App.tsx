@@ -20,6 +20,8 @@ import { NewCodeRepositoryPage } from './pages/NewCodeRepositoryPage';
 import { GenerateTestsPage } from './pages/GenerateTestsPage';
 import { AiDraftsPage } from './pages/AiDraftsPage';
 import { AiDraftPage } from './pages/AiDraftPage';
+import { AiCallsPage } from './pages/AiCallsPage';
+import { AiCallPage } from './pages/AiCallPage';
 import { useSession } from './session';
 import { LanguageSwitch, useT } from './i18n';
 
@@ -71,6 +73,8 @@ export function App() {
           <Route path="/admin/tokens/new" element={can('APPROVER') ? <NewTokenPage /> : <Navigate to="/" replace />} />
           <Route path="/admin/notifications/new" element={can('APPROVER') ? <NewNotificationPage /> : <Navigate to="/" replace />} />
           <Route path="/admin/code-repositories/new" element={can('APPROVER') ? <NewCodeRepositoryPage /> : <Navigate to="/" replace />} />
+          <Route path="/admin/ai-calls" element={can('APPROVER') ? <AiCallsPage /> : <Navigate to="/" replace />} />
+          <Route path="/admin/ai-calls/:id" element={can('APPROVER') ? <AiCallPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

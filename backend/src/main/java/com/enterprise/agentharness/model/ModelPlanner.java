@@ -1,5 +1,6 @@
 package com.enterprise.agentharness.model;
 
+import com.enterprise.agentharness.ai.AiCallSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -16,7 +17,7 @@ public class ModelPlanner {
     public void runOnce() {
         calls.recover();var claim=calls.claim();if(claim==null) return;
         var call=claim.call();
-        try {calls.complete(claim,gateway.generate(new ModelProvider.Input(call.snapshotTitle(),call.snapshotDescription()),call.maxOutputTokens(),call.timeoutMillis()));}
+        try {calls.complete(claim,AiCallSource.with("task",call.taskId().toString(),()->gateway.generate(new ModelProvider.Input(call.snapshotTitle(),call.snapshotDescription()),call.maxOutputTokens(),call.timeoutMillis())));}
         catch(ModelFailure ex) {calls.fail(claim,ex.code());}
     }
 }
