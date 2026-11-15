@@ -173,6 +173,16 @@ table.pr-runs button { white-space: nowrap; }
   table.case-list td:nth-child(3) { order: 1; }
   table.case-list td:nth-child(2) { order: 2; flex-basis: 100%; }
   table.case-list td:nth-child(n+4) { order: 3; font-size: 0.85rem; color: var(--muted); }
+  /* AI calls: the feature first, then time, result and source, then tokens, duration and who in small print. */
+  table.ai-calls thead { display: none; }
+  table.ai-calls, table.ai-calls tbody { display: block; }
+  table.ai-calls tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  table.ai-calls td { display: block; padding: 0; border: 0; }
+  table.ai-calls td:nth-child(2) { order: 0; flex-basis: 100%; }
+  table.ai-calls td:nth-child(1) { order: 1; }
+  table.ai-calls td:nth-child(4) { order: 2; }
+  table.ai-calls td:nth-child(3) { order: 3; }
+  table.ai-calls td:nth-child(n+5) { order: 4; font-size: 0.85rem; color: var(--muted); }
   /* Pull request runs: one block per run; the impact view keeps its own scrolling table. */
   table.pr-runs { min-width: 0; }
   table.pr-runs colgroup, table.pr-runs > thead { display: none; }

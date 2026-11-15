@@ -640,7 +640,7 @@ export const ZH: Record<string, string> = {
   "output limit {n}": "输出上限 {n}",
   "Prompt and answer": "提示词和回答",
   "The prompt and answer were removed by the retention policy on": "提示词和回答已按保留策略清除，时间：",
-  "The prompt and answer of this call were not stored (EAHP_AI_LOG_STORE_PROMPTS=false, or the call was refused before it was sent).": "这次调用没有保存提示词和回答（EAHP_AI_LOG_STORE_PROMPTS=false，或者调用在发送前就被拒绝了）。",
+  "The prompt and answer of this call were not stored: it was made before the AI call log existed, EAHP_AI_LOG_STORE_PROMPTS is false, or it was refused before it was sent.": "这次调用没有保存提示词和回答：可能是在 AI 调用记录功能上线之前发生的，或者 EAHP_AI_LOG_STORE_PROMPTS 设为 false，或者调用在发送前就被拒绝了。",
   "Instructions to the model (system prompt)": "给模型的规则（系统提示词）",
   "Fixed by EAHP for this feature; it sets the rules the model must follow.": "由 EAHP 为这个功能固定编写，规定模型必须遵守的规则。",
   "Input sent (user prompt)": "发送的输入（用户提示词）",

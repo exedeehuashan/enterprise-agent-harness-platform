@@ -42,7 +42,7 @@ export function AiCallPage() {
             <Section title={tr('Prompt and answer')}>
               <p className="muted small">{d.contentExpiredAt
                 ? <>{tr('The prompt and answer were removed by the retention policy on')} <Time value={d.contentExpiredAt} />.</>
-                : tr('The prompt and answer of this call were not stored (EAHP_AI_LOG_STORE_PROMPTS=false, or the call was refused before it was sent).')}</p>
+                : tr('The prompt and answer of this call were not stored: it was made before the AI call log existed, EAHP_AI_LOG_STORE_PROMPTS is false, or it was refused before it was sent.')}</p>
             </Section>
           ) : (
             <>
