@@ -48,7 +48,7 @@ export function RunPage() {
           <dt>{tr('Finished')}</dt><dd><Time value={r.finishedAt} /></dd>
           <dt>{tr('Error')}</dt><dd>{r.errorCode ?? '—'}</dd>
           <dt>{tr('Input digest')}</dt><dd><code className="wrap">{r.inputDigest}</code></dd>
-          {r.arguments && <><dt>{tr('Arguments')}</dt><dd><code className="wrap">{JSON.stringify(r.arguments)}</code></dd></>}
+          {r.arguments && <><dt>{tr('Arguments')}</dt><dd><details><summary>{tr('Show arguments')}</summary><code className="wrap">{JSON.stringify(r.arguments)}</code></details></dd></>}
         </dl>
       </Section>
 

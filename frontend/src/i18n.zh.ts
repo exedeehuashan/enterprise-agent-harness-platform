@@ -648,4 +648,7 @@ export const ZH: Record<string, string> = {
   "Answer from the model": "模型的回答",
   "The raw answer before EAHP validated it; EAHP treats it as untrusted data.": "EAHP 校验前的原始回答；EAHP 把它当作不可信的数据处理。",
   "No answer was received.": "没有收到回答。",
+  "Each new commit of a pull request from the same repository runs the project's trigger suites; a newer push supersedes the previous run. Module-aware suites run only the affected modules, and path suites run only when their files change. Open View results for a run's tests, failure categories and history; with GitHub write-back on, results also appear on the pull request.": "同一仓库的 PR 每有新提交，都会运行项目已启用的触发套件；新的推送会取代上一次运行。按模块选择的套件只跑受影响的模块，按路径选择的套件只在相关文件改动时运行。点 查看结果 可以看到这次运行的测试、失败类别和历史；开启 GitHub 回写后，结果也会显示在 PR 上。",
+  "View results": "查看结果",
+  "Show arguments": "展开参数",
 };
