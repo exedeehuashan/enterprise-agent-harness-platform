@@ -617,4 +617,7 @@ export const ZH: Record<string, string> = {
   "No Maven, Gradle or workspace build found at this commit; module impact is not available for this build system yet.": "这个提交里没有 Maven、Gradle 或工作区构建；暂时无法分析这种构建系统的模块影响。",
   "No module is affected.": "没有受影响的模块。",
   "The root pom.xml changed, so every module is affected.": "根 pom.xml 有改动，所有模块都受影响。",
+  "Each new commit of a pull request from the same repository runs the project's trigger suites; a newer push supersedes the previous run. Module-aware suites run only the affected modules, and path suites run only when their files change. Open View results for a run's tests, failure categories and history; with GitHub write-back on, results also appear on the pull request.": "同一仓库的 PR 每有新提交，都会运行项目已启用的触发套件；新的推送会取代上一次运行。按模块选择的套件只跑受影响的模块，按路径选择的套件只在相关文件改动时运行。点 查看结果 可以看到这次运行的测试、失败类别和历史；开启 GitHub 回写后，结果也会显示在 PR 上。",
+  "View results": "查看结果",
+  "Show arguments": "展开参数",
 };

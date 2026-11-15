@@ -148,7 +148,9 @@ table.pr-runs col.c-suite { width: 112px; }
 table.pr-runs col.c-run { width: 120px; }
 table.pr-runs col.c-seen { width: 112px; }
 table.pr-runs col.c-action { width: 136px; }
-table.pr-runs button { white-space: nowrap; }
+table.pr-runs button, table.pr-runs a.button { white-space: nowrap; }
+.row-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.row-actions > * { text-align: center; }
 @media (max-width: 640px) {
   /* On phones each case is a block: ID and category, then the name, then the steps. */
   table.cases { min-width: 0; }
@@ -178,4 +180,5 @@ table.pr-runs button { white-space: nowrap; }
   table.pr-runs > tbody > tr > td { display: block; padding: 0; border: 0; }
   table.pr-runs > tbody > tr > td:first-child { flex-basis: 100%; }
   table.pr-runs > tbody > tr > td[colspan] { flex-basis: 100%; min-width: 0; }
+  table.pr-runs .row-actions { flex-direction: row; }
 }
